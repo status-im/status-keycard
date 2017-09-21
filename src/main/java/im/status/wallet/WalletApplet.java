@@ -15,6 +15,11 @@ public class WalletApplet extends Applet {
   }
 
   public void process(APDU apdu) throws ISOException {
+    if (selectingApplet()) {
+      apdu.setIncomingAndReceive();
+      return;
+    }
+
     ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
   }
 }
