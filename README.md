@@ -9,3 +9,5 @@ Other files will come and go until they are formalized as test scripts when we h
 and implementation.
 
 The project is built using Gradle with the [Fidesmo Javacard Gradle plugin](https://github.com/fidesmo/gradle-javacard).
+You can set the JavaCard HOME not only through the enviroment but also creating a gradle.properties file with the property
+"com.fidesmo.gradle.javacard.home" set to the correct path
