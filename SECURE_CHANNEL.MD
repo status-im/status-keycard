@@ -65,6 +65,5 @@ To decrypt the data both the card and the client do the following:
 
 1. If a sensitive command is received without an active Secure Channel, the card shall respond with SW 0x6985 (
 SW_CONDITIONS_NOT_SATISFIED)
-
 2. If a Secure Channel is established but a sensitive command is received plaintext, the card shall respond with
 SW 0x6982 (SW_SECURITY_STATUS_NOT_SATISFIED). The error 0x6F00 (SW_UNKNOWN) is also acceptable in this case.
