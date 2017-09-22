@@ -101,3 +101,15 @@ authenticated for the rest of the session. The status code 0x9000 is returned. W
 the number of remaining retries is decreased and the SW 0x63CX, where X is the number of available retries is
 returned. When the number of remaining retries reaches 0 the PUK is blocked. When the PUK is blocked this command
 always returns 0x63C0, even if the PUK is inserted correctly. In this case the wallet is effectively lost.
+
+### LOAD KEY
+
+* CLA = 0x80
+* INS = 0xD0
+* P1 = key type
+* P2 = 0x00
+* Data = the key data
+* Response SW = 0x9000 on success, 0x6A80 if the format is invalid
+* Preconditions: Secure Channel must be opened, user PIN must be verified
+
+Used to load the keyset. TODO: specify this
