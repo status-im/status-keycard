@@ -31,7 +31,7 @@ to sign transactions. When the applet is first installed, no keyset is available
 to first load the keyset in order for the application to be fully operational.
 
 Signing of transactions is done by uploading the data in blocks no larger than 255 bytes (including the overhead caused
-by the encryption). Segmentation must be handled at the application protocol.
+by the Secure Channel). Segmentation must be handled at the application protocol.
 
 ## APDUS
 
@@ -102,14 +102,62 @@ the number of remaining retries is decreased and the SW 0x63CX, where X is the n
 returned. When the number of remaining retries reaches 0 the PUK is blocked. When the PUK is blocked this command
 always returns 0x63C0, even if the PUK is inserted correctly. In this case the wallet is effectively lost.
 
-### LOAD KEY
+### LOAD KEYPAIR
 
 * CLA = 0x80
 * INS = 0xD0
 * P1 = key type
-* P2 = 0x00
+* P2 = key segment
 * Data = the key data
 * Response SW = 0x9000 on success, 0x6A80 if the format is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
-Used to load the keyset. TODO: specify this
+P1:
+
+* 0x01 = ECC SECP256k1
+
+P2:
+
+* 0x01 = ECC S component (private key)
+* 0x02 = ECC W component (public key, uncompressed)
+
+At the moment P1 can only be 0x01, but new key types could be added later. Keypairs are loaded only when all segments
+of private and public keys are loaded correctly.
+
+This command is used to load or replace the keypair used for signing on the card. This command always aborts open
+signing sessions, if any.
+
+### SIGN
+
+* CLA = 0x80
+* INS = 0xC0
+* P1 = 0x00
+* P2 = segment flag
+* Data = the data to sign
+* Response = if P2 indicates last segment, the signature is returned
+* Response SW = 0x9000 on success, 0x6A86 if P2 is invalid
+* Preconditions: Secure Channel must be opened, user PIN must be verified, a valid keypair must be loaded
+
+P2:
+
+* bit 0 = if 1 first block, if 0 other block
+* bit 1-6 = reserved
+* bit 7 = if 0 more blocks, if 1 last block
+
+Used to sign transactions. Since the maximum short APDU size is 255 bytes the transaction must be segmented before
+being sent if it is larger than that. The overhead from the Secure Channel must be also accounted for. When the last
+segment is sent, the card returns the calculated signature.
+
+The P2 parameter is used to manage the signing session and is treated as a bitmask. The rightmost bit indicates whether
+this block is the first one (1) or not (0). On the first block the card resets the signature state. The leftmost bit
+indicates whether this is the last block (1) or not (0). On the last block, the card generates and sends the signatures
+to the client.
+
+For example, if a signing session spans over 3 segments, the value of P2 will be respectively 0x01, 0x00, 0x80. If
+the signing session is composed of a single session P2 will have the value of 0x81.
+
+After a signature is generated, the next SIGN command must have the rightmost bit of P2 set, otherwise 0x6A86 will
+be returned.
+
+This segmentation scheme allows resuming signature sessions on power loss and at the same time avoid generating
+signatures over partial data, since both the first and the last block are marked.
