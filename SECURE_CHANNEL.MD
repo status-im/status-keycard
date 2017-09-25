@@ -61,6 +61,10 @@ To decrypt the data both the card and the client do the following:
 2. The remaining data is decrypted using AES in CBC mode using the session key.
 3. The padding is removed.
 
+Because AES in CBC mode requires the data field length in bytes to be a multiple of 16, the maximum effective APDU
+size becomes 240 bytes. Of these 16 bytes are used for the IV and minimum of 1 byte for padding, making the maximum
+payload size in a single APDU 223 bytes, meaning about a 13,5% overhead.
+
 ### Error conditions
 
 1. If a sensitive command is received without an active Secure Channel, the card shall respond with SW 0x6985 (
