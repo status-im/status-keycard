@@ -102,27 +102,23 @@ the number of remaining retries is decreased and the SW 0x63CX, where X is the n
 returned. When the number of remaining retries reaches 0 the PUK is blocked. When the PUK is blocked this command
 always returns 0x63C0, even if the PUK is inserted correctly. In this case the wallet is effectively lost.
 
-### LOAD KEYPAIR
+### LOAD KEY
 
 * CLA = 0x80
 * INS = 0xD0
-* P1 = key type
-* P2 = key segment
+* P1 = 0x01 (ECC SECP256k1 keypair)
+* P2 = 0x00
 * Data = the key data
 * Response SW = 0x9000 on success, 0x6A80 if the format is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
-P1:
+At the moment P1 can only be 0x01, but new key types could be added later. The ECC SECP256k1 keypair is
+encoded in [BER-TLV format](http://www.cardwerk.com/smartcards/smartcard_standard_ISO7816-4_annex-d.aspx) according to 
+the following template
 
-* 0x01 = ECC SECP256k1
-
-P2:
-
-* 0x01 = ECC S component (private key)
-* 0x02 = ECC W component (public key, uncompressed)
-
-At the moment P1 can only be 0x01, but new key types could be added later. Keypairs are loaded only when all segments
-of private and public keys are loaded correctly.
+- Tag 0xA1 = keypair template
+  - Tag 0x80 = ECC private key component
+  - Tag 0x81 = ECC public key component
 
 This command is used to load or replace the keypair used for signing on the card. This command always aborts open
 signing sessions, if any.
