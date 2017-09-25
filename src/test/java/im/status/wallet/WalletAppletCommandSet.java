@@ -16,4 +16,9 @@ public class WalletAppletCommandSet {
     CommandAPDU selectApplet = new CommandAPDU(ISO7816.CLA_ISO7816, ISO7816.INS_SELECT, 4, 0, APPLET_AID_BYTES);
     return apduChannel.transmit(selectApplet);
   }
+
+  public static ResponseAPDU verifyPIN(CardChannel apduChannel, String pin) throws CardException {
+    CommandAPDU verifyPIN = new CommandAPDU(0x80, WalletApplet.INS_VERIFY_PIN, 0, 0, pin.getBytes());
+    return apduChannel.transmit(verifyPIN);
+  }
 }

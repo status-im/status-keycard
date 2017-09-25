@@ -56,9 +56,8 @@ public class WalletApplet extends Applet {
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+        break;
     }
-
-    ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
   }
 
   private void verifyPIN(APDU apdu) {
