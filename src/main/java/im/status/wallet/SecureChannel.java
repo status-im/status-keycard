@@ -3,6 +3,7 @@ package im.status.wallet;
 import javacard.framework.APDU;
 import javacard.framework.ISO7816;
 import javacard.framework.JCSystem;
+import javacard.framework.Util;
 import javacard.security.*;
 import javacardx.crypto.Cipher;
 
@@ -10,6 +11,7 @@ public class SecureChannel {
   public static final short SC_KEY_LENGTH = 256;
   public static final short SC_SECRET_LENGTH = 32;
   public static final short SC_BLOCK_SIZE = 16;
+  public static final short SC_OUT_OFFSET = ISO7816.OFFSET_CDATA + (SC_BLOCK_SIZE * 2);
 
   public static final byte INS_OPEN_SECURE_CHANNEL = 0x10;
 
@@ -60,6 +62,19 @@ public class SecureChannel {
     }
 
     return (short) (len - 1);
+  }
+
+  public short encryptAPDU(byte[] apduBuffer, short len) {
+    apduBuffer[(short)(SC_OUT_OFFSET + len)] = (byte) 0x80;
+    len++;
+    short padding = (short) ((SC_BLOCK_SIZE - (short) (len % SC_BLOCK_SIZE)) % SC_BLOCK_SIZE);
+    Util.arrayFillNonAtomic(apduBuffer, (short)(SC_OUT_OFFSET + len), padding, (byte) 0x00);
+    len += padding;
+
+    scRandom.generateData(apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
+    scCipher.init(scKey, Cipher.MODE_ENCRYPT, apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
+    len = scCipher.doFinal(apduBuffer, SC_OUT_OFFSET, len, apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE));
+    return (short)(len + SC_BLOCK_SIZE);
   }
 
   public short copyPublicKey(byte[] buf, byte off) {

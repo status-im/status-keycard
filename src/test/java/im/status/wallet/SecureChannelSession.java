@@ -87,4 +87,20 @@ public class SecureChannelSession {
       throw new RuntimeException("Is BouncyCastle in the classpath?", e);
     }
   }
+
+  public byte[] decryptAPDU(byte[] data) {
+    if (sessionKey == null) {
+      return data;
+    }
+
+    try {
+      int ivSize = sessionCipher.getBlockSize();
+      IvParameterSpec ivParameterSpec = new IvParameterSpec(data, 0, ivSize);
+      sessionCipher.init(Cipher.DECRYPT_MODE, sessionKey, ivParameterSpec);
+      return sessionCipher.doFinal(data, ivSize, data.length - ivSize);
+    } catch(Exception e) {
+      e.printStackTrace();
+      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
+    }
+  }
 }

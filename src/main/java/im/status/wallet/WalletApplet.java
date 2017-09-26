@@ -13,7 +13,7 @@ public class WalletApplet extends Applet {
 
   static final byte PIN_LENGTH = 6;
   static final byte PIN_MAX_RETRIES = 3;
-  static final short TMP_BUFFER_LENGTH = 32;
+  static final short TMP_BUFFER_LENGTH = PIN_LENGTH;
   public static final short EC_KEY_SIZE = 256;
 
 
@@ -38,7 +38,7 @@ public class WalletApplet extends Applet {
     ECCurves.setSECP256K1CurveParameters((ECKey) keypair.getPrivate());
     ECCurves.setSECP256K1CurveParameters((ECKey) keypair.getPublic());
 
-    register(bArray, (short) (bOffset + 1), bArray[0]);
+    register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
 
   public void process(APDU apdu) throws ISOException {
