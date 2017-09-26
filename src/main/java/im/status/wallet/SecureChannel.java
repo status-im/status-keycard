@@ -7,8 +7,10 @@ import javacard.security.*;
 import javacardx.crypto.Cipher;
 
 public class SecureChannel {
-  public static final short SC_KEY_SIZE = 256;
+  public static final short SC_KEY_LENGTH = 256;
   public static final short SC_SECRET_LENGTH = 32;
+  public static final short SC_BLOCK_SIZE = 16;
+  public static final short SC_OFFSET_CDATA = ISO7816.OFFSET_CDATA + (SC_BLOCK_SIZE * 2);
 
   public static final byte INS_OPEN_SECURE_CHANNEL = 0x10;
 
@@ -27,7 +29,7 @@ public class SecureChannel {
     scCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_CBC_NOPAD, false);
     scKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
 
-    scKeypair = new KeyPair(KeyPair.ALG_EC_FP, SC_KEY_SIZE);
+    scKeypair = new KeyPair(KeyPair.ALG_EC_FP, SC_KEY_LENGTH);
     ECCurves.setSECP256K1CurveParameters((ECKey) scKeypair.getPrivate());
     ECCurves.setSECP256K1CurveParameters((ECKey) scKeypair.getPublic());
     scKeypair.genKeyPair();
@@ -48,6 +50,17 @@ public class SecureChannel {
     scMd.doFinal(apduBuffer, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
     scKey.setKey(secret, (short) 0);
     apdu.setOutgoingAndSend((short) 0, SC_SECRET_LENGTH);
+  }
+
+  public short decryptAPDU(byte[] apduBuffer) {
+    scCipher.init(scKey, Cipher.MODE_DECRYPT, apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
+    short len = scCipher.doFinal(apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), apduBuffer[ISO7816.OFFSET_LC], apduBuffer, SC_OFFSET_CDATA);
+
+    while(apduBuffer[(short)(SC_OFFSET_CDATA+len-1)] != (byte) 0x80) {
+      len--;
+    }
+
+    return (short) (len - 1);
   }
 
   public short copyPublicKey(byte[] buf, byte off) {

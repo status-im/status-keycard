@@ -13,6 +13,7 @@ public class WalletAppletTest {
   private static CardChannel apduChannel;
 
   private SecureChannelSession secureChannel;
+  private WalletAppletCommandSet cmdSet;
 
   @BeforeAll
   static void initAll() throws CardException {
@@ -33,8 +34,11 @@ public class WalletAppletTest {
 
   @BeforeEach
   void init() throws CardException {
-    byte[] keyData = WalletAppletCommandSet.select(apduChannel).getData();
+    apduChannel.getCard().getATR();
+    cmdSet = new WalletAppletCommandSet(apduChannel);
+    byte[] keyData = cmdSet.select().getData();
     secureChannel = new SecureChannelSession(keyData);
+    cmdSet.setSecureChannel(secureChannel);
   }
 
   @AfterEach
@@ -48,17 +52,17 @@ public class WalletAppletTest {
   @Test
   @DisplayName("SELECT command")
   void selectTest() throws CardException {
-    ResponseAPDU response = WalletAppletCommandSet.select(apduChannel);
+    ResponseAPDU response = cmdSet.select();
     assertEquals(0x9000, response.getSW());
     byte[] data = response.getData();
     assertEquals(0x04, data[0]);
-    assertEquals((SecureChannel.SC_KEY_SIZE * 2 / 8) + 1, data.length);
+    assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, data.length);
   }
 
   @Test
   @DisplayName("OPEN SECURE CHANNEL command")
   void openSecureChannelTest() throws CardException {
-    ResponseAPDU response = secureChannel.openSecureChannel(apduChannel);
+    ResponseAPDU response = cmdSet.openSecureChannel();
     assertEquals(0x9000, response.getSW());
     assertEquals(SecureChannel.SC_SECRET_LENGTH, response.getData().length);
   }
@@ -66,22 +70,27 @@ public class WalletAppletTest {
   @Test
   @DisplayName("VERIFY PIN command")
   void verifyPinTest() throws CardException {
-    ResponseAPDU response = WalletAppletCommandSet.verifyPIN(apduChannel, "123456");
+    ResponseAPDU response = cmdSet.verifyPIN("000000");
+    assertEquals(0x6985, response.getSW());
+
+    cmdSet.openSecureChannel();
+
+    response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C2, response.getSW());
 
-    response = WalletAppletCommandSet.verifyPIN(apduChannel, "000000");
+    response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
 
-    response = WalletAppletCommandSet.verifyPIN(apduChannel, "123456");
+    response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C2, response.getSW());
 
-    response = WalletAppletCommandSet.verifyPIN(apduChannel, "123456");
+    response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C1, response.getSW());
 
-    response = WalletAppletCommandSet.verifyPIN(apduChannel, "123456");
+    response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C0, response.getSW());
 
-    response = WalletAppletCommandSet.verifyPIN(apduChannel, "000000");
+    response = cmdSet.verifyPIN("000000");
     assertEquals(0x63C0, response.getSW());
 
     //TODO: Unblock PIN to make the test non-destructive

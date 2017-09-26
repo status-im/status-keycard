@@ -7,6 +7,7 @@ import org.bouncycastle.jce.spec.ECPublicKeySpec;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import javax.smartcardio.CardChannel;
 import javax.smartcardio.CardException;
@@ -19,12 +20,15 @@ public class SecureChannelSession {
   private byte[] publicKey;
   private Cipher sessionCipher;
   private SecretKeySpec sessionKey;
+  private SecureRandom random;
+
 
   public SecureChannelSession(byte[] keyData) {
     try {
+      random = new SecureRandom();
       ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
       KeyPairGenerator g = KeyPairGenerator.getInstance("ECDH", "BC");
-      g.initialize(ecSpec, new SecureRandom());
+      g.initialize(ecSpec, random);
 
       KeyPair keyPair = g.generateKeyPair();
 
@@ -58,5 +62,29 @@ public class SecureChannelSession {
     }
 
     return response;
+  }
+
+  public byte[] encryptAPDU(byte[] data) {
+    if (sessionKey == null) {
+      return data;
+    }
+
+    try {
+      int ivSize = sessionCipher.getBlockSize();
+      byte[] iv = new byte[ivSize];
+      random.nextBytes(iv);
+      IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
+
+      sessionCipher.init(Cipher.ENCRYPT_MODE, sessionKey, ivParameterSpec);
+      byte[] encrypted = sessionCipher.doFinal(data);
+
+      byte[] result = new byte[ivSize + encrypted.length];
+      System.arraycopy(iv, 0, result, 0, ivSize);
+      System.arraycopy(encrypted, 0, result, ivSize, encrypted.length);
+
+      return result;
+    } catch(Exception e) {
+      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
+    }
   }
 }
