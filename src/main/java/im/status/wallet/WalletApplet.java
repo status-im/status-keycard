@@ -90,7 +90,7 @@ public class WalletApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     short len = secureChannel.decryptAPDU(apduBuffer);
 
-    if (!ownerPIN.check(apduBuffer, SecureChannel.SC_OFFSET_CDATA, (byte) len)) {
+    if (!ownerPIN.check(apduBuffer, ISO7816.OFFSET_CDATA, (byte) len)) {
       ISOException.throwIt((short)((short) 0x63c0 | (short) ownerPIN.getTriesRemaining()));
     }
   }

@@ -10,7 +10,6 @@ public class SecureChannel {
   public static final short SC_KEY_LENGTH = 256;
   public static final short SC_SECRET_LENGTH = 32;
   public static final short SC_BLOCK_SIZE = 16;
-  public static final short SC_OFFSET_CDATA = ISO7816.OFFSET_CDATA + (SC_BLOCK_SIZE * 2);
 
   public static final byte INS_OPEN_SECURE_CHANNEL = 0x10;
 
@@ -54,9 +53,9 @@ public class SecureChannel {
 
   public short decryptAPDU(byte[] apduBuffer) {
     scCipher.init(scKey, Cipher.MODE_DECRYPT, apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
-    short len = scCipher.doFinal(apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), apduBuffer[ISO7816.OFFSET_LC], apduBuffer, SC_OFFSET_CDATA);
+    short len = scCipher.doFinal(apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), apduBuffer[ISO7816.OFFSET_LC], apduBuffer, ISO7816.OFFSET_CDATA);
 
-    while(apduBuffer[(short)(SC_OFFSET_CDATA+len-1)] != (byte) 0x80) {
+    while(apduBuffer[(short)(ISO7816.OFFSET_CDATA+len-1)] != (byte) 0x80) {
       len--;
     }
 
