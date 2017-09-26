@@ -11,6 +11,8 @@ buildscript {
 }
 
 javacard {
+  sdkVersion = "2.2.2"
+
   cap {
     aid = '0x53:0x74:0x61:0x74:0x75:0x73:0x57:0x61:0x6c:0x6c:0x65:0x74'
     packageName = 'im.status.wallet'
@@ -27,7 +29,7 @@ repositories {
 }
 
 dependencies {
-  testCompile("com.licel:jcardsim:2.2.2")
+  testCompile("org.bouncycastle:bcprov-jdk15on:1.58")
   testCompile("org.junit.jupiter:junit-jupiter-api:5.0.0")
   testRuntime("org.junit.jupiter:junit-jupiter-engine:5.0.0")
 }
