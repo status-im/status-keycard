@@ -1,12 +1,15 @@
 apply plugin: 'javacard'
+apply plugin: 'org.junit.platform.gradle.plugin'
 
 buildscript {
   repositories {
     maven { url 'http://releases.marmeladburk.fidesmo.com/' }
+    mavenCentral()
   }
 
   dependencies {
     classpath 'com.fidesmo:gradle-javacard:0.2.7'
+    classpath 'org.junit.platform:junit-platform-gradle-plugin:1.0.0'
   }
 }
 
@@ -40,6 +43,27 @@ targetCompatibility = 1.3
 task wrapper(type: Wrapper) {
   gradleVersion = '2.10'
 }
+
+task install(type: Exec) {
+  def gpShellScript = """
+  mode_211
+  enable_trace
+  establish_context
+  card_connect
+  select -AID ${project.properties['im.status.gradle.gpshell.isd']}
+  open_sc -security 1 -keyind 0 -keyver ${project.properties['im.status.gradle.gpshell.kvn']} -mac_key ${project.properties['im.status.gradle.gpshell.mac_key']} -enc_key ${project.properties['im.status.gradle.gpshell.enc_key']} -kek_key ${project.properties['im.status.gradle.gpshell.kek_key']}
+  send_apdu_nostop -sc 1 -APDU 80E400800E4F0C53746174757357616C6C6574
+  install -file build/javacard/im/status/wallet/javacard/wallet.cap -AID 53746174757357616C6C6574417070 -instAID 53746174757357616C6C6574417070 -instParam 313233343536373839303132
+  card_disconnect
+  release_context
+  """
+
+  executable project.properties['im.status.gradle.gpshell']
+  standardInput new ByteArrayInputStream(gpShellScript.getBytes("UTF-8"))
+}
+
+tasks.install.dependsOn(convertJavacard)
+tasks.test.dependsOn(install)
 
 compileTestJava {
   sourceCompatibility = 1.8
