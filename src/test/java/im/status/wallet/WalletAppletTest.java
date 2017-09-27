@@ -95,4 +95,44 @@ public class WalletAppletTest {
 
     //TODO: Unblock PIN to make the test non-destructive
   }
+
+  @Test
+  @DisplayName("CHANGE PIN command")
+  void changePinTest() throws CardException {
+    ResponseAPDU response = cmdSet.changePIN("123456");
+    assertEquals(0x6985, response.getSW());
+
+    cmdSet.openSecureChannel();
+
+    response = cmdSet.changePIN("123456");
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    response = cmdSet.changePIN("123456");
+    assertEquals(0x9000, response.getSW());
+
+    response = cmdSet.changePIN("654321");
+    assertEquals(0x9000, response.getSW());
+
+    apduChannel.getCard().getATR();
+    cmdSet.select();
+    cmdSet.openSecureChannel();
+
+    response = cmdSet.verifyPIN("654321");
+    assertEquals(0x9000, response.getSW());
+
+    response = cmdSet.changePIN("654a21");
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.changePIN("54321");
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.changePIN("7654321");
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.changePIN("000000");
+    assertEquals(0x9000, response.getSW());
+  }
 }

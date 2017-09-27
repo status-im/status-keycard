@@ -88,9 +88,9 @@ public class WalletApplet extends Applet {
     }
 
     byte[] apduBuffer = apdu.getBuffer();
-    short len = secureChannel.decryptAPDU(apduBuffer);
+    byte len = secureChannel.decryptAPDU(apduBuffer);
 
-    if (!ownerPIN.check(apduBuffer, ISO7816.OFFSET_CDATA, (byte) len)) {
+    if (!ownerPIN.check(apduBuffer, ISO7816.OFFSET_CDATA, len)) {
       ISOException.throwIt((short)((short) 0x63c0 | (short) ownerPIN.getTriesRemaining()));
     }
   }
@@ -101,6 +101,16 @@ public class WalletApplet extends Applet {
     if (!(secureChannel.isOpen() && ownerPIN.isValidated())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
+
+    byte[] apduBuffer = apdu.getBuffer();
+    byte len = secureChannel.decryptAPDU(apduBuffer);
+
+    if (!(len == 6 && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    ownerPIN.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
+    ownerPIN.check(apduBuffer, ISO7816.OFFSET_CDATA, len);
   }
 
   private void unblockPIN(APDU apdu) {
@@ -125,5 +135,19 @@ public class WalletApplet extends Applet {
     if (!(secureChannel.isOpen() && ownerPIN.isValidated() && keypair.getPrivate().isInitialized())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
+  }
+
+  private boolean allDigits(byte[] buffer, short off, short len) {
+    while(len > 0) {
+      len--;
+
+      byte c = buffer[(short)(off+len)];
+
+      if (c < 0x30 || c > 0x39) {
+        return false;
+      }
+    }
+
+    return true;
   }
 }
