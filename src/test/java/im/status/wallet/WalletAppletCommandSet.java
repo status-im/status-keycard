@@ -40,4 +40,9 @@ public class WalletAppletCommandSet {
     CommandAPDU changePIN = new CommandAPDU(0x80, WalletApplet.INS_CHANGE_PIN, 0, 0, secureChannel.encryptAPDU(pin.getBytes()));
     return apduChannel.transmit(changePIN);
   }
+
+  public ResponseAPDU unblockPIN(String puk, String newPin) throws CardException {
+    CommandAPDU unblockPIN = new CommandAPDU(0x80, WalletApplet.INS_UNBLOCK_PIN, 0, 0, secureChannel.encryptAPDU((puk + newPin).getBytes()));
+    return apduChannel.transmit(unblockPIN);
+  }
 }

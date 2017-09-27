@@ -16,7 +16,6 @@ public class WalletApplet extends Applet {
   static final byte PIN_LENGTH = 6;
   static final byte PIN_MAX_RETRIES = 3;
 
-  static final short TMP_BUFFER_LENGTH = PIN_LENGTH;
   static final short EC_KEY_SIZE = 256;
 
 
@@ -30,8 +29,8 @@ public class WalletApplet extends Applet {
   }
 
   public WalletApplet(byte[] bArray, short bOffset, byte bLength) {
-    short c9Off = (short)(bOffset + bArray[bOffset] + 1);
-    c9Off += (short)(bArray[bOffset] + 1 + 2);
+    short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
+    c9Off += (short)(bArray[c9Off] + 2); // Skip Privileges and parameter length
 
     puk = new OwnerPIN(PUK_MAX_RETRIES, PUK_LENGTH);
     puk.update(bArray, c9Off, PUK_LENGTH);
@@ -112,7 +111,7 @@ public class WalletApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     byte len = secureChannel.decryptAPDU(apduBuffer);
 
-    if (!(len == 6 && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
+    if (!(len == PIN_LENGTH && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
@@ -126,6 +125,22 @@ public class WalletApplet extends Applet {
     if (!(secureChannel.isOpen() && pin.getTriesRemaining() == 0)) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
+
+    byte[] apduBuffer = apdu.getBuffer();
+    byte len = secureChannel.decryptAPDU(apduBuffer);
+
+    if (!(len == (PUK_LENGTH + PIN_LENGTH) && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    if (!puk.check(apduBuffer, ISO7816.OFFSET_CDATA, PUK_LENGTH)) {
+      ISOException.throwIt((short)((short) 0x63c0 | (short) puk.getTriesRemaining()));
+    }
+
+    pin.resetAndUnblock();
+    pin.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PUK_LENGTH), PIN_LENGTH);
+    pin.check(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PUK_LENGTH), PIN_LENGTH);
+    puk.reset();
   }
 
   private void loadKey(APDU apdu) {
