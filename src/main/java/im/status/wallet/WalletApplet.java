@@ -11,27 +11,34 @@ public class WalletApplet extends Applet {
   static final byte INS_LOAD_KEY = (byte) 0xD0;
   static final byte INS_SIGN = (byte) 0xC0;
 
+  static final byte PUK_LENGTH = 12;
+  static final byte PUK_MAX_RETRIES = 5;
   static final byte PIN_LENGTH = 6;
   static final byte PIN_MAX_RETRIES = 3;
+
   static final short TMP_BUFFER_LENGTH = PIN_LENGTH;
-  public static final short EC_KEY_SIZE = 256;
+  static final short EC_KEY_SIZE = 256;
 
 
-  private OwnerPIN ownerPIN;
+  private OwnerPIN pin;
+  private OwnerPIN puk;
   private SecureChannel secureChannel;
   private KeyPair keypair;
-  private byte[] tmp;
 
   public static void install(byte[] bArray, short bOffset, byte bLength) {
     new WalletApplet(bArray, bOffset, bLength);
   }
 
   public WalletApplet(byte[] bArray, short bOffset, byte bLength) {
-    tmp = JCSystem.makeTransientByteArray(TMP_BUFFER_LENGTH, JCSystem.CLEAR_ON_DESELECT);
+    short c9Off = (short)(bOffset + bArray[bOffset] + 1);
+    c9Off += (short)(bArray[bOffset] + 1 + 2);
 
-    Util.arrayFillNonAtomic(tmp, (short) 0, PIN_LENGTH, (byte) 0x30);
-    ownerPIN = new OwnerPIN(PIN_MAX_RETRIES, PIN_LENGTH);
-    ownerPIN.update(tmp, (short) 0, PIN_LENGTH);
+    puk = new OwnerPIN(PUK_MAX_RETRIES, PUK_LENGTH);
+    puk.update(bArray, c9Off, PUK_LENGTH);
+
+    Util.arrayFillNonAtomic(bArray, c9Off, PIN_LENGTH, (byte) 0x30);
+    pin = new OwnerPIN(PIN_MAX_RETRIES, PIN_LENGTH);
+    pin.update(bArray, c9Off, PIN_LENGTH);
 
     secureChannel = new SecureChannel();
     keypair = new KeyPair(KeyPair.ALG_EC_FP, EC_KEY_SIZE);
@@ -90,15 +97,15 @@ public class WalletApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     byte len = secureChannel.decryptAPDU(apduBuffer);
 
-    if (!ownerPIN.check(apduBuffer, ISO7816.OFFSET_CDATA, len)) {
-      ISOException.throwIt((short)((short) 0x63c0 | (short) ownerPIN.getTriesRemaining()));
+    if (!pin.check(apduBuffer, ISO7816.OFFSET_CDATA, len)) {
+      ISOException.throwIt((short)((short) 0x63c0 | (short) pin.getTriesRemaining()));
     }
   }
 
   private void changePIN(APDU apdu) {
     apdu.setIncomingAndReceive();
 
-    if (!(secureChannel.isOpen() && ownerPIN.isValidated())) {
+    if (!(secureChannel.isOpen() && pin.isValidated())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
@@ -109,14 +116,14 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
-    ownerPIN.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
-    ownerPIN.check(apduBuffer, ISO7816.OFFSET_CDATA, len);
+    pin.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
+    pin.check(apduBuffer, ISO7816.OFFSET_CDATA, len);
   }
 
   private void unblockPIN(APDU apdu) {
     apdu.setIncomingAndReceive();
 
-    if (!(secureChannel.isOpen() && ownerPIN.getTriesRemaining() == 0)) {
+    if (!(secureChannel.isOpen() && pin.getTriesRemaining() == 0)) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
   }
@@ -124,7 +131,7 @@ public class WalletApplet extends Applet {
   private void loadKey(APDU apdu) {
     apdu.setIncomingAndReceive();
 
-    if (!(secureChannel.isOpen() && ownerPIN.isValidated())) {
+    if (!(secureChannel.isOpen() && pin.isValidated())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
   }
@@ -132,7 +139,7 @@ public class WalletApplet extends Applet {
   private void sign(APDU apdu) {
     apdu.setIncomingAndReceive();
 
-    if (!(secureChannel.isOpen() && ownerPIN.isValidated() && keypair.getPrivate().isInitialized())) {
+    if (!(secureChannel.isOpen() && pin.isValidated() && keypair.getPrivate().isInitialized())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
   }
