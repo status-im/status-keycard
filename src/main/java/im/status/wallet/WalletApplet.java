@@ -1,8 +1,7 @@
 package im.status.wallet;
 
 import javacard.framework.*;
-import javacard.security.ECKey;
-import javacard.security.KeyPair;
+import javacard.security.*;
 
 public class WalletApplet extends Applet {
   static final byte INS_VERIFY_PIN = (byte) 0x20;
@@ -18,11 +17,16 @@ public class WalletApplet extends Applet {
 
   static final short EC_KEY_SIZE = 256;
 
+  static final byte TLV_KEY_TEMPLATE = (byte) 0xA1;
+  static final byte TLV_PUB_KEY = (byte) 0x80;
+  static final byte TLV_PRIV_KEY = (byte) 0x81;
 
   private OwnerPIN pin;
   private OwnerPIN puk;
   private SecureChannel secureChannel;
-  private KeyPair keypair;
+  private ECPublicKey publicKey;
+  private ECPrivateKey privateKey;
+  private Signature signature;
 
   public static void install(byte[] bArray, short bOffset, byte bLength) {
     new WalletApplet(bArray, bOffset, bLength);
@@ -40,9 +44,13 @@ public class WalletApplet extends Applet {
     pin.update(bArray, c9Off, PIN_LENGTH);
 
     secureChannel = new SecureChannel();
-    keypair = new KeyPair(KeyPair.ALG_EC_FP, EC_KEY_SIZE);
-    ECCurves.setSECP256K1CurveParameters((ECKey) keypair.getPrivate());
-    ECCurves.setSECP256K1CurveParameters((ECKey) keypair.getPublic());
+    publicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
+    privateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
+
+    ECCurves.setSECP256K1CurveParameters(publicKey);
+    ECCurves.setSECP256K1CurveParameters(privateKey);
+
+    signature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
@@ -81,6 +89,9 @@ public class WalletApplet extends Applet {
   }
 
   private void selectApplet(APDU apdu) {
+    pin.reset();
+    puk.reset();
+
     apdu.setIncomingAndReceive();
     short keyLength = secureChannel.copyPublicKey(apdu.getBuffer(), ISO7816.OFFSET_CDATA);
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, keyLength);
@@ -94,7 +105,7 @@ public class WalletApplet extends Applet {
     }
 
     byte[] apduBuffer = apdu.getBuffer();
-    byte len = secureChannel.decryptAPDU(apduBuffer);
+    byte len = (byte) secureChannel.decryptAPDU(apduBuffer);
 
     if (!pin.check(apduBuffer, ISO7816.OFFSET_CDATA, len)) {
       ISOException.throwIt((short)((short) 0x63c0 | (short) pin.getTriesRemaining()));
@@ -109,7 +120,7 @@ public class WalletApplet extends Applet {
     }
 
     byte[] apduBuffer = apdu.getBuffer();
-    byte len = secureChannel.decryptAPDU(apduBuffer);
+    byte len = (byte) secureChannel.decryptAPDU(apduBuffer);
 
     if (!(len == PIN_LENGTH && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -127,7 +138,7 @@ public class WalletApplet extends Applet {
     }
 
     byte[] apduBuffer = apdu.getBuffer();
-    byte len = secureChannel.decryptAPDU(apduBuffer);
+    byte len = (byte) secureChannel.decryptAPDU(apduBuffer);
 
     if (!(len == (PUK_LENGTH + PIN_LENGTH) && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -144,17 +155,38 @@ public class WalletApplet extends Applet {
   }
 
   private void loadKey(APDU apdu) {
-    apdu.setIncomingAndReceive();
-
     if (!(secureChannel.isOpen() && pin.isValidated())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
+
+    byte[] apduBuffer = apdu.getBuffer();
+    secureChannel.decryptAPDU(apduBuffer);
+
+    short pubOffset = (short)(ISO7816.OFFSET_CDATA + 2);
+    short privOffset = (short)(pubOffset + apduBuffer[(short)(pubOffset + 1)] + 2);
+
+    if (!(apduBuffer[ISO7816.OFFSET_CDATA] == TLV_KEY_TEMPLATE && apduBuffer[pubOffset] == TLV_PUB_KEY && apduBuffer[privOffset] == TLV_PRIV_KEY))  {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    JCSystem.beginTransaction();
+
+    try {
+      publicKey.setW(apduBuffer, (short) (pubOffset + 2), apduBuffer[(short) (pubOffset + 1)]);
+      privateKey.setS(apduBuffer, (short) (privOffset + 2), apduBuffer[(short) (privOffset + 1)]);
+    } catch (CryptoException e) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    JCSystem.commitTransaction();
+
+    signature.init(privateKey, Signature.MODE_SIGN);
   }
 
   private void sign(APDU apdu) {
     apdu.setIncomingAndReceive();
 
-    if (!(secureChannel.isOpen() && pin.isValidated() && keypair.getPrivate().isInitialized())) {
+    if (!(secureChannel.isOpen() && pin.isValidated() && privateKey.isInitialized())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
   }

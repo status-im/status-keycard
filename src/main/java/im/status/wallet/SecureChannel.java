@@ -53,17 +53,21 @@ public class SecureChannel {
     apdu.setOutgoingAndSend((short) 0, SC_SECRET_LENGTH);
   }
 
-  public byte decryptAPDU(byte[] apduBuffer) {
+  public short decryptAPDU(byte[] apduBuffer) {
+    short apduLen = (short)((short) apduBuffer[ISO7816.OFFSET_LC] & 0xff);
+
     scCipher.init(scKey, Cipher.MODE_DECRYPT, apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
-    short len = scCipher.doFinal(apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduBuffer[ISO7816.OFFSET_LC] - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA);
+    short len = scCipher.doFinal(apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA);
 
     while(apduBuffer[(short)(ISO7816.OFFSET_CDATA+len-1)] != (byte) 0x80) {
       len--;
     }
 
-    apduBuffer[ISO7816.OFFSET_LC] = (byte) (len - 1);
+    len--;
 
-    return apduBuffer[ISO7816.OFFSET_LC];
+    apduBuffer[ISO7816.OFFSET_LC] = (byte) len;
+
+    return len;
   }
 
   public short encryptAPDU(byte[] apduBuffer, short len) {

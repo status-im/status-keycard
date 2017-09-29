@@ -1,12 +1,15 @@
 package im.status.wallet;
 
 import javacard.framework.ISO7816;
+import org.bouncycastle.jce.interfaces.ECPrivateKey;
+import org.bouncycastle.jce.interfaces.ECPublicKey;
 import org.bouncycastle.util.encoders.Hex;
 
 import javax.smartcardio.CardChannel;
 import javax.smartcardio.CardException;
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
+import java.security.KeyPair;
 
 public class WalletAppletCommandSet {
   public static final String APPLET_AID = "53746174757357616C6C6574417070";
@@ -44,5 +47,35 @@ public class WalletAppletCommandSet {
   public ResponseAPDU unblockPIN(String puk, String newPin) throws CardException {
     CommandAPDU unblockPIN = new CommandAPDU(0x80, WalletApplet.INS_UNBLOCK_PIN, 0, 0, secureChannel.encryptAPDU((puk + newPin).getBytes()));
     return apduChannel.transmit(unblockPIN);
+  }
+
+  public ResponseAPDU loadKey(KeyPair keyPair) throws CardException {
+    byte[] publicKey = ((ECPublicKey) keyPair.getPublic()).getQ().getEncoded(false);
+    byte[] privateKey = ((ECPrivateKey) keyPair.getPrivate()).getD().toByteArray();
+
+    int privLen = privateKey.length;
+    int privOff = 0;
+
+    if(privateKey[0] == 0x00) {
+      privOff++;
+      privLen--;
+    }
+
+    byte[] data = new byte[publicKey.length + privLen + 6];
+    data[0] = (byte) 0xA1;
+    data[1] = (byte) (publicKey.length + privLen + 4);
+    data[2] = (byte) 0x80;
+    data[3] = (byte) publicKey.length;
+    System.arraycopy(publicKey, 0, data, 4, publicKey.length);
+    data[4 + publicKey.length] = (byte) 0x81;
+    data[5 + publicKey.length] = (byte) privLen;
+    System.arraycopy(privateKey, privOff, data, 6 + publicKey.length, privLen);
+
+    return loadKey(data);
+  }
+
+  public ResponseAPDU loadKey(byte[] data) throws CardException {
+    CommandAPDU loadKey = new CommandAPDU(0x80, WalletApplet.INS_LOAD_KEY, 0, 0, secureChannel.encryptAPDU(data));
+    return apduChannel.transmit(loadKey);
   }
 }

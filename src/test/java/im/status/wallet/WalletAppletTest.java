@@ -1,8 +1,12 @@
 package im.status.wallet;
 
+import org.bouncycastle.jce.ECNamedCurveTable;
+import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.junit.jupiter.api.*;
 
 import javax.smartcardio.*;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.Security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -177,6 +181,44 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     response = cmdSet.changePIN("000000");
+    assertEquals(0x9000, response.getSW());
+  }
+
+  @Test
+  @DisplayName("LOAD KEY command")
+  void loadKeyTest() throws Exception {
+    ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
+    KeyPairGenerator g = KeyPairGenerator.getInstance("ECDH", "BC");
+    g.initialize(ecSpec);
+
+    KeyPair keyPair = g.generateKeyPair();
+
+    ResponseAPDU response = cmdSet.loadKey(keyPair);
+    assertEquals(0x6985, response.getSW());
+
+    cmdSet.openSecureChannel();
+
+    response = cmdSet.loadKey(keyPair);
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    response = cmdSet.loadKey(new byte[] { (byte) 0xAA, 0x02, (byte) 0x80, 0x00});
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.loadKey(new byte[] { (byte) 0xA1, 0x02, (byte) 0x80, 0x00});
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.loadKey(new byte[] { (byte) 0xA1, 0x06, (byte) 0x80, 0x01, 0x01, (byte) 0x81, 0x01, 0x02});
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.loadKey(keyPair);
+    assertEquals(0x9000, response.getSW());
+
+    keyPair = g.generateKeyPair();
+
+    response = cmdSet.loadKey(keyPair);
     assertEquals(0x9000, response.getSW());
   }
 }
