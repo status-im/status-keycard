@@ -142,7 +142,8 @@ P2:
 
 Used to sign transactions. Since the maximum short APDU size is 255 bytes the transaction must be segmented before
 being sent if it is larger than that. The overhead from the Secure Channel must be also accounted for. When the last
-segment is sent, the card returns the calculated signature.
+segment is sent, the card returns the calculated signature. The signature is an ECDSA signature calculated over the
+SHA-1 hash of the sent data.
 
 The P2 parameter is used to manage the signing session and is treated as a bitmask. The rightmost bit indicates whether
 this block is the first one (1) or not (0). On the first block the card resets the signature state. The leftmost bit
@@ -155,5 +156,7 @@ the signing session is composed of a single session P2 will have the value of 0x
 After a signature is generated, the next SIGN command must have the rightmost bit of P2 set, otherwise 0x6A86 will
 be returned.
 
-This segmentation scheme allows resuming signature sessions on power loss and at the same time avoid generating
-signatures over partial data, since both the first and the last block are marked.
+This segmentation scheme allows resuming signature sessions if other commands must be sent in between and at 
+the same time avoid generating signatures over partial data, since both the first and the last block are marked.
+
+On applet selection any pending signing session is aborted.

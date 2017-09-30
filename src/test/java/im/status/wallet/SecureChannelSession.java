@@ -16,6 +16,8 @@ import javax.smartcardio.ResponseAPDU;
 import java.security.*;
 
 public class SecureChannelSession {
+  public static final int PAYLOAD_MAX_SIZE = 223;
+
   private byte[] secret;
   private byte[] publicKey;
   private Cipher sessionCipher;
@@ -65,6 +67,8 @@ public class SecureChannelSession {
   }
 
   public byte[] encryptAPDU(byte[] data) {
+    assert data.length <= PAYLOAD_MAX_SIZE;
+
     if (sessionKey == null) {
       return data;
     }

@@ -19,6 +19,9 @@ public class WalletApplet extends Applet {
 
   static final byte LOAD_KEY_EC = 0x01;
 
+  static final byte SIGN_FIRST_BLOCK_MASK = 0x01;
+  static final byte SIGN_LAST_BLOCK_MASK = (byte) 0x80;
+
   static final byte TLV_KEY_TEMPLATE = (byte) 0xA1;
   static final byte TLV_PUB_KEY = (byte) 0x80;
   static final byte TLV_PRIV_KEY = (byte) 0x81;
@@ -54,7 +57,6 @@ public class WalletApplet extends Applet {
     ECCurves.setSECP256K1CurveParameters(privateKey);
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
-    signInProgress = false;
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
@@ -93,6 +95,7 @@ public class WalletApplet extends Applet {
   }
 
   private void selectApplet(APDU apdu) {
+    signInProgress = false;
     pin.reset();
     puk.reset();
 
@@ -199,8 +202,25 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    //signature.init(privateKey, Signature.MODE_SIGN);
+    byte[] apduBuffer = apdu.getBuffer();
 
+    if ((apduBuffer[ISO7816.OFFSET_P2] & SIGN_FIRST_BLOCK_MASK) == SIGN_FIRST_BLOCK_MASK)  {
+      signInProgress = true;
+      signature.init(privateKey, Signature.MODE_SIGN);
+    } else if (!signInProgress) {
+      ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+    }
+
+    short len = secureChannel.decryptAPDU(apduBuffer);
+
+    if ((apduBuffer[ISO7816.OFFSET_P2] & SIGN_LAST_BLOCK_MASK) == SIGN_LAST_BLOCK_MASK) {
+      signInProgress = false;
+      len = signature.sign(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, SecureChannel.SC_OUT_OFFSET);
+      len = secureChannel.encryptAPDU(apduBuffer, len);
+      apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
+    } else {
+      signature.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
+    }
   }
 
   private boolean allDigits(byte[] buffer, short off, short len) {

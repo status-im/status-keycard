@@ -14,6 +14,7 @@ import java.security.KeyPair;
 public class WalletAppletCommandSet {
   public static final String APPLET_AID = "53746174757357616C6C6574417070";
   public static final byte[] APPLET_AID_BYTES = Hex.decode(APPLET_AID);
+
   private final CardChannel apduChannel;
   private SecureChannelSession secureChannel;
 
@@ -77,5 +78,11 @@ public class WalletAppletCommandSet {
   public ResponseAPDU loadKey(byte[] data, byte keyType) throws CardException {
     CommandAPDU loadKey = new CommandAPDU(0x80, WalletApplet.INS_LOAD_KEY, keyType, 0, secureChannel.encryptAPDU(data));
     return apduChannel.transmit(loadKey);
+  }
+
+  public ResponseAPDU sign(byte[] data, boolean isFirst, boolean isLast) throws CardException {
+    byte p2 = (byte) ((isFirst ? 0x01 : 0x00) | (isLast ? 0x80 : 0x00));
+    CommandAPDU sign = new CommandAPDU(0x80, WalletApplet.INS_SIGN, 0, p2, secureChannel.encryptAPDU(data));
+    return apduChannel.transmit(sign);
   }
 }
