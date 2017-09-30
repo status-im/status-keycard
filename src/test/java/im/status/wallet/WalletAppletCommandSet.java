@@ -71,11 +71,11 @@ public class WalletAppletCommandSet {
     data[5 + publicKey.length] = (byte) privLen;
     System.arraycopy(privateKey, privOff, data, 6 + publicKey.length, privLen);
 
-    return loadKey(data);
+    return loadKey(data, WalletApplet.LOAD_KEY_EC);
   }
 
-  public ResponseAPDU loadKey(byte[] data) throws CardException {
-    CommandAPDU loadKey = new CommandAPDU(0x80, WalletApplet.INS_LOAD_KEY, 0, 0, secureChannel.encryptAPDU(data));
+  public ResponseAPDU loadKey(byte[] data, byte keyType) throws CardException {
+    CommandAPDU loadKey = new CommandAPDU(0x80, WalletApplet.INS_LOAD_KEY, keyType, 0, secureChannel.encryptAPDU(data));
     return apduChannel.transmit(loadKey);
   }
 }

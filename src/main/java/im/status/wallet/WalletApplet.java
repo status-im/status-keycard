@@ -17,6 +17,8 @@ public class WalletApplet extends Applet {
 
   static final short EC_KEY_SIZE = 256;
 
+  static final byte LOAD_KEY_EC = 0x01;
+
   static final byte TLV_KEY_TEMPLATE = (byte) 0xA1;
   static final byte TLV_PUB_KEY = (byte) 0x80;
   static final byte TLV_PRIV_KEY = (byte) 0x81;
@@ -27,6 +29,7 @@ public class WalletApplet extends Applet {
   private ECPublicKey publicKey;
   private ECPrivateKey privateKey;
   private Signature signature;
+  private boolean signInProgress;
 
   public static void install(byte[] bArray, short bOffset, byte bLength) {
     new WalletApplet(bArray, bOffset, bLength);
@@ -51,6 +54,7 @@ public class WalletApplet extends Applet {
     ECCurves.setSECP256K1CurveParameters(privateKey);
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
+    signInProgress = false;
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
@@ -160,6 +164,11 @@ public class WalletApplet extends Applet {
     }
 
     byte[] apduBuffer = apdu.getBuffer();
+
+    if (apduBuffer[ISO7816.OFFSET_P1] != LOAD_KEY_EC)  {
+      ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+    }
+
     secureChannel.decryptAPDU(apduBuffer);
 
     short pubOffset = (short)(ISO7816.OFFSET_CDATA + 2);
@@ -180,7 +189,7 @@ public class WalletApplet extends Applet {
 
     JCSystem.commitTransaction();
 
-    signature.init(privateKey, Signature.MODE_SIGN);
+    signInProgress = false;
   }
 
   private void sign(APDU apdu) {
@@ -189,6 +198,9 @@ public class WalletApplet extends Applet {
     if (!(secureChannel.isOpen() && pin.isValidated() && privateKey.isInitialized())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
+
+    //signature.init(privateKey, Signature.MODE_SIGN);
+
   }
 
   private boolean allDigits(byte[] buffer, short off, short len) {

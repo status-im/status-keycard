@@ -204,13 +204,16 @@ public class WalletAppletTest {
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
 
-    response = cmdSet.loadKey(new byte[] { (byte) 0xAA, 0x02, (byte) 0x80, 0x00});
+    response = cmdSet.loadKey(new byte[] { (byte) 0xAA, 0x02, (byte) 0x80, 0x00}, (byte) 0x00);
+    assertEquals(0x6A86, response.getSW());
+
+    response = cmdSet.loadKey(new byte[] { (byte) 0xAA, 0x02, (byte) 0x80, 0x00}, WalletApplet.LOAD_KEY_EC);
     assertEquals(0x6A80, response.getSW());
 
-    response = cmdSet.loadKey(new byte[] { (byte) 0xA1, 0x02, (byte) 0x80, 0x00});
+    response = cmdSet.loadKey(new byte[] { (byte) 0xA1, 0x02, (byte) 0x80, 0x00}, WalletApplet.LOAD_KEY_EC);
     assertEquals(0x6A80, response.getSW());
 
-    response = cmdSet.loadKey(new byte[] { (byte) 0xA1, 0x06, (byte) 0x80, 0x01, 0x01, (byte) 0x81, 0x01, 0x02});
+    response = cmdSet.loadKey(new byte[] { (byte) 0xA1, 0x06, (byte) 0x80, 0x01, 0x01, (byte) 0x81, 0x01, 0x02}, WalletApplet.LOAD_KEY_EC);
     assertEquals(0x6A80, response.getSW());
 
     response = cmdSet.loadKey(keyPair);

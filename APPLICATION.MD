@@ -109,7 +109,7 @@ always returns 0x63C0, even if the PUK is inserted correctly. In this case the w
 * P1 = 0x01 (ECC SECP256k1 keypair)
 * P2 = 0x00
 * Data = the key data
-* Response SW = 0x9000 on success, 0x6A80 if the format is invalid
+* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A86 if P1 is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
 At the moment P1 can only be 0x01, but new key types could be added later. The ECC SECP256k1 keypair is
