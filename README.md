@@ -36,8 +36,6 @@ im.status.gradle.gpshell.kvn=2
 
 ## Implementation notes
 
-* This implementation will try to use only features available in JavaCard 2.2.2 for broader compatibility with existing
-hardware.
 * The class byte of the APDU is not checked since there are no conflicting INS code.
 * Automated tests using JUnit 5 are included. The test require the application to be already installed. The first
   card terminal found by Java will be used, to please disconnect all card terminals except the one to be used for

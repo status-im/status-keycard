@@ -274,7 +274,7 @@ public class WalletAppletTest {
 
     KeyPairGenerator g = keypairGenerator();
     KeyPair keyPair = keypairGenerator().generateKeyPair();
-    Signature signature = Signature.getInstance("ECDSAwithSHA1", "BC");
+    Signature signature = Signature.getInstance("ECDSAwithSHA256", "BC");
     signature.initVerify(keyPair.getPublic());
 
     response = cmdSet.loadKey(keyPair);

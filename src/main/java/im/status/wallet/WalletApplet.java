@@ -19,6 +19,9 @@ public class WalletApplet extends Applet {
 
   static final byte LOAD_KEY_EC = 0x01;
 
+  static final byte SIGN_DATA = 0x00;
+  static final byte SIGN_PRECOMPUTED_HASH = 0x01;
+
   static final byte SIGN_FIRST_BLOCK_MASK = 0x01;
   static final byte SIGN_LAST_BLOCK_MASK = (byte) 0x80;
 
@@ -56,7 +59,7 @@ public class WalletApplet extends Applet {
     ECCurves.setSECP256K1CurveParameters(publicKey);
     ECCurves.setSECP256K1CurveParameters(privateKey);
 
-    signature = Signature.getInstance(Signature.ALG_ECDSA_SHA, false);
+    signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
@@ -215,7 +218,15 @@ public class WalletApplet extends Applet {
 
     if ((apduBuffer[ISO7816.OFFSET_P2] & SIGN_LAST_BLOCK_MASK) == SIGN_LAST_BLOCK_MASK) {
       signInProgress = false;
-      len = signature.sign(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, SecureChannel.SC_OUT_OFFSET);
+
+      if ((apduBuffer[ISO7816.OFFSET_P1]) == SIGN_DATA) {
+        len = signature.sign(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, SecureChannel.SC_OUT_OFFSET);
+      } else if ((apduBuffer[ISO7816.OFFSET_P1]) == SIGN_PRECOMPUTED_HASH) {
+        len = signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, SecureChannel.SC_OUT_OFFSET);
+      } else {
+        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+      }
+
       len = secureChannel.encryptAPDU(apduBuffer, len);
       apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
     } else {

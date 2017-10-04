@@ -127,12 +127,16 @@ signing sessions, if any.
 
 * CLA = 0x80
 * INS = 0xC0
-* P1 = 0x00
+* P1 = data type
 * P2 = segment flag
 * Data = the data to sign
 * Response = if P2 indicates last segment, the signature is returned
 * Response SW = 0x9000 on success, 0x6A86 if P2 is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be verified, a valid keypair must be loaded
+
+P1:
+* 0x00 = transaction data
+* 0x01 = precomputed hash
 
 P2:
 
@@ -143,7 +147,7 @@ P2:
 Used to sign transactions. Since the maximum short APDU size is 255 bytes the transaction must be segmented before
 being sent if it is larger than that. The overhead from the Secure Channel must be also accounted for. When the last
 segment is sent, the card returns the calculated signature. The signature is an ECDSA signature calculated over the
-SHA-1 hash of the sent data.
+SHA-256 hash of the sent data.
 
 The P2 parameter is used to manage the signing session and is treated as a bitmask. The rightmost bit indicates whether
 this block is the first one (1) or not (0). On the first block the card resets the signature state. The leftmost bit
