@@ -32,6 +32,7 @@ repositories {
 }
 
 dependencies {
+  testCompile(files("../jcardsim/target/jcardsim-3.0.5-SNAPSHOT.jar"))
   testCompile("org.bouncycastle:bcprov-jdk15on:1.58")
   testCompile("org.junit.jupiter:junit-jupiter-api:5.0.0")
   testRuntime("org.junit.jupiter:junit-jupiter-engine:5.0.0")

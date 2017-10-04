@@ -80,9 +80,9 @@ public class WalletAppletCommandSet {
     return apduChannel.transmit(loadKey);
   }
 
-  public ResponseAPDU sign(byte[] data, boolean isFirst, boolean isLast) throws CardException {
+  public ResponseAPDU sign(byte[] data, byte dataType, boolean isFirst, boolean isLast) throws CardException {
     byte p2 = (byte) ((isFirst ? 0x01 : 0x00) | (isLast ? 0x80 : 0x00));
-    CommandAPDU sign = new CommandAPDU(0x80, WalletApplet.INS_SIGN, 0, p2, secureChannel.encryptAPDU(data));
+    CommandAPDU sign = new CommandAPDU(0x80, WalletApplet.INS_SIGN, dataType, p2, secureChannel.encryptAPDU(data));
     return apduChannel.transmit(sign);
   }
 }
