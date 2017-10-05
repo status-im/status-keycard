@@ -8,31 +8,48 @@ import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.*;
+import org.web3j.crypto.*;
+import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.DefaultBlockParameterName;
+import org.web3j.protocol.core.methods.request.RawTransaction;
+import org.web3j.protocol.core.methods.response.EthSendTransaction;
+import org.web3j.protocol.http.HttpService;
+import org.web3j.tx.Transfer;
+import org.web3j.utils.Convert;
 
 import javax.smartcardio.*;
+import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.security.*;
 import java.util.Arrays;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("Test the Wallet Applet")
 public class WalletAppletTest {
   private static CardTerminal cardTerminal;
   private static CardChannel apduChannel;
+  private static CardSimulator simulator;
 
   private SecureChannelSession secureChannel;
   private WalletAppletCommandSet cmdSet;
 
-  private static final boolean USE_SIMULATOR = true;
+  private static final boolean USE_SIMULATOR;
+
+  static {
+    USE_SIMULATOR = !System.getProperty("im.status.wallet.test.simulated", "false").equals("false");
+  }
 
   @BeforeAll
   static void initAll() throws CardException {
     Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
 
     if (USE_SIMULATOR) {
-      CardSimulator simulator = new CardSimulator();
+      simulator = new CardSimulator();
       AID appletAID = AIDUtil.create(WalletAppletCommandSet.APPLET_AID);
       byte[] instParams = Hex.decode("0F53746174757357616C6C657441707001000C313233343536373839303132");
       simulator.installApplet(appletAID, WalletApplet.class, instParams, (short) 0, (byte) instParams.length);
@@ -54,7 +71,7 @@ public class WalletAppletTest {
 
   @BeforeEach
   void init() throws CardException {
-    apduChannel.getCard().getATR();
+    reset();
     cmdSet = new WalletAppletCommandSet(apduChannel);
     byte[] keyData = cmdSet.select().getData();
     secureChannel = new SecureChannelSession(keyData);
@@ -146,9 +163,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     // Reset card and verify that the new PIN has really been set
-    apduChannel.getCard().getATR();
-    cmdSet.select();
-    cmdSet.openSecureChannel();
+    resetAndSelectAndOpenSC();
 
     response = cmdSet.verifyPIN("654321");
     assertEquals(0x9000, response.getSW());
@@ -207,9 +222,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     // Check that PIN has been changed and unblocked
-    apduChannel.getCard().getATR();
-    cmdSet.select();
-    cmdSet.openSecureChannel();
+    resetAndSelectAndOpenSC();
 
     response = cmdSet.verifyPIN("654321");
     assertEquals(0x9000, response.getSW());
@@ -353,9 +366,7 @@ public class WalletAppletTest {
     // Signing session is aborted on reselection
     response = cmdSet.sign(data, WalletApplet.SIGN_DATA,true, false);
     assertEquals(0x9000, response.getSW());
-    apduChannel.getCard().getATR();
-    cmdSet.select();
-    cmdSet.openSecureChannel();
+    resetAndSelectAndOpenSC();
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(smallData, WalletApplet.SIGN_DATA,false, true);
@@ -382,11 +393,71 @@ public class WalletAppletTest {
 
   }
 
+  @Test
+  @DisplayName("Sign actual Ethereum transaction")
+  @Tag("manual")
+  void signTransactionTest() throws Exception {
+    // Initialize credentials
+    Web3j web3j = Web3j.build(new HttpService());
+    Credentials wallet1 = WalletUtils.loadCredentials("testwallet", "testwallets/wallet1.json");
+    Credentials wallet2 = WalletUtils.loadCredentials("testwallet", "testwallets/wallet2.json");
+
+    // Load keys on card
+    cmdSet.openSecureChannel();
+    ResponseAPDU response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.loadKey(wallet1.getEcKeyPair());
+    assertEquals(0x9000, response.getSW());
+
+    // Verify balance
+    System.out.println("Wallet 1 balance: " + web3j.ethGetBalance(wallet1.getAddress(), DefaultBlockParameterName.LATEST).send().getBalance());
+    System.out.println("Wallet 2 balance: " + web3j.ethGetBalance(wallet2.getAddress(), DefaultBlockParameterName.LATEST).send().getBalance());
+
+    BigInteger gasPrice = web3j.ethGasPrice().send().getGasPrice();
+    BigInteger weiValue = Convert.toWei(BigDecimal.valueOf(1.0), Convert.Unit.FINNEY).toBigIntegerExact();
+    BigInteger nonce = web3j.ethGetTransactionCount(wallet1.getAddress(), DefaultBlockParameterName.LATEST).send().getTransactionCount();
+
+    RawTransaction rawTransaction = RawTransaction.createEtherTransaction(nonce, gasPrice, Transfer.GAS_LIMIT, wallet2.getAddress(), weiValue);
+
+    byte[] txBytes = TransactionEncoder.encode(rawTransaction);
+    byte[] hash = Hash.sha3(txBytes);
+
+    response = cmdSet.sign(hash, WalletApplet.SIGN_PRECOMPUTED_HASH,true, true);
+    assertEquals(0x9000, response.getSW());
+    byte[] sig = secureChannel.decryptAPDU(response.getData());
+
+    Method encode = TransactionEncoder.class.getDeclaredMethod("encode", RawTransaction.class, Sign.SignatureData.class);
+    encode.setAccessible(true);
+    byte[] signedMessage = (byte[]) encode.invoke(null, rawTransaction, new Sign.SignatureData((byte) 0, null, null)); //TODO: generate signature data
+    String hexValue = "0x" + Hex.toHexString(signedMessage);
+    EthSendTransaction ethSendTransaction = web3j.ethSendRawTransaction(hexValue).send();
+
+    if (ethSendTransaction.hasError()) {
+      System.out.println("Transaction Error: " + ethSendTransaction.getError().getMessage());
+    }
+
+    assertFalse(ethSendTransaction.hasError());
+  }
+
   private KeyPairGenerator keypairGenerator() throws Exception {
     ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
     KeyPairGenerator g = KeyPairGenerator.getInstance("ECDH", "BC");
     g.initialize(ecSpec);
 
     return g;
+  }
+
+  private void reset() {
+    if (USE_SIMULATOR) {
+      simulator.reset();
+    } else {
+      apduChannel.getCard().getATR();
+    }
+  }
+
+  private void resetAndSelectAndOpenSC() throws CardException {
+    reset();
+    cmdSet.select();
+    cmdSet.openSecureChannel();
   }
 }

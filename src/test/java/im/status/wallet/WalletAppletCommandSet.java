@@ -4,6 +4,7 @@ import javacard.framework.ISO7816;
 import org.bouncycastle.jce.interfaces.ECPrivateKey;
 import org.bouncycastle.jce.interfaces.ECPublicKey;
 import org.bouncycastle.util.encoders.Hex;
+import org.web3j.crypto.ECKeyPair;
 
 import javax.smartcardio.CardChannel;
 import javax.smartcardio.CardException;
@@ -71,6 +72,40 @@ public class WalletAppletCommandSet {
     data[4 + publicKey.length] = (byte) 0x81;
     data[5 + publicKey.length] = (byte) privLen;
     System.arraycopy(privateKey, privOff, data, 6 + publicKey.length, privLen);
+
+    return loadKey(data, WalletApplet.LOAD_KEY_EC);
+  }
+
+  public ResponseAPDU loadKey(ECKeyPair ecKeyPair) throws CardException {
+    byte[] publicKey = ecKeyPair.getPublicKey().toByteArray();
+    byte[] privateKey = ecKeyPair.getPrivateKey().toByteArray();
+
+    int privLen = privateKey.length;
+    int privOff = 0;
+
+    int pubLen = publicKey.length;
+    int pubOff = 0;
+
+    if(privateKey[0] == 0x00) {
+      privOff++;
+      privLen--;
+    }
+
+    if(publicKey[0] == 0x00) {
+      pubOff++;
+      pubLen--;
+    }
+
+    byte[] data = new byte[pubLen + privLen + 7];
+    data[0] = (byte) 0xA1;
+    data[1] = (byte) (pubLen + privLen + 5);
+    data[2] = (byte) 0x80;
+    data[3] = (byte) (pubLen + 1);
+    data[4] = (byte) 0x04;
+    System.arraycopy(publicKey, pubOff, data, 5, pubLen);
+    data[5 + pubLen] = (byte) 0x81;
+    data[6 + pubLen] = (byte) privLen;
+    System.arraycopy(privateKey, privOff, data, 7 + pubLen, privLen);
 
     return loadKey(data, WalletApplet.LOAD_KEY_EC);
   }

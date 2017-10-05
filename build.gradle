@@ -33,9 +33,18 @@ repositories {
 
 dependencies {
   testCompile(files("../jcardsim/target/jcardsim-3.0.5-SNAPSHOT.jar"))
+  testCompile('org.web3j:core:2.3.1')
   testCompile("org.bouncycastle:bcprov-jdk15on:1.58")
   testCompile("org.junit.jupiter:junit-jupiter-api:5.0.0")
   testRuntime("org.junit.jupiter:junit-jupiter-engine:5.0.0")
+}
+
+junitPlatform {
+  filters {
+    tags {
+      exclude 'manual'
+    }
+  }
 }
 
 sourceCompatibility = 1.3
