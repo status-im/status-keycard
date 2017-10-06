@@ -12,6 +12,7 @@ import org.web3j.crypto.*;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.request.RawTransaction;
+import org.web3j.protocol.core.methods.response.EthGetTransactionReceipt;
 import org.web3j.protocol.core.methods.response.EthSendTransaction;
 import org.web3j.protocol.http.HttpService;
 import org.web3j.tx.Transfer;
@@ -438,6 +439,8 @@ public class WalletAppletTest {
     }
 
     assertFalse(ethSendTransaction.hasError());
+
+    EthGetTransactionReceipt receipt = web3j.ethGetTransactionReceipt(ethSendTransaction.getTransactionHash()).send();
   }
 
   private KeyPairGenerator keypairGenerator() throws Exception {
@@ -487,7 +490,6 @@ public class WalletAppletTest {
     Method recoverFromSignature = Sign.class.getDeclaredMethod("recoverFromSignature", int.class, ecdsaSignature, byte[].class);
     recoverFromSignature.setAccessible(true);
 
-
     BigInteger publicKey = keyPair.getPublicKey();
 
     int recId = -1;
@@ -499,8 +501,7 @@ public class WalletAppletTest {
       }
     }
     if (recId == -1) {
-      throw new RuntimeException(
-          "Could not construct a recoverable key. This should never happen.");
+      throw new RuntimeException("Could not construct a recoverable key. This should never happen.");
     }
 
     int headerByte = recId + 27;

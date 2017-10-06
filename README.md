@@ -16,16 +16,24 @@ installed on the system. The gradle.properties file must contain the following p
 * im.status.gradle.gpshell.kek_key = the KEK key for the ISD
 * im.status.gradle.gpshell.kvn = the Key Version Number for the ISD
 
-Testing is done with JUnit and performed on a real card. Although the tests are comprehensive, debugging is not easy 
-because raw APDUs are not shown in the test log and there is no way to set breakpoints in the applet. Using a simulator
-like [jCardSim](https://github.com/licel/jcardsim) would make debugging easier but only a subset of bugs can be reliably
-found with this system. Code changes would be needed for tests to support jCardSim. The tests are run with the test task
-in gradle.
+Testing is done with JUnit and performed either on a real card or on [jCardSim](https://github.com/status-im/jcardsim). 
+Although the tests are comprehensive, debugging on the real card is not easy because raw APDUs are not shown in the test 
+log and there is no way to set breakpoints in the applet. 
+
+In order to test with the simulator, you need to pass these additional parameters to the JVM
+
+```-noverify -Dim.status.wallet.test.simulated=true```
+
+## Compilation
+1. Download and install the JavaCard 3.0.4 SDK from [Oracle](http://www.oracle.com/technetwork/java/javasebusiness/downloads/java-archive-downloads-javame-419430.html#java_card_kit-classic-3_0_4-rr-bin-do)
+2. Clone the Github repo for our fork of [jCardSim](https://github.com/status-im/jcardsim)
+3. Create a gradle.properties (see below for an example)
+4. Run `./gradlew build`
 
 ## Example gradle.properties file
 
 ```
-com.fidesmo.gradle.javacard.home=/home/username/javacard-2_2_2
+com.fidesmo.gradle.javacard.home=/home/username/javacard-3_0_4
 im.status.gradle.gpshell=/usr/local/bin/gpshell
 im.status.gradle.gpshell.isd=A000000003000000
 im.status.gradle.gpshell.mac_key=404142434445464748494a4b4c4d4e4f
@@ -36,6 +44,7 @@ im.status.gradle.gpshell.kvn=2
 
 ## Implementation notes
 
+* The applet requires JavaCard 3.0.4 or later.
 * The class byte of the APDU is not checked since there are no conflicting INS code.
 * Automated tests using JUnit 5 are included. The test require the application to be already installed. The first
   card terminal found by Java will be used, to please disconnect all card terminals except the one to be used for
