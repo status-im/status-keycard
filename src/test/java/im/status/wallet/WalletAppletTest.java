@@ -16,8 +16,11 @@ import org.web3j.protocol.core.methods.response.EthSendTransaction;
 import org.web3j.protocol.http.HttpService;
 import org.web3j.tx.Transfer;
 import org.web3j.utils.Convert;
+import org.web3j.utils.Numeric;
 
 import javax.smartcardio.*;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -25,9 +28,7 @@ import java.security.*;
 import java.util.Arrays;
 import java.util.Random;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Test the Wallet Applet")
 public class WalletAppletTest {
@@ -413,22 +414,22 @@ public class WalletAppletTest {
     System.out.println("Wallet 1 balance: " + web3j.ethGetBalance(wallet1.getAddress(), DefaultBlockParameterName.LATEST).send().getBalance());
     System.out.println("Wallet 2 balance: " + web3j.ethGetBalance(wallet2.getAddress(), DefaultBlockParameterName.LATEST).send().getBalance());
 
+    // Create transaction
     BigInteger gasPrice = web3j.ethGasPrice().send().getGasPrice();
     BigInteger weiValue = Convert.toWei(BigDecimal.valueOf(1.0), Convert.Unit.FINNEY).toBigIntegerExact();
     BigInteger nonce = web3j.ethGetTransactionCount(wallet1.getAddress(), DefaultBlockParameterName.LATEST).send().getTransactionCount();
 
     RawTransaction rawTransaction = RawTransaction.createEtherTransaction(nonce, gasPrice, Transfer.GAS_LIMIT, wallet2.getAddress(), weiValue);
 
+    // Sign transaction
     byte[] txBytes = TransactionEncoder.encode(rawTransaction);
-    byte[] hash = Hash.sha3(txBytes);
-
-    response = cmdSet.sign(hash, WalletApplet.SIGN_PRECOMPUTED_HASH,true, true);
-    assertEquals(0x9000, response.getSW());
-    byte[] sig = secureChannel.decryptAPDU(response.getData());
+    Sign.SignatureData signature = signMessage(txBytes, wallet1.getEcKeyPair());
 
     Method encode = TransactionEncoder.class.getDeclaredMethod("encode", RawTransaction.class, Sign.SignatureData.class);
     encode.setAccessible(true);
-    byte[] signedMessage = (byte[]) encode.invoke(null, rawTransaction, new Sign.SignatureData((byte) 0, null, null)); //TODO: generate signature data
+
+    // Send transaction
+    byte[] signedMessage = (byte[]) encode.invoke(null, rawTransaction, signature);
     String hexValue = "0x" + Hex.toHexString(signedMessage);
     EthSendTransaction ethSendTransaction = web3j.ethSendRawTransaction(hexValue).send();
 
@@ -459,5 +460,63 @@ public class WalletAppletTest {
     reset();
     cmdSet.select();
     cmdSet.openSecureChannel();
+  }
+
+  public Sign.SignatureData signMessage(byte[] message, ECKeyPair keyPair) throws Exception {
+    byte[] messageHash = Hash.sha3(message);
+
+    ResponseAPDU response = cmdSet.sign(messageHash, WalletApplet.SIGN_PRECOMPUTED_HASH,true, true);
+    assertEquals(0x9000, response.getSW());
+    byte[] rawSig = secureChannel.decryptAPDU(response.getData());
+
+    int rLen = rawSig[3];
+    int sOff = 6 + rLen;
+    int sLen = rawSig.length - rLen - 6;
+
+    BigInteger r = new BigInteger(Arrays.copyOfRange(rawSig, 4, 4 + rLen));
+    BigInteger s = new BigInteger(Arrays.copyOfRange(rawSig, sOff, sOff + sLen));
+
+    Class<?> ecdsaSignature = Class.forName("org.web3j.crypto.Sign$ECDSASignature");
+    Constructor ecdsaSignatureConstructor = ecdsaSignature.getDeclaredConstructor(BigInteger.class, BigInteger.class);
+    ecdsaSignatureConstructor.setAccessible(true);
+    Object sig = ecdsaSignatureConstructor.newInstance(r, s);
+    Method m = ecdsaSignature.getMethod("toCanonicalised");
+    m.setAccessible(true);
+    sig = m.invoke(sig);
+
+    Method recoverFromSignature = Sign.class.getDeclaredMethod("recoverFromSignature", int.class, ecdsaSignature, byte[].class);
+    recoverFromSignature.setAccessible(true);
+
+
+    BigInteger publicKey = keyPair.getPublicKey();
+
+    int recId = -1;
+    for (int i = 0; i < 4; i++) {
+      BigInteger k = (BigInteger) recoverFromSignature.invoke(null, i, sig, messageHash);
+      if (k != null && k.equals(publicKey)) {
+        recId = i;
+        break;
+      }
+    }
+    if (recId == -1) {
+      throw new RuntimeException(
+          "Could not construct a recoverable key. This should never happen.");
+    }
+
+    int headerByte = recId + 27;
+
+    Field rF = ecdsaSignature.getDeclaredField("r");
+    rF.setAccessible(true);
+    Field sF = ecdsaSignature.getDeclaredField("s");
+    sF.setAccessible(true);
+    r = (BigInteger) rF.get(sig);
+    s = (BigInteger) sF.get(sig);
+
+    // 1 header + 32 bytes for R + 32 bytes for S
+    byte v = (byte) headerByte;
+    byte[] rB = Numeric.toBytesPadded(r, 32);
+    byte[] sB = Numeric.toBytesPadded(s, 32);
+
+    return new Sign.SignatureData(v, rB, sB);
   }
 }
