@@ -117,8 +117,8 @@ encoded in [BER-TLV format](http://www.cardwerk.com/smartcards/smartcard_standar
 the following template
 
 - Tag 0xA1 = keypair template
-  - Tag 0x80 = ECC private key component
-  - Tag 0x81 = ECC public key component
+  - Tag 0x80 = ECC public key component
+  - Tag 0x81 = ECC private key component
 
 This command is used to load or replace the keypair used for signing on the card. This command always aborts open
 signing sessions, if any.
@@ -130,7 +130,7 @@ signing sessions, if any.
 * P1 = data type
 * P2 = segment flag
 * Data = the data to sign
-* Response = if P2 indicates last segment, the signature is returned
+* Response = if P2 indicates last segment, the public key and the signature are returned
 * Response SW = 0x9000 on success, 0x6A86 if P2 is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be verified, a valid keypair must be loaded
 
@@ -144,10 +144,17 @@ P2:
 * bit 1-6 = reserved
 * bit 7 = if 0 more blocks, if 1 last block
 
+Response Data format:
+- Tag 0xA0 = signature template
+  - Tag 0x80 = ECC public key component
+  - Tag 0x30 = ECDSA Signature
+    - Tag 0x02 = R value
+    - Tag 0x02 = S value
+
 Used to sign transactions. Since the maximum short APDU size is 255 bytes the transaction must be segmented before
 being sent if it is larger than that. The overhead from the Secure Channel must be also accounted for. When the last
 segment is sent, the card returns the calculated signature. The signature is an ECDSA signature calculated over the
-SHA-256 hash of the sent data.
+SHA-256 hash of the sent data or directly over the provided hash if P1 = 0x01.
 
 The P2 parameter is used to manage the signing session and is treated as a bitmask. The rightmost bit indicates whether
 this block is the first one (1) or not (0). On the first block the card resets the signature state. The leftmost bit

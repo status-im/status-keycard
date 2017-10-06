@@ -73,7 +73,7 @@ public class WalletAppletCommandSet {
     data[5 + publicKey.length] = (byte) privLen;
     System.arraycopy(privateKey, privOff, data, 6 + publicKey.length, privLen);
 
-    return loadKey(data, WalletApplet.LOAD_KEY_EC);
+    return loadKey(data, WalletApplet.LOAD_KEY_P1_EC);
   }
 
   public ResponseAPDU loadKey(ECKeyPair ecKeyPair) throws CardException {
@@ -107,7 +107,7 @@ public class WalletAppletCommandSet {
     data[6 + pubLen] = (byte) privLen;
     System.arraycopy(privateKey, privOff, data, 7 + pubLen, privLen);
 
-    return loadKey(data, WalletApplet.LOAD_KEY_EC);
+    return loadKey(data, WalletApplet.LOAD_KEY_P1_EC);
   }
 
   public ResponseAPDU loadKey(byte[] data, byte keyType) throws CardException {

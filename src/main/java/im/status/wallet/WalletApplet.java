@@ -17,14 +17,15 @@ public class WalletApplet extends Applet {
 
   static final short EC_KEY_SIZE = 256;
 
-  static final byte LOAD_KEY_EC = 0x01;
+  static final byte LOAD_KEY_P1_EC = 0x01;
 
-  static final byte SIGN_DATA = 0x00;
-  static final byte SIGN_PRECOMPUTED_HASH = 0x01;
+  static final byte SIGN_P1_DATA = 0x00;
+  static final byte SIGN_P1_PRECOMPUTED_HASH = 0x01;
 
-  static final byte SIGN_FIRST_BLOCK_MASK = 0x01;
-  static final byte SIGN_LAST_BLOCK_MASK = (byte) 0x80;
+  static final byte SIGN_P2_FIRST_BLOCK_MASK = 0x01;
+  static final byte SIGN_P2_LAST_BLOCK_MASK = (byte) 0x80;
 
+  static final byte TLV_SIGNATURE_TEMPLATE = (byte) 0xA0;
   static final byte TLV_KEY_TEMPLATE = (byte) 0xA1;
   static final byte TLV_PUB_KEY = (byte) 0x80;
   static final byte TLV_PRIV_KEY = (byte) 0x81;
@@ -171,7 +172,7 @@ public class WalletApplet extends Applet {
 
     byte[] apduBuffer = apdu.getBuffer();
 
-    if (apduBuffer[ISO7816.OFFSET_P1] != LOAD_KEY_EC)  {
+    if (apduBuffer[ISO7816.OFFSET_P1] != LOAD_KEY_P1_EC)  {
       ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
     }
 
@@ -207,7 +208,7 @@ public class WalletApplet extends Applet {
 
     byte[] apduBuffer = apdu.getBuffer();
 
-    if ((apduBuffer[ISO7816.OFFSET_P2] & SIGN_FIRST_BLOCK_MASK) == SIGN_FIRST_BLOCK_MASK)  {
+    if ((apduBuffer[ISO7816.OFFSET_P2] & SIGN_P2_FIRST_BLOCK_MASK) == SIGN_P2_FIRST_BLOCK_MASK)  {
       signInProgress = true;
       signature.init(privateKey, Signature.MODE_SIGN);
     } else if (!signInProgress) {
@@ -216,19 +217,28 @@ public class WalletApplet extends Applet {
 
     short len = secureChannel.decryptAPDU(apduBuffer);
 
-    if ((apduBuffer[ISO7816.OFFSET_P2] & SIGN_LAST_BLOCK_MASK) == SIGN_LAST_BLOCK_MASK) {
+    if ((apduBuffer[ISO7816.OFFSET_P2] & SIGN_P2_LAST_BLOCK_MASK) == SIGN_P2_LAST_BLOCK_MASK) {
       signInProgress = false;
 
-      if ((apduBuffer[ISO7816.OFFSET_P1]) == SIGN_DATA) {
-        len = signature.sign(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, SecureChannel.SC_OUT_OFFSET);
-      } else if ((apduBuffer[ISO7816.OFFSET_P1]) == SIGN_PRECOMPUTED_HASH) {
-        len = signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, SecureChannel.SC_OUT_OFFSET);
+      apduBuffer[SecureChannel.SC_OUT_OFFSET] = TLV_SIGNATURE_TEMPLATE;
+      apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 3)] = TLV_PUB_KEY;
+      short outLen = apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 4)] = (byte) publicKey.getW(apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
+
+      outLen += 5;
+
+      if ((apduBuffer[ISO7816.OFFSET_P1]) == SIGN_P1_DATA) {
+        outLen += signature.sign(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + outLen));
+      } else if ((apduBuffer[ISO7816.OFFSET_P1]) == SIGN_P1_PRECOMPUTED_HASH) {
+        outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + outLen));
       } else {
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
       }
 
-      len = secureChannel.encryptAPDU(apduBuffer, len);
-      apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
+      apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) 0x81;
+      apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 2)] = (byte) (outLen - 3);
+
+      outLen = secureChannel.encryptAPDU(apduBuffer, outLen);
+      apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, outLen);
     } else {
       signature.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
     }
