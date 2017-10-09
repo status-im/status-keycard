@@ -33,10 +33,10 @@ to first load the keyset in order for the application to be fully operational.
 Signing of transactions is done by uploading the data in blocks no larger than 255 bytes (including the overhead caused
 by the Secure Channel). Segmentation must be handled at the application protocol.
 
-## APDUS
+## APDUs
 
 These are the commands supported by the application. When a command has a precondition clause and these are not met the
-SW 0x6985 is returned.
+SW 0x6985 is returned. All tagged data structures are encoded in the [BER-TLV format](http://www.cardwerk.com/smartcards/smartcard_standard_ISO7816-4_annex-d.aspx) 
 
 ### SELECT
 
@@ -95,10 +95,10 @@ the session. The no-error SW 0x9000 is returned.
 * Response SW = 0x9000 on success, 0x6A80 if the format is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be blocked
 
-Used to unblock the user PIN. The data field must contain exactly 18 numeric digits, otherwise SW 0x6A80 is returned. The first 12 digits are the PUK
-and the last 6 are the new PIN. If the PUK is correct the PIN is changed to the supplied one, it is unblocked and 
-authenticated for the rest of the session. The status code 0x9000 is returned. When the PUK is wrong, 
-the number of remaining retries is decreased and the SW 0x63CX, where X is the number of available retries is
+Used to unblock the user PIN. The data field must contain exactly 18 numeric digits, otherwise SW 0x6A80 is returned. 
+The first 12 digits are the PUK and the last 6 are the new PIN. If the PUK is correct the PIN is changed to the supplied 
+one, it is unblocked and authenticated for the rest of the session. The status code 0x9000 is returned. When the PUK is 
+wrong, the number of remaining retries is decreased and the SW 0x63CX, where X is the number of available retries is
 returned. When the number of remaining retries reaches 0 the PUK is blocked. When the PUK is blocked this command
 always returns 0x63C0, even if the PUK is inserted correctly. In this case the wallet is effectively lost.
 
@@ -106,22 +106,69 @@ always returns 0x63C0, even if the PUK is inserted correctly. In this case the w
 
 * CLA = 0x80
 * INS = 0xD0
-* P1 = 0x01 (ECC SECP256k1 keypair)
+* P1 = key type
 * P2 = 0x00
 * Data = the key data
-* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A86 if P1 is invalid
+* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A86 if P1 is invalid, 0x6A81 if public key is 
+  omitted and its derivation is not supported.
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
-At the moment P1 can only be 0x01, but new key types could be added later. The ECC SECP256k1 keypair is
-encoded in [BER-TLV format](http://www.cardwerk.com/smartcards/smartcard_standard_ISO7816-4_annex-d.aspx) according to 
-the following template
+P1:
+* 0x01 = ECC SECP256k1 keypair
+* 0x02 = ECC SECP256k1 extended keypair
+* 0x03 = Binary seed as defined in [BIP39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) (if card 
+supports public key derivation)
 
+Data:
+
+If P1 is 0x01 or 0x02
 - Tag 0xA1 = keypair template
-  - Tag 0x80 = ECC public key component
+  - Tag 0x80 = ECC public key component (can be omitted if card supports public key derivation)
   - Tag 0x81 = ECC private key component
+  - Tag 0x82 = chain code (if P1=0x02)
+  
+If P1 is 0x03 a 64 byte sequence generated according to the BIP39 specifications is expected. The master key will be
+generated according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) specifications. Since
+in this case there is no way to provide the public key externally, the card must support public key derivation.
 
 This command is used to load or replace the keypair used for signing on the card. This command always aborts open
-signing sessions, if any.
+signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command will use this keypair for signature.
+
+### DERIVE KEY
+
+* CLA = 0x80
+* INS = 0xD1
+* P1 = 0x00
+* P2 = 0x00
+* Data = key derivation template
+* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A81 if public keys are omitted and their derivation 
+  is not supported.
+* Preconditions: Secure Channel must be opened, user PIN must be verified
+
+Data format:
+
+- Tag 0xA2 = key derivation template
+ - Tag 0x82 = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used.
+ - Tag 0x81 = parent public key (omitted if master or public key derivation is supported)
+ - Tag 0x80 = derived public key (omitted if master or public key derivation is supported)
+ 
+This command is used before a signing session to generated a private key according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
+specifications. The generated key is used for all subsequent SIGN sessions. An empty 0x82 is used in order for SIGN to
+use the master key instead. Omitting the 0x82 subtag entirely is not permitted.
+
+### GENERATE MNEMONIC
+
+* CLA = 0x80
+* INS = 0xD2
+* P1 = checksum size (between 4 and 8)
+* P2 = 0x00
+* Response SW = 0x9000 on success. 0x6A86 if P1 is invalid.
+* Response Data = a sequence of 16-bit integers (most significant byte first).
+* Preconditions: Secure Channel must be opened
+
+Used to generate a mnemonic according to the algorithm specified in [BIP39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki). 
+The returned data is a list of 16-byte integers which should be used as indexes in a wordlist to generate the 
+human-readable mnemonic. Each integer can have a value from 0 to 2047.
 
 ### SIGN
 
