@@ -1,8 +1,12 @@
 package im.status.wallet;
 
 import javacard.security.ECKey;
+import javacard.security.ECPrivateKey;
+import javacard.security.KeyAgreement;
 
 public class ECCurves {
+  static KeyAgreement ecPointMultiplier;
+
   static final byte SECP256K1_FP[] = {
       (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
       (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
@@ -48,5 +52,23 @@ public class ECCurves {
     key.setG(SECP256K1_G, (short) 0x00, (short) SECP256K1_G.length);
     key.setR(SECP256K1_R, (short) 0x00, (short) SECP256K1_R.length);
     key.setK(SECP256K1_K);
+  }
+
+  static short derivePublicKey(ECPrivateKey privateKey, byte[] pubOut, short pubOff) {
+    return multiplyPoint(privateKey, SECP256K1_G, (short) 0, (short) SECP256K1_G.length, pubOut, pubOff);
+  }
+
+  /*
+   * This might or might not work on actual card. Does not work on simulator. KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY is actually
+   * the algorithm we need, but it has been implemented later. However some cards implement KeyAgreement.ALG_EC_SVDP_DH_PLAIN
+   * in the same way. If we cannot use KeyAgreement to multiply it is difficult to generate public keys on-card.
+   */
+  static short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
+    if (ecPointMultiplier == null) {
+      ecPointMultiplier = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
+    }
+
+    ecPointMultiplier.init(privateKey);
+    return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
   }
 }
