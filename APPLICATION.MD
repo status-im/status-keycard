@@ -55,6 +55,22 @@ be used by the client to establish the Secure Channel.
 
 The OPEN SECURE CHANNEL command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD).
 
+### GET STATUS
+* CLA = 0x80
+* INS = 0xF2
+* P1 = 0x00
+* P2 = 0x00
+* Response SW = 0x9000 on success
+* Response Data = Application Status Template
+* Preconditions: Secure Channel must be opened
+
+Response Data format:
+- Tag 0xA3 = Application Status Template
+  - Tag 0xC0 = PIN retry count (1 byte)
+  - Tag 0xC1 = PUK retry count (1 byte)
+  - Tag 0xC2 = 0 if key is not initialized, 1 otherwise
+  - Tag 0xC3 = 0 if public key derivation is not supported, 1 otherwise
+
 ### VERIFY PIN
 
 * CLA = 0x80
@@ -143,14 +159,14 @@ signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command
 * Data = key derivation template
 * Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A81 if public keys are omitted and their derivation 
   is not supported.
-* Preconditions: Secure Channel must be opened, user PIN must be verified
+* Preconditions: Secure Channel must be opened, user PIN must be verified, an extended keyset must be loaded
 
 Data format:
 
 - Tag 0xA2 = key derivation template
- - Tag 0x82 = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used.
- - Tag 0x81 = parent public key (omitted if master or public key derivation is supported)
- - Tag 0x80 = derived public key (omitted if master or public key derivation is supported)
+ - Tag 0xC0 = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used.
+ - Tag 0xC1 = derived public key (omitted if master or public key derivation is supported)
+ - Tag 0xC2 = parent public key (omitted if master or public key derivation is supported)
  
 This command is used before a signing session to generated a private key according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
 specifications. The generated key is used for all subsequent SIGN sessions. An empty 0x82 is used in order for SIGN to

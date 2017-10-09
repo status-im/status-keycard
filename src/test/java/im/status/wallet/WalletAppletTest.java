@@ -12,7 +12,6 @@ import org.web3j.crypto.*;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameterName;
 import org.web3j.protocol.core.methods.request.RawTransaction;
-import org.web3j.protocol.core.methods.response.EthGetTransactionReceipt;
 import org.web3j.protocol.core.methods.response.EthSendTransaction;
 import org.web3j.protocol.http.HttpService;
 import org.web3j.tx.Transfer;
@@ -104,6 +103,36 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.openSecureChannel();
     assertEquals(0x9000, response.getSW());
     assertEquals(SecureChannel.SC_SECRET_LENGTH, response.getData().length);
+  }
+
+  @Test
+  @DisplayName("GET STATUS command")
+  void getStatusTest() throws CardException {
+    // Security condition violation: SecureChannel not open
+    ResponseAPDU response = cmdSet.getStatus();
+    assertEquals(0x6985, response.getSW());
+    cmdSet.openSecureChannel();
+
+    // Good case. Since the order of test execution is undefined, the test cannot know if the keys are initialized or not.
+    // Additionally, the public key derivation cannot also be known here.
+    response = cmdSet.getStatus();
+    assertEquals(0x9000, response.getSW());
+    byte[] data = secureChannel.decryptAPDU(response.getData());
+    assertTrue(Hex.toHexString(data).matches("a30cc00103c10105c2010[0-1]c3010[0-1]"));
+
+    response = cmdSet.verifyPIN("123456");
+    assertEquals(0x63C2, response.getSW());
+    response = cmdSet.getStatus();
+    assertEquals(0x9000, response.getSW());
+    data = secureChannel.decryptAPDU(response.getData());
+    assertTrue(Hex.toHexString(data).matches("a30cc00102c10105c2010[0-1]c3010[0-1]"));
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.getStatus();
+    assertEquals(0x9000, response.getSW());
+    data = secureChannel.decryptAPDU(response.getData());
+    assertTrue(Hex.toHexString(data).matches("a30cc00103c10105c2010[0-1]c3010[0-1]"));
   }
 
   @Test
@@ -442,8 +471,6 @@ public class WalletAppletTest {
     }
 
     assertFalse(ethSendTransaction.hasError());
-
-    EthGetTransactionReceipt receipt = web3j.ethGetTransactionReceipt(ethSendTransaction.getTransactionHash()).send();
   }
 
   private KeyPairGenerator keypairGenerator() throws Exception {
@@ -481,7 +508,7 @@ public class WalletAppletTest {
     cmdSet.openSecureChannel();
   }
 
-  public Sign.SignatureData signMessage(byte[] message) throws Exception {
+  private Sign.SignatureData signMessage(byte[] message) throws Exception {
     byte[] messageHash = Hash.sha3(message);
 
     ResponseAPDU response = cmdSet.sign(messageHash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);

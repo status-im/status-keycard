@@ -36,6 +36,11 @@ public class WalletAppletCommandSet {
     return secureChannel.openSecureChannel(apduChannel);
   }
 
+  public ResponseAPDU getStatus() throws CardException {
+    CommandAPDU getStatus = new CommandAPDU(0x80, WalletApplet.INS_GET_STATUS, 0, 0);
+    return apduChannel.transmit(getStatus);
+  }
+
   public ResponseAPDU verifyPIN(String pin) throws CardException {
     CommandAPDU verifyPIN = new CommandAPDU(0x80, WalletApplet.INS_VERIFY_PIN, 0, 0, secureChannel.encryptAPDU(pin.getBytes()));
     return apduChannel.transmit(verifyPIN);
