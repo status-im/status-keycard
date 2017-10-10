@@ -30,6 +30,10 @@ public class WalletApplet extends Applet {
   static final byte SIGN_P2_FIRST_BLOCK_MASK = 0x01;
   static final byte SIGN_P2_LAST_BLOCK_MASK = (byte) 0x80;
 
+  static final byte GENERATE_MNEMONIC_P1_CS_MIN = 4;
+  static final byte GENERATE_MNEMONIC_P1_CS_MAX = 8;
+  static final byte GENERATE_MNEMONIC_TMP_OFF = SecureChannel.SC_OUT_OFFSET + ((((GENERATE_MNEMONIC_P1_CS_MAX * 32) + GENERATE_MNEMONIC_P1_CS_MAX) / 11) * 2);
+
   static final byte TLV_SIGNATURE_TEMPLATE = (byte) 0xA0;
 
   static final byte TLV_KEY_TEMPLATE = (byte) 0xA1;
@@ -61,6 +65,8 @@ public class WalletApplet extends Applet {
   }
 
   public WalletApplet(byte[] bArray, short bOffset, byte bLength) {
+    Crypto.init();
+
     short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
     c9Off += (short)(bArray[c9Off] + 2); // Skip Privileges and parameter length
 
@@ -220,6 +226,8 @@ public class WalletApplet extends Applet {
   }
 
   private void loadKey(APDU apdu) {
+    apdu.setIncomingAndReceive();
+
     if (!(secureChannel.isOpen() && pin.isValidated())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
@@ -258,7 +266,47 @@ public class WalletApplet extends Applet {
   }
 
   private void generateMnemonic(APDU apdu) {
-    ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+    if (!secureChannel.isOpen()) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    byte[] apduBuffer = apdu.getBuffer();
+    short csLen = apduBuffer[ISO7816.OFFSET_P1];
+
+    if (csLen < GENERATE_MNEMONIC_P1_CS_MIN || csLen > GENERATE_MNEMONIC_P1_CS_MAX)  {
+      ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+    }
+
+    short entLen = (short) (csLen * 4);
+    Crypto.random.generateData(apduBuffer, GENERATE_MNEMONIC_TMP_OFF, entLen);
+    Crypto.sha256.doFinal(apduBuffer, GENERATE_MNEMONIC_TMP_OFF, entLen, apduBuffer, (short)(GENERATE_MNEMONIC_TMP_OFF + entLen));
+    entLen += GENERATE_MNEMONIC_TMP_OFF + 1;
+
+    short outOff = SecureChannel.SC_OUT_OFFSET;
+    short rShift = 0;
+    short vp = 0;
+
+    for (short i = GENERATE_MNEMONIC_TMP_OFF; i < entLen; i += 2) {
+      short w = Util.getShort(apduBuffer, i);
+      Util.setShort(apduBuffer, outOff, (short)((short)(((short)(vp | ((short) (w >>> rShift)))) >>> 5) & (short) 0x7ff));
+      outOff += 2;
+      rShift += 5;
+      vp = (short) (w << (16 - rShift));
+
+      if (rShift >= 11) {
+        Util.setShort(apduBuffer, outOff, (short)((short) (vp >>> 5) & (short) 0x7ff));
+        outOff += 2;
+        rShift = (short) (rShift - 11);
+        vp = (short) (w << (16 - rShift));
+      }
+    }
+
+    if (csLen < 6) {
+      outOff -= 2; // a last spurious 11 bit number will be generated when cs length is less than 6 because 16 - cs >= 11
+    }
+
+    short outLen = secureChannel.encryptAPDU(apduBuffer, (short) (outOff - SecureChannel.SC_OUT_OFFSET));
+    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, outLen);
   }
 
   private void sign(APDU apdu) {

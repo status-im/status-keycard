@@ -120,6 +120,11 @@ public class WalletAppletCommandSet {
     return apduChannel.transmit(loadKey);
   }
 
+  public ResponseAPDU generateMnemonic(int cs) throws CardException {
+    CommandAPDU generateMnemonic = new CommandAPDU(0x80, WalletApplet.INS_GENERATE_MNEMONIC, cs, 0);
+    return apduChannel.transmit(generateMnemonic);
+  }
+
   public ResponseAPDU sign(byte[] data, byte dataType, boolean isFirst, boolean isLast) throws CardException {
     byte p2 = (byte) ((isFirst ? 0x01 : 0x00) | (isLast ? 0x80 : 0x00));
     CommandAPDU sign = new CommandAPDU(0x80, WalletApplet.INS_SIGN, dataType, p2, secureChannel.encryptAPDU(data));

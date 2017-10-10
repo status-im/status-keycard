@@ -19,14 +19,9 @@ public class SecureChannel {
   private AESKey scKey;
   private Cipher scCipher;
   private KeyPair scKeypair;
-  private MessageDigest scMd;
-  private RandomData scRandom;
   private byte[] secret;
 
   public SecureChannel() {
-    scRandom = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
-    scMd = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
-
     scCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_CBC_NOPAD, false);
     scKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
 
@@ -46,9 +41,9 @@ public class SecureChannel {
     apdu.setIncomingAndReceive();
     byte[] apduBuffer = apdu.getBuffer();
     short len = scAgreement.generateSecret(apduBuffer, ISO7816.OFFSET_CDATA, apduBuffer[ISO7816.OFFSET_LC], secret, (short) 0);
-    scRandom.generateData(apduBuffer, (short) 0, SC_SECRET_LENGTH);
-    scMd.update(secret, (short) 0, len);
-    scMd.doFinal(apduBuffer, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+    Crypto.random.generateData(apduBuffer, (short) 0, SC_SECRET_LENGTH);
+    Crypto.sha256.update(secret, (short) 0, len);
+    Crypto.sha256.doFinal(apduBuffer, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
     scKey.setKey(secret, (short) 0);
     apdu.setOutgoingAndSend((short) 0, SC_SECRET_LENGTH);
   }
@@ -77,7 +72,7 @@ public class SecureChannel {
     Util.arrayFillNonAtomic(apduBuffer, (short)(SC_OUT_OFFSET + len), padding, (byte) 0x00);
     len += padding;
 
-    scRandom.generateData(apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
+    Crypto.random.generateData(apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
     scCipher.init(scKey, Cipher.MODE_ENCRYPT, apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
     len = scCipher.doFinal(apduBuffer, SC_OUT_OFFSET, len, apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE));
     return (short)(len + SC_BLOCK_SIZE);

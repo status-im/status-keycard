@@ -24,6 +24,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.security.*;
 import java.util.Arrays;
 import java.util.Random;
@@ -310,6 +312,43 @@ public class WalletAppletTest {
   }
 
   @Test
+  @DisplayName("GENERATE MNEMONIC command")
+  void generateMnemonicTest() throws Exception {
+    // Security condition violation: SecureChannel not open
+    ResponseAPDU response = cmdSet.getStatus();
+    assertEquals(0x6985, response.getSW());
+    cmdSet.openSecureChannel();
+
+    // Wrong P1 (too short, too long)
+    response = cmdSet.generateMnemonic(3);
+    assertEquals(0x6A86, response.getSW());
+
+    response = cmdSet.generateMnemonic(9);
+    assertEquals(0x6A86, response.getSW());
+
+    // Good cases
+    response = cmdSet.generateMnemonic(4);
+    assertEquals(0x9000, response.getSW());
+    assertMnemonic(12, secureChannel.decryptAPDU(response.getData()));
+
+    response = cmdSet.generateMnemonic(5);
+    assertEquals(0x9000, response.getSW());
+    assertMnemonic(15, secureChannel.decryptAPDU(response.getData()));
+
+    response = cmdSet.generateMnemonic(6);
+    assertEquals(0x9000, response.getSW());
+    assertMnemonic(18, secureChannel.decryptAPDU(response.getData()));
+
+    response = cmdSet.generateMnemonic(7);
+    assertEquals(0x9000, response.getSW());
+    assertMnemonic(21, secureChannel.decryptAPDU(response.getData()));
+
+    response = cmdSet.generateMnemonic(8);
+    assertEquals(0x9000, response.getSW());
+    assertMnemonic(24, secureChannel.decryptAPDU(response.getData()));
+  }
+
+  @Test
   @DisplayName("SIGN command")
   void signTest() throws Exception {
     Random r = new Random();
@@ -506,6 +545,21 @@ public class WalletAppletTest {
     reset();
     cmdSet.select();
     cmdSet.openSecureChannel();
+  }
+
+  private void assertMnemonic(int expectedLength, byte[] data) {
+    short[] shorts = new short[data.length/2];
+    assertEquals(expectedLength, shorts.length);
+    ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN).asShortBuffer().get(shorts);
+
+    for (short mIdx : shorts) {
+      assertTrue(mIdx >= 0 && mIdx < 2048);
+    }
+
+    // TODO: the checksum should be validated. The problem is that the simulator should generate wrong values because of
+    // the bitwise operator extends the type to int, while JavaCard does not support int at all. If we make it work on
+    // the simulator then the code will not convert to CAP file at all. This means that the checksum can be tested only
+    // on a real card.
   }
 
   private Sign.SignatureData signMessage(byte[] message) throws Exception {
