@@ -11,6 +11,7 @@ import javax.smartcardio.CardException;
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
 import java.security.KeyPair;
+import java.security.PrivateKey;
 
 public class WalletAppletCommandSet {
   public static final String APPLET_AID = "53746174757357616C6C6574417070";
@@ -56,8 +57,30 @@ public class WalletAppletCommandSet {
     return apduChannel.transmit(unblockPIN);
   }
 
-  public ResponseAPDU loadKey(KeyPair keyPair) throws CardException {
-    byte[] publicKey = ((ECPublicKey) keyPair.getPublic()).getQ().getEncoded(false);
+  public ResponseAPDU loadKey(PrivateKey aPrivate, byte[] chainCode) throws CardException {
+    byte[] privateKey = ((ECPrivateKey) aPrivate).getD().toByteArray();
+
+    int privLen = privateKey.length;
+    int privOff = 0;
+
+    if(privateKey[0] == 0x00) {
+      privOff++;
+      privLen--;
+    }
+
+    byte[] data = new byte[chainCode.length + privLen];
+    System.arraycopy(privateKey, privOff, data, 0, privLen);
+    System.arraycopy(chainCode, 0, data, privLen, chainCode.length);
+
+    return loadKey(data, WalletApplet.LOAD_KEY_P1_SEED);
+  }
+
+  public ResponseAPDU loadKey(KeyPair ecKeyPair) throws CardException {
+    return loadKey(ecKeyPair, false, null);
+  }
+
+  public ResponseAPDU loadKey(KeyPair keyPair, boolean omitPublicKey, byte[] chainCode) throws CardException {
+    byte[] publicKey = omitPublicKey ? null : ((ECPublicKey) keyPair.getPublic()).getQ().getEncoded(false);
     byte[] privateKey = ((ECPrivateKey) keyPair.getPrivate()).getD().toByteArray();
 
     int privLen = privateKey.length;
@@ -68,17 +91,51 @@ public class WalletAppletCommandSet {
       privLen--;
     }
 
-    byte[] data = new byte[publicKey.length + privLen + 6];
-    data[0] = (byte) 0xA1;
-    data[1] = (byte) (publicKey.length + privLen + 4);
-    data[2] = (byte) 0x80;
-    data[3] = (byte) publicKey.length;
-    System.arraycopy(publicKey, 0, data, 4, publicKey.length);
-    data[4 + publicKey.length] = (byte) 0x81;
-    data[5 + publicKey.length] = (byte) privLen;
-    System.arraycopy(privateKey, privOff, data, 6 + publicKey.length, privLen);
+    int off = 0;
+    int totalLength = publicKey == null ? 0 : (publicKey.length + 2);
+    totalLength += (privLen + 2);
+    totalLength += chainCode == null ? 0 : (chainCode.length + 2);
 
-    return loadKey(data, WalletApplet.LOAD_KEY_P1_EC);
+    if (totalLength > 127) {
+      totalLength += 3;
+    } else {
+      totalLength += 2;
+    }
+
+    byte[] data = new byte[totalLength];
+    data[off++] = (byte) 0xA1;
+
+    if (totalLength > 127) {
+      data[off++] = (byte) 0x81;
+      data[off++] = (byte) (totalLength - 3);
+    } else {
+      data[off++] = (byte) (totalLength - 2);
+    }
+
+    if (publicKey != null) {
+      data[off++] = (byte) 0x80;
+      data[off++] = (byte) publicKey.length;
+      System.arraycopy(publicKey, 0, data, off, publicKey.length);
+      off += publicKey.length;
+    }
+
+    data[off++] = (byte) 0x81;
+    data[off++] = (byte) privLen;
+    System.arraycopy(privateKey, privOff, data, off, privLen);
+    off += privLen;
+
+    byte p1;
+
+    if (chainCode != null) {
+      p1 = WalletApplet.LOAD_KEY_P1_EXT_EC;
+      data[off++] = (byte) 0x82;
+      data[off++] = (byte) chainCode.length;
+      System.arraycopy(chainCode, 0, data, off, chainCode.length);
+    } else {
+      p1 = WalletApplet.LOAD_KEY_P1_EC;
+    }
+
+    return loadKey(data, p1);
   }
 
   public ResponseAPDU loadKey(ECKeyPair ecKeyPair) throws CardException {

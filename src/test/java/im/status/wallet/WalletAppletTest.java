@@ -299,14 +299,27 @@ public class WalletAppletTest {
       assertEquals(0x6A80, response.getSW());
     }
 
+    byte[] chainCode = new byte[32];
+    new Random().nextBytes(chainCode);
+
     // Correct LOAD KEY
     response = cmdSet.loadKey(keyPair);
     assertEquals(0x9000, response.getSW());
 
     keyPair = g.generateKeyPair();
 
-    // Check replacing keys
-    response = cmdSet.loadKey(keyPair);
+    // Check extended key
+    response = cmdSet.loadKey(keyPair, false, chainCode);
+    assertEquals(0x9000, response.getSW());
+
+    // Check omitted public key
+    response = cmdSet.loadKey(keyPair, true, null);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.loadKey(keyPair, true, chainCode);
+    assertEquals(0x9000, response.getSW());
+
+    // Check seed load
+    response = cmdSet.loadKey(keyPair.getPrivate(), chainCode);
     assertEquals(0x9000, response.getSW());
   }
 

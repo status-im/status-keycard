@@ -2,11 +2,8 @@ package im.status.wallet;
 
 import javacard.security.ECKey;
 import javacard.security.ECPrivateKey;
-import javacard.security.KeyAgreement;
 
 public class ECCurves {
-  static KeyAgreement ecPointMultiplier;
-
   static final byte SECP256K1_FP[] = {
       (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
       (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
@@ -59,16 +56,13 @@ public class ECCurves {
   }
 
   /*
-   * This might or might not work on actual card. Does not work on simulator. KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY is actually
-   * the algorithm we need, but it has been implemented later. However some cards implement KeyAgreement.ALG_EC_SVDP_DH_PLAIN
-   * in the same way. If we cannot use KeyAgreement to multiply it is difficult to generate public keys on-card.
+   * This works only if KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY is implemented. Otherwise we get only X. This method must be
+   * extended to calculate Y from X (Y^2 = X(X^2+A)+B). Since we get two possible results we will need to use signature
+   * verification to check which one is the actual public key. In this case performance will be very slow, around 5s
+   * for a single multiplication.
    */
   static short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
-    if (ecPointMultiplier == null) {
-      ecPointMultiplier = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
-    }
-
-    ecPointMultiplier.init(privateKey);
-    return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
+    Crypto.ecPointMultiplier.init(privateKey);
+    return Crypto.ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
   }
 }

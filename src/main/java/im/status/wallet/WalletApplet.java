@@ -254,6 +254,7 @@ public class WalletApplet extends Applet {
         break;
       case LOAD_KEY_P1_SEED:
         loadSeed(apduBuffer);
+        break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
         break;
