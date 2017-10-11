@@ -83,6 +83,29 @@ public class WalletAppletCommandSet {
     byte[] publicKey = omitPublicKey ? null : ((ECPublicKey) keyPair.getPublic()).getQ().getEncoded(false);
     byte[] privateKey = ((ECPrivateKey) keyPair.getPrivate()).getD().toByteArray();
 
+    return loadKey(publicKey, privateKey, chainCode);
+  }
+
+  public ResponseAPDU loadKey(ECKeyPair ecKeyPair) throws CardException {
+    byte[] publicKey = ecKeyPair.getPublicKey().toByteArray();
+    byte[] privateKey = ecKeyPair.getPrivateKey().toByteArray();
+
+    int pubLen = publicKey.length;
+    int pubOff = 0;
+
+    if(publicKey[0] == 0x00) {
+      pubOff++;
+      pubLen--;
+    }
+
+    byte[] ansiPublic = new byte[pubLen + 1];
+    ansiPublic[0] = 0x04;
+    System.arraycopy(publicKey, pubOff, ansiPublic, 1, pubLen);
+
+    return loadKey(ansiPublic, privateKey, null);
+  }
+
+  public ResponseAPDU loadKey(byte[] publicKey, byte[] privateKey, byte[] chainCode) throws CardException {
     int privLen = privateKey.length;
     int privOff = 0;
 
@@ -113,13 +136,13 @@ public class WalletAppletCommandSet {
     }
 
     if (publicKey != null) {
-      data[off++] = (byte) 0x80;
+      data[off++] = WalletApplet.TLV_PUB_KEY;
       data[off++] = (byte) publicKey.length;
       System.arraycopy(publicKey, 0, data, off, publicKey.length);
       off += publicKey.length;
     }
 
-    data[off++] = (byte) 0x81;
+    data[off++] = WalletApplet.TLV_PRIV_KEY;
     data[off++] = (byte) privLen;
     System.arraycopy(privateKey, privOff, data, off, privLen);
     off += privLen;
@@ -128,7 +151,7 @@ public class WalletAppletCommandSet {
 
     if (chainCode != null) {
       p1 = WalletApplet.LOAD_KEY_P1_EXT_EC;
-      data[off++] = (byte) 0x82;
+      data[off++] = (byte) WalletApplet.TLV_CHAIN_CODE;
       data[off++] = (byte) chainCode.length;
       System.arraycopy(chainCode, 0, data, off, chainCode.length);
     } else {
@@ -136,40 +159,6 @@ public class WalletAppletCommandSet {
     }
 
     return loadKey(data, p1);
-  }
-
-  public ResponseAPDU loadKey(ECKeyPair ecKeyPair) throws CardException {
-    byte[] publicKey = ecKeyPair.getPublicKey().toByteArray();
-    byte[] privateKey = ecKeyPair.getPrivateKey().toByteArray();
-
-    int privLen = privateKey.length;
-    int privOff = 0;
-
-    int pubLen = publicKey.length;
-    int pubOff = 0;
-
-    if(privateKey[0] == 0x00) {
-      privOff++;
-      privLen--;
-    }
-
-    if(publicKey[0] == 0x00) {
-      pubOff++;
-      pubLen--;
-    }
-
-    byte[] data = new byte[pubLen + privLen + 7];
-    data[0] = (byte) 0xA1;
-    data[1] = (byte) (pubLen + privLen + 5);
-    data[2] = (byte) 0x80;
-    data[3] = (byte) (pubLen + 1);
-    data[4] = (byte) 0x04;
-    System.arraycopy(publicKey, pubOff, data, 5, pubLen);
-    data[5 + pubLen] = (byte) 0x81;
-    data[6 + pubLen] = (byte) privLen;
-    System.arraycopy(privateKey, privOff, data, 7 + pubLen, privLen);
-
-    return loadKey(data, WalletApplet.LOAD_KEY_P1_EC);
   }
 
   public ResponseAPDU loadKey(byte[] data, byte keyType) throws CardException {
