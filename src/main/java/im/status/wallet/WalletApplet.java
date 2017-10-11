@@ -43,16 +43,10 @@ public class WalletApplet extends Applet {
   static final byte TLV_PRIV_KEY = (byte) 0x81;
   static final byte TLV_CHAIN_CODE = (byte) 0x82;
 
-  static final byte TLV_KEY_DERIVATION_TEMPLATE = (byte) 0xA2;
-  static final byte TLV_DERIVATION_SEQUENCE = (byte) 0xC0;
-  static final byte TLV_DERIVED_PUB_KEY = (byte) 0xC1;
-  static final byte TLV_PARENT_PUB_KEY = (byte) 0xC2;
-
   static final byte TLV_APPLICATION_STATUS_TEMPLATE = (byte) 0xA3;
   static final byte TLV_PIN_RETRY_COUNT = (byte) 0xC0;
   static final byte TLV_PUK_RETRY_COUNT = (byte) 0xC1;
   static final byte TLV_KEY_INITIALIZATION_STATUS = (byte) 0xC2;
-  static final byte TLV_PUBLIC_KEY_DERIVATION_SUPPORTED = (byte) 0xC3;
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -168,7 +162,7 @@ public class WalletApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
 
     apduBuffer[off++] = TLV_APPLICATION_STATUS_TEMPLATE;
-    apduBuffer[off++] = 12;
+    apduBuffer[off++] = 9;
     apduBuffer[off++] = TLV_PIN_RETRY_COUNT;
     apduBuffer[off++] = 1;
     apduBuffer[off++] = pin.getTriesRemaining();
@@ -178,9 +172,6 @@ public class WalletApplet extends Applet {
     apduBuffer[off++] = TLV_KEY_INITIALIZATION_STATUS;
     apduBuffer[off++] = 1;
     apduBuffer[off++] = privateKey.isInitialized() ? (byte) 0x01 : (byte) 0x00;
-    apduBuffer[off++] = TLV_PUBLIC_KEY_DERIVATION_SUPPORTED;
-    apduBuffer[off++] = 1;
-    apduBuffer[off++] = 1; //TODO: actually check if it is supported or totally remove if a fallback software implementation is a requirement
 
     short len = secureChannel.encryptAPDU(apduBuffer, (short) (off - SecureChannel.SC_OUT_OFFSET));
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);

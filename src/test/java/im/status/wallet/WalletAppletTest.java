@@ -116,25 +116,24 @@ public class WalletAppletTest {
     cmdSet.openSecureChannel();
 
     // Good case. Since the order of test execution is undefined, the test cannot know if the keys are initialized or not.
-    // Additionally, the public key derivation cannot also be known here.
     response = cmdSet.getStatus();
     assertEquals(0x9000, response.getSW());
     byte[] data = secureChannel.decryptAPDU(response.getData());
-    assertTrue(Hex.toHexString(data).matches("a30cc00103c10105c2010[0-1]c3010[0-1]"));
+    assertTrue(Hex.toHexString(data).matches("a309c00103c10105c2010[0-1]"));
 
     response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C2, response.getSW());
     response = cmdSet.getStatus();
     assertEquals(0x9000, response.getSW());
     data = secureChannel.decryptAPDU(response.getData());
-    assertTrue(Hex.toHexString(data).matches("a30cc00102c10105c2010[0-1]c3010[0-1]"));
+    assertTrue(Hex.toHexString(data).matches("a309c00102c10105c2010[0-1]"));
 
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
     response = cmdSet.getStatus();
     assertEquals(0x9000, response.getSW());
     data = secureChannel.decryptAPDU(response.getData());
-    assertTrue(Hex.toHexString(data).matches("a30cc00103c10105c2010[0-1]c3010[0-1]"));
+    assertTrue(Hex.toHexString(data).matches("a309c00103c10105c2010[0-1]"));
   }
 
   @Test

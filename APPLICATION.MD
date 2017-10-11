@@ -69,7 +69,6 @@ Response Data format:
   - Tag 0xC0 = PIN retry count (1 byte)
   - Tag 0xC1 = PUK retry count (1 byte)
   - Tag 0xC2 = 0 if key is not initialized, 1 otherwise
-  - Tag 0xC3 = 0 if public key derivation is not supported, 1 otherwise
 
 ### VERIFY PIN
 
@@ -125,27 +124,24 @@ always returns 0x63C0, even if the PUK is inserted correctly. In this case the w
 * P1 = key type
 * P2 = 0x00
 * Data = the key data
-* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A86 if P1 is invalid, 0x6A81 if public key is 
-  omitted and its derivation is not supported.
+* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A86 if P1 is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
 P1:
 * 0x01 = ECC SECP256k1 keypair
 * 0x02 = ECC SECP256k1 extended keypair
-* 0x03 = Binary seed as defined in [BIP39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) (if card 
-supports public key derivation)
+* 0x03 = Binary seed as defined in [BIP39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki)
 
 Data:
 
 If P1 is 0x01 or 0x02
 - Tag 0xA1 = keypair template
-  - Tag 0x80 = ECC public key component (can be omitted if card supports public key derivation)
+  - Tag 0x80 = ECC public key component (can be omitted)
   - Tag 0x81 = ECC private key component
   - Tag 0x82 = chain code (if P1=0x02)
   
 If P1 is 0x03 a 64 byte sequence generated according to the BIP39 specifications is expected. The master key will be
-generated according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) specifications. Since
-in this case the public key is not provided externally, the card must support public key derivation.
+generated according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) specifications.
 
 This command is used to load or replace the keypair used for signing on the card. This command always aborts open
 signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command will use this keypair for signature.
@@ -156,21 +152,12 @@ signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command
 * INS = 0xD1
 * P1 = 0x00
 * P2 = 0x00
-* Data = key derivation template
-* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A81 if public keys are omitted and their derivation 
-  is not supported.
+* Data = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used.
+* Response SW = 0x9000 on success, 0x6A80 if the format is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be verified, an extended keyset must be loaded
 
-Data format:
-
-- Tag 0xA2 = key derivation template
- - Tag 0xC0 = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used.
- - Tag 0xC1 = derived public key (omitted if master or public key derivation is supported)
- - Tag 0xC2 = parent public key (omitted if master or public key derivation is supported)
- 
 This command is used before a signing session to generated a private key according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
-specifications. The generated key is used for all subsequent SIGN sessions. An empty 0x82 is used in order for SIGN to
-use the master key instead. Omitting the 0x82 subtag entirely is not permitted.
+specifications. The generated key is used for all subsequent SIGN sessions.
 
 ### GENERATE MNEMONIC
 
