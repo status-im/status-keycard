@@ -30,6 +30,7 @@ import java.security.*;
 import java.util.Arrays;
 import java.util.Random;
 
+import static org.apache.commons.codec.digest.DigestUtils.sha256;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Test the Wallet Applet")
@@ -560,18 +561,33 @@ public class WalletAppletTest {
   }
 
   private void assertMnemonic(int expectedLength, byte[] data) {
-    short[] shorts = new short[data.length/2];
+    short[] shorts = new short[data.length / 2];
     assertEquals(expectedLength, shorts.length);
     ByteBuffer.wrap(data).order(ByteOrder.BIG_ENDIAN).asShortBuffer().get(shorts);
 
+    boolean[] bits = new boolean[11 * shorts.length];
+    int i = 0;
+
     for (short mIdx : shorts) {
       assertTrue(mIdx >= 0 && mIdx < 2048);
+      for (int j = 0; j < 11; ++j) {
+        bits[i++] = (mIdx & (1 << (10 - j))) > 0;
+      }
     }
 
-    // TODO: the checksum should be validated. The problem is that the simulator should generate wrong values because of
-    // the bitwise operator extends the type to int, while JavaCard does not support int at all. If we make it work on
-    // the simulator then the code will not convert to CAP file at all. This means that the checksum can be tested only
-    // on a real card.
+    data = new byte[bits.length / 33 * 4];
+
+    for (i = 0; i < bits.length / 33 * 32; ++i) {
+      data[i / 8] |= (bits[i] ? 1 : 0) << (7 - (i % 8));
+    }
+
+    byte[] check = sha256(data);
+
+    for (i = bits.length / 33 * 32; i < bits.length; ++i) {
+      if ((check[(i - bits.length / 33 * 32) / 8] & (1 << (7 - (i % 8))) ^ (bits[i] ? 1 : 0) << (7 - (i % 8))) != 0) {
+        fail("Checksum is invalid");
+      }
+    }
   }
 
   private Sign.SignatureData signMessage(byte[] message) throws Exception {

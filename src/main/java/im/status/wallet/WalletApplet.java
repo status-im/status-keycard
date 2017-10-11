@@ -360,13 +360,13 @@ public class WalletApplet extends Applet {
 
     for (short i = GENERATE_MNEMONIC_TMP_OFF; i < entLen; i += 2) {
       short w = Util.getShort(apduBuffer, i);
-      Util.setShort(apduBuffer, outOff, (short)((short)(((short)(vp | ((short) (w >>> rShift)))) >>> 5) & (short) 0x7ff));
+      Util.setShort(apduBuffer, outOff, logicrShift((short) (vp | logicrShift(w, rShift)), (short) 5));
       outOff += 2;
       rShift += 5;
       vp = (short) (w << (16 - rShift));
 
       if (rShift >= 11) {
-        Util.setShort(apduBuffer, outOff, (short)((short) (vp >>> 5) & (short) 0x7ff));
+        Util.setShort(apduBuffer, outOff, logicrShift(vp, (short) 5));
         outOff += 2;
         rShift = (short) (rShift - 11);
         vp = (short) (w << (16 - rShift));
@@ -379,6 +379,20 @@ public class WalletApplet extends Applet {
 
     short outLen = secureChannel.encryptAPDU(apduBuffer, (short) (outOff - SecureChannel.SC_OUT_OFFSET));
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, outLen);
+  }
+
+  // This works on simulator AND on JavaCard. Since we do not do a lot of these operations, the performance hit is non-existent
+  private short logicrShift(short v, short amount) {
+    if (amount == 0) return v; // short circuit on 0
+    short tmp = (short) (v & 0x7fff);
+
+    if (tmp == v) {
+      return (short) (v >>> amount);
+    }
+
+    tmp = (short) (tmp >>> amount);
+
+    return (short) ((short)((short) 0x4000 >>> (short) (amount - 1)) | tmp);
   }
 
   private void sign(APDU apdu) {
