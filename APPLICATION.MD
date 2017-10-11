@@ -145,7 +145,7 @@ If P1 is 0x01 or 0x02
   
 If P1 is 0x03 a 64 byte sequence generated according to the BIP39 specifications is expected. The master key will be
 generated according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) specifications. Since
-in this case there is no way to provide the public key externally, the card must support public key derivation.
+in this case the public key is not provided externally, the card must support public key derivation.
 
 This command is used to load or replace the keypair used for signing on the card. This command always aborts open
 signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command will use this keypair for signature.

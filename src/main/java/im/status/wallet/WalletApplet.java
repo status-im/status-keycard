@@ -19,6 +19,8 @@ public class WalletApplet extends Applet {
   static final byte PIN_MAX_RETRIES = 3;
 
   static final short EC_KEY_SIZE = 256;
+  static final short CHAIN_CODE_SIZE = 32;
+  static final short SEED_SIZE = CHAIN_CODE_SIZE * 2;
 
   static final byte LOAD_KEY_P1_EC = 0x01;
   static final byte LOAD_KEY_P1_EXT_EC = 0x02;
@@ -55,8 +57,15 @@ public class WalletApplet extends Applet {
   private OwnerPIN pin;
   private OwnerPIN puk;
   private SecureChannel secureChannel;
+
+  private ECPublicKey masterPublic;
+  private ECPrivateKey masterPrivate;
+  private byte[] chainCode;
+  private boolean isExtended;
+
   private ECPublicKey publicKey;
   private ECPrivateKey privateKey;
+
   private Signature signature;
   private boolean signInProgress;
 
@@ -78,8 +87,17 @@ public class WalletApplet extends Applet {
     pin.update(bArray, c9Off, PIN_LENGTH);
 
     secureChannel = new SecureChannel();
+
+    masterPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
+    masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
+    chainCode = new byte[32];
+    isExtended = false;
+
     publicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
     privateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
+
+    ECCurves.setSECP256K1CurveParameters(masterPublic);
+    ECCurves.setSECP256K1CurveParameters(masterPrivate);
 
     ECCurves.setSECP256K1CurveParameters(publicKey);
     ECCurves.setSECP256K1CurveParameters(privateKey);
@@ -234,31 +252,93 @@ public class WalletApplet extends Applet {
 
     byte[] apduBuffer = apdu.getBuffer();
 
-    if (apduBuffer[ISO7816.OFFSET_P1] != LOAD_KEY_P1_EC)  {
-      ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+    secureChannel.decryptAPDU(apduBuffer);
+    boolean newExtended = false;
+
+    switch (apduBuffer[ISO7816.OFFSET_P1])  {
+      case LOAD_KEY_P1_EXT_EC:
+        newExtended = true;
+      case LOAD_KEY_P1_EC:
+        loadKeyPair(apduBuffer, newExtended);
+        break;
+      case LOAD_KEY_P1_SEED:
+        loadSeed(apduBuffer);
+      default:
+        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        break;
     }
 
-    secureChannel.decryptAPDU(apduBuffer);
+    signInProgress = false;
+  }
 
-    short pubOffset = (short)(ISO7816.OFFSET_CDATA + 2);
+  private void loadKeyPair(byte[] apduBuffer, boolean newExtended) {
+    short pubOffset = (short)(ISO7816.OFFSET_CDATA + (apduBuffer[(short) (ISO7816.OFFSET_CDATA + 1)] == (byte) 0x81 ? 3 : 2));
     short privOffset = (short)(pubOffset + apduBuffer[(short)(pubOffset + 1)] + 2);
+    short chainOffset = (short)(privOffset + apduBuffer[(short)(privOffset + 1)] + 2);
 
-    if (!(apduBuffer[ISO7816.OFFSET_CDATA] == TLV_KEY_TEMPLATE && apduBuffer[pubOffset] == TLV_PUB_KEY && apduBuffer[privOffset] == TLV_PRIV_KEY))  {
+    if (apduBuffer[pubOffset] != TLV_PUB_KEY) {
+      chainOffset = privOffset;
+      privOffset = pubOffset;
+      pubOffset = -1;
+    }
+
+    if (!((apduBuffer[ISO7816.OFFSET_CDATA] == TLV_KEY_TEMPLATE) && (apduBuffer[privOffset] == TLV_PRIV_KEY) && (!newExtended || apduBuffer[chainOffset] == TLV_CHAIN_CODE)))  {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
     JCSystem.beginTransaction();
 
     try {
-      publicKey.setW(apduBuffer, (short) (pubOffset + 2), apduBuffer[(short) (pubOffset + 1)]);
+      isExtended = newExtended;
+
+      masterPrivate.setS(apduBuffer, (short) (privOffset + 2), apduBuffer[(short) (privOffset + 1)]);
       privateKey.setS(apduBuffer, (short) (privOffset + 2), apduBuffer[(short) (privOffset + 1)]);
+
+      if (isExtended) {
+        if (apduBuffer[(short) (chainOffset + 1)] == CHAIN_CODE_SIZE) {
+          Util.arrayCopy(apduBuffer, (short) (chainOffset + 2), chainCode, (short) 0, apduBuffer[(short) (chainOffset + 1)]);
+        } else {
+          ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+        }
+      }
+
+      short pubLen;
+
+      if (pubOffset != -1) {
+        pubLen = apduBuffer[(short) (pubOffset + 1)];
+        pubOffset = (short) (pubOffset + 2);
+      } else {
+        pubOffset = 0;
+        pubLen = ECCurves.derivePublicKey(masterPrivate, apduBuffer, pubOffset);
+      }
+
+      masterPublic.setW(apduBuffer, pubOffset, pubLen);
+      publicKey.setW(apduBuffer, pubOffset, pubLen);
     } catch (CryptoException e) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
     JCSystem.commitTransaction();
+  }
 
-    signInProgress = false;
+  private void loadSeed(byte[] apduBuffer) {
+    if (apduBuffer[ISO7816.OFFSET_LC] != SEED_SIZE) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    JCSystem.beginTransaction();
+    isExtended = true;
+
+    masterPrivate.setS(apduBuffer, (short) ISO7816.OFFSET_CDATA, CHAIN_CODE_SIZE);
+    privateKey.setS(apduBuffer, (short) ISO7816.OFFSET_CDATA, CHAIN_CODE_SIZE);
+
+    Util.arrayCopy(apduBuffer, (short) (ISO7816.OFFSET_CDATA + CHAIN_CODE_SIZE), chainCode, (short) 0, CHAIN_CODE_SIZE);
+    short pubLen = ECCurves.derivePublicKey(masterPrivate, apduBuffer, (short) 0);
+
+    masterPublic.setW(apduBuffer, (short) 0, pubLen);
+    publicKey.setW(apduBuffer, (short) 0, pubLen);
+
+    JCSystem.commitTransaction();
   }
 
   private void deriveKey(APDU apdu) {
