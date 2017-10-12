@@ -4,9 +4,6 @@ import javacard.security.CryptoException;
 import javacard.security.ECKey;
 import javacard.security.ECPrivateKey;
 import javacard.security.KeyAgreement;
-import opencrypto.jcmathlib.ECConfig;
-import opencrypto.jcmathlib.ECCurve;
-import opencrypto.jcmathlib.ECPoint;
 
 public class ECCurves {
   static final byte SECP256K1_FP[] = {

@@ -1,4 +1,4 @@
-package opencrypto.jcmathlib;
+package im.status.wallet;
 
 /**
  *

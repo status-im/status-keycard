@@ -1,7 +1,7 @@
 /**
  * Credits: Based on Bignat library from OV-chip project https://ovchip.cs.ru.nl/OV-chip_2.0 by Radboud University Nijmegen 
  */
-package opencrypto.jcmathlib;
+package im.status.wallet;
 
 import javacard.framework.ISOException;
 import javacard.framework.JCSystem;
