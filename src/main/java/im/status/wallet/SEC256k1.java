@@ -5,7 +5,7 @@ import javacard.security.ECKey;
 import javacard.security.ECPrivateKey;
 import javacard.security.KeyAgreement;
 
-public class ECCurves {
+public class SEC256k1 {
   static final byte SECP256K1_FP[] = {
       (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
       (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
@@ -62,7 +62,7 @@ public class ECCurves {
 
   }
 
-  static void setSECP256K1CurveParameters(ECKey key) {
+  static void setCurveParameters(ECKey key) {
     key.setA(SECP256K1_A, (short) 0x00, (short) SECP256K1_A.length);
     key.setB(SECP256K1_B, (short) 0x00, (short) SECP256K1_B.length);
     key.setFieldFP(SECP256K1_FP, (short) 0x00, (short) SECP256K1_FP.length);

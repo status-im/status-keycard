@@ -68,7 +68,7 @@ public class WalletApplet extends Applet {
   }
 
   public WalletApplet(byte[] bArray, short bOffset, byte bLength) {
-    ECCurves.init();
+    SEC256k1.init();
     Crypto.init();
 
     short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
@@ -91,11 +91,11 @@ public class WalletApplet extends Applet {
     publicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
     privateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
 
-    ECCurves.setSECP256K1CurveParameters(masterPublic);
-    ECCurves.setSECP256K1CurveParameters(masterPrivate);
+    SEC256k1.setCurveParameters(masterPublic);
+    SEC256k1.setCurveParameters(masterPrivate);
 
-    ECCurves.setSECP256K1CurveParameters(publicKey);
-    ECCurves.setSECP256K1CurveParameters(privateKey);
+    SEC256k1.setCurveParameters(publicKey);
+    SEC256k1.setCurveParameters(privateKey);
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
@@ -302,7 +302,7 @@ public class WalletApplet extends Applet {
         pubOffset = (short) (pubOffset + 2);
       } else {
         pubOffset = 0;
-        pubLen = ECCurves.derivePublicKey(masterPrivate, apduBuffer, pubOffset);
+        pubLen = SEC256k1.derivePublicKey(masterPrivate, apduBuffer, pubOffset);
       }
 
       masterPublic.setW(apduBuffer, pubOffset, pubLen);
@@ -326,7 +326,7 @@ public class WalletApplet extends Applet {
     privateKey.setS(apduBuffer, (short) ISO7816.OFFSET_CDATA, CHAIN_CODE_SIZE);
 
     Util.arrayCopy(apduBuffer, (short) (ISO7816.OFFSET_CDATA + CHAIN_CODE_SIZE), chainCode, (short) 0, CHAIN_CODE_SIZE);
-    short pubLen = ECCurves.derivePublicKey(masterPrivate, apduBuffer, (short) 0);
+    short pubLen = SEC256k1.derivePublicKey(masterPrivate, apduBuffer, (short) 0);
 
     masterPublic.setW(apduBuffer, (short) 0, pubLen);
     publicKey.setW(apduBuffer, (short) 0, pubLen);
