@@ -1,7 +1,12 @@
 package im.status.wallet;
 
+import javacard.security.CryptoException;
 import javacard.security.ECKey;
 import javacard.security.ECPrivateKey;
+import javacard.security.KeyAgreement;
+import opencrypto.jcmathlib.ECConfig;
+import opencrypto.jcmathlib.ECCurve;
+import opencrypto.jcmathlib.ECPoint;
 
 public class ECCurves {
   static final byte SECP256K1_FP[] = {
@@ -42,6 +47,24 @@ public class ECCurves {
 
   static final byte SECP256K1_K = (byte)0x01;
 
+  private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6; // constant from JavaCard 3.0.5
+
+  private static KeyAgreement ecPointMultiplier;
+  private static ECConfig ecConfig;
+  private static ECCurve ecCurve;
+  private static ECPoint ecPoint;
+
+  static void init() {
+    try {
+      ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
+    } catch(CryptoException e) {
+      ecConfig = new ECConfig((short) 256);
+      ecCurve = new ECCurve(false, SECP256K1_FP, SECP256K1_A, SECP256K1_B, SECP256K1_G, SECP256K1_R, ecConfig);
+      ecPoint = new ECPoint(ecCurve, ecConfig);
+    }
+
+  }
+
   static void setSECP256K1CurveParameters(ECKey key) {
     key.setA(SECP256K1_A, (short) 0x00, (short) SECP256K1_A.length);
     key.setB(SECP256K1_B, (short) 0x00, (short) SECP256K1_B.length);
@@ -56,13 +79,18 @@ public class ECCurves {
   }
 
   /*
-   * This works only if KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY is implemented. Otherwise we get only X. This method must be
-   * extended to calculate Y from X (Y^2 = X(X^2+A)+B). Since we get two possible results we will need to use signature
-   * verification to check which one is the actual public key. In this case performance will be very slow, around 5s
-   * for a single multiplication.
+   * This works efficiently only if KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY is implemented. Otherwise  performance will
+   * be very slow, around 5s for a single multiplication.
    */
   static short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
-    Crypto.ecPointMultiplier.init(privateKey);
-    return Crypto.ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
+    if(ecPointMultiplier != null) {
+      ecPointMultiplier.init(privateKey);
+      return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
+    } else {
+      ecPoint.setW(point, pointOff, pointLen);
+      short len = privateKey.getS(out, outOff);
+      ecPoint.multiplication(out, outOff, len);
+      return ecPoint.getW(out, outOff);
+    }
   }
 }

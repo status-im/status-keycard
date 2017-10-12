@@ -68,6 +68,7 @@ public class WalletApplet extends Applet {
   }
 
   public WalletApplet(byte[] bArray, short bOffset, byte bLength) {
+    ECCurves.init();
     Crypto.init();
 
     short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
