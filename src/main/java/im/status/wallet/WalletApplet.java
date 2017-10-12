@@ -54,11 +54,12 @@ public class WalletApplet extends Applet {
 
   private ECPublicKey masterPublic;
   private ECPrivateKey masterPrivate;
-  private byte[] chainCode;
+  private byte[] masterChainCode;
   private boolean isExtended;
 
   private ECPublicKey publicKey;
   private ECPrivateKey privateKey;
+  private byte[] chainCode;
 
   private Signature signature;
   private boolean signInProgress;
@@ -85,6 +86,7 @@ public class WalletApplet extends Applet {
 
     masterPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
     masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
+    masterChainCode = new byte[32];
     chainCode = new byte[32];
     isExtended = false;
 
@@ -289,6 +291,7 @@ public class WalletApplet extends Applet {
 
       if (isExtended) {
         if (apduBuffer[(short) (chainOffset + 1)] == CHAIN_CODE_SIZE) {
+          Util.arrayCopy(apduBuffer, (short) (chainOffset + 2), masterChainCode, (short) 0, apduBuffer[(short) (chainOffset + 1)]);
           Util.arrayCopy(apduBuffer, (short) (chainOffset + 2), chainCode, (short) 0, apduBuffer[(short) (chainOffset + 1)]);
         } else {
           ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -325,6 +328,7 @@ public class WalletApplet extends Applet {
     masterPrivate.setS(apduBuffer, (short) ISO7816.OFFSET_CDATA, CHAIN_CODE_SIZE);
     privateKey.setS(apduBuffer, (short) ISO7816.OFFSET_CDATA, CHAIN_CODE_SIZE);
 
+    Util.arrayCopy(apduBuffer, (short) (ISO7816.OFFSET_CDATA + CHAIN_CODE_SIZE), masterChainCode, (short) 0, CHAIN_CODE_SIZE);
     Util.arrayCopy(apduBuffer, (short) (ISO7816.OFFSET_CDATA + CHAIN_CODE_SIZE), chainCode, (short) 0, CHAIN_CODE_SIZE);
     short pubLen = SEC256k1.derivePublicKey(masterPrivate, apduBuffer, (short) 0);
 
