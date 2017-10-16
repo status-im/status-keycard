@@ -69,7 +69,7 @@ public class WalletAppletTest {
       }
     }
 
-    Card apduCard = cardTerminal.connect("T=1");
+    Card apduCard = cardTerminal.connect("*");
     apduChannel = apduCard.getBasicChannel();
   }
 

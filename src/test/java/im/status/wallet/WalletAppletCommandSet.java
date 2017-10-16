@@ -38,7 +38,7 @@ public class WalletAppletCommandSet {
   }
 
   public ResponseAPDU getStatus() throws CardException {
-    CommandAPDU getStatus = new CommandAPDU(0x80, WalletApplet.INS_GET_STATUS, 0, 0);
+    CommandAPDU getStatus = new CommandAPDU(0x80, WalletApplet.INS_GET_STATUS, 0, 0, 256);
     return apduChannel.transmit(getStatus);
   }
 
@@ -167,7 +167,7 @@ public class WalletAppletCommandSet {
   }
 
   public ResponseAPDU generateMnemonic(int cs) throws CardException {
-    CommandAPDU generateMnemonic = new CommandAPDU(0x80, WalletApplet.INS_GENERATE_MNEMONIC, cs, 0);
+    CommandAPDU generateMnemonic = new CommandAPDU(0x80, WalletApplet.INS_GENERATE_MNEMONIC, cs, 0, 256);
     return apduChannel.transmit(generateMnemonic);
   }
 
