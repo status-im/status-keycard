@@ -47,6 +47,7 @@ public class WalletApplet extends Applet {
   static final byte TLV_PIN_RETRY_COUNT = (byte) 0xC0;
   static final byte TLV_PUK_RETRY_COUNT = (byte) 0xC1;
   static final byte TLV_KEY_INITIALIZATION_STATUS = (byte) 0xC2;
+  static final byte TLV_FAST_PUBLIC_KEY_DERIVATION = (byte) 0xC3;
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -175,6 +176,9 @@ public class WalletApplet extends Applet {
     apduBuffer[off++] = TLV_KEY_INITIALIZATION_STATUS;
     apduBuffer[off++] = 1;
     apduBuffer[off++] = privateKey.isInitialized() ? (byte) 0x01 : (byte) 0x00;
+    apduBuffer[off++] = TLV_FAST_PUBLIC_KEY_DERIVATION;
+    apduBuffer[off++] = 1;
+    apduBuffer[off++] = SEC256k1.hasFastECPointMultiplication() ? (byte) 0x01 : (byte) 0x00;
 
     short len = secureChannel.encryptAPDU(apduBuffer, (short) (off - SecureChannel.SC_OUT_OFFSET));
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);

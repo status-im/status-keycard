@@ -69,6 +69,7 @@ Response Data format:
   - Tag 0xC0 = PIN retry count (1 byte)
   - Tag 0xC1 = PUK retry count (1 byte)
   - Tag 0xC2 = 0 if key is not initialized, 1 otherwise
+  - Tag 0xC3 = 1 if public key derivation is hw optimized, 0 otherwise
 
 ### VERIFY PIN
 

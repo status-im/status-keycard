@@ -117,24 +117,25 @@ public class WalletAppletTest {
     cmdSet.openSecureChannel();
 
     // Good case. Since the order of test execution is undefined, the test cannot know if the keys are initialized or not.
+    // Additionally, support for fast public key derivation is hw dependent.
     response = cmdSet.getStatus();
     assertEquals(0x9000, response.getSW());
     byte[] data = secureChannel.decryptAPDU(response.getData());
-    assertTrue(Hex.toHexString(data).matches("a309c00103c10105c2010[0-1]"));
+    assertTrue(Hex.toHexString(data).matches("a309c00103c10105c2010[0-1]c3010[0-1]"));
 
     response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C2, response.getSW());
     response = cmdSet.getStatus();
     assertEquals(0x9000, response.getSW());
     data = secureChannel.decryptAPDU(response.getData());
-    assertTrue(Hex.toHexString(data).matches("a309c00102c10105c2010[0-1]"));
+    assertTrue(Hex.toHexString(data).matches("a309c00102c10105c2010[0-1]c3010[0-1]"));
 
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
     response = cmdSet.getStatus();
     assertEquals(0x9000, response.getSW());
     data = secureChannel.decryptAPDU(response.getData());
-    assertTrue(Hex.toHexString(data).matches("a309c00103c10105c2010[0-1]"));
+    assertTrue(Hex.toHexString(data).matches("a309c00103c10105c2010[0-1]c3010[0-1]"));
   }
 
   @Test
@@ -396,14 +397,21 @@ public class WalletAppletTest {
     response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,false, true);
     assertEquals(0x6A86, response.getSW());
 
-    // Correctly sign 1 block (P2: 0x81)
-    response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,true, true);
+    // Correctly sign a precomputed hash
+    MessageDigest md = MessageDigest.getInstance("SHA-256", "BC");
+    response = cmdSet.sign(md.digest(data), WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
     assertEquals(0x9000, response.getSW());
     byte[] sig = secureChannel.decryptAPDU(response.getData());
     byte[] keyData = extractPublicKey(sig);
     sig = extractSignature(sig);
     assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, keyData.length);
+    signature.update(data);
+    assertTrue(signature.verify(sig));
 
+    // Correctly sign 1 block (P2: 0x81)
+    response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,true, true);
+    assertEquals(0x9000, response.getSW());
+    sig = extractSignature(secureChannel.decryptAPDU(response.getData()));
     signature.update(smallData);
     assertTrue(signature.verify(sig));
 
@@ -469,14 +477,6 @@ public class WalletAppletTest {
     signature.update(data);
     signature.update(smallData);
     assertTrue(signature.verify(sig));
-
-    MessageDigest md = MessageDigest.getInstance("SHA-256", "BC");
-    response = cmdSet.sign(md.digest(data), WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
-    assertEquals(0x9000, response.getSW());
-    sig = extractSignature(secureChannel.decryptAPDU(response.getData()));
-    signature.update(data);
-    assertTrue(signature.verify(sig));
-
   }
 
   @Test

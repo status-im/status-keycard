@@ -90,4 +90,8 @@ public class SEC256k1 {
       return ecPoint.getW(out, outOff);
     }
   }
+
+  static boolean hasFastECPointMultiplication() {
+    return ecPointMultiplier != null;
+  }
 }
