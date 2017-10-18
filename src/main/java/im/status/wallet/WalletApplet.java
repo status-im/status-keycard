@@ -70,7 +70,7 @@ public class WalletApplet extends Applet {
   }
 
   public WalletApplet(byte[] bArray, short bOffset, byte bLength) {
-    SEC256k1.init();
+    SECP256k1.init();
     Crypto.init();
 
     short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
@@ -94,11 +94,11 @@ public class WalletApplet extends Applet {
     publicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
     privateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
 
-    SEC256k1.setCurveParameters(masterPublic);
-    SEC256k1.setCurveParameters(masterPrivate);
+    SECP256k1.setCurveParameters(masterPublic);
+    SECP256k1.setCurveParameters(masterPrivate);
 
-    SEC256k1.setCurveParameters(publicKey);
-    SEC256k1.setCurveParameters(privateKey);
+    SECP256k1.setCurveParameters(publicKey);
+    SECP256k1.setCurveParameters(privateKey);
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
@@ -178,7 +178,7 @@ public class WalletApplet extends Applet {
     apduBuffer[off++] = privateKey.isInitialized() ? (byte) 0x01 : (byte) 0x00;
     apduBuffer[off++] = TLV_FAST_PUBLIC_KEY_DERIVATION;
     apduBuffer[off++] = 1;
-    apduBuffer[off++] = SEC256k1.hasFastECPointMultiplication() ? (byte) 0x01 : (byte) 0x00;
+    apduBuffer[off++] = SECP256k1.hasFastECPointMultiplication() ? (byte) 0x01 : (byte) 0x00;
 
     short len = secureChannel.encryptAPDU(apduBuffer, (short) (off - SecureChannel.SC_OUT_OFFSET));
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
@@ -309,7 +309,7 @@ public class WalletApplet extends Applet {
         pubOffset = (short) (pubOffset + 2);
       } else {
         pubOffset = 0;
-        pubLen = SEC256k1.derivePublicKey(masterPrivate, apduBuffer, pubOffset);
+        pubLen = SECP256k1.derivePublicKey(masterPrivate, apduBuffer, pubOffset);
       }
 
       masterPublic.setW(apduBuffer, pubOffset, pubLen);
@@ -334,7 +334,7 @@ public class WalletApplet extends Applet {
 
     Util.arrayCopy(apduBuffer, (short) (ISO7816.OFFSET_CDATA + CHAIN_CODE_SIZE), masterChainCode, (short) 0, CHAIN_CODE_SIZE);
     Util.arrayCopy(apduBuffer, (short) (ISO7816.OFFSET_CDATA + CHAIN_CODE_SIZE), chainCode, (short) 0, CHAIN_CODE_SIZE);
-    short pubLen = SEC256k1.derivePublicKey(masterPrivate, apduBuffer, (short) 0);
+    short pubLen = SECP256k1.derivePublicKey(masterPrivate, apduBuffer, (short) 0);
 
     masterPublic.setW(apduBuffer, (short) 0, pubLen);
     publicKey.setW(apduBuffer, (short) 0, pubLen);

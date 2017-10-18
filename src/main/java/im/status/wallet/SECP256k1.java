@@ -5,7 +5,7 @@ import javacard.security.ECKey;
 import javacard.security.ECPrivateKey;
 import javacard.security.KeyAgreement;
 
-public class SEC256k1 {
+public class SECP256k1 {
   static final byte SECP256K1_FP[] = {
       (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
       (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,

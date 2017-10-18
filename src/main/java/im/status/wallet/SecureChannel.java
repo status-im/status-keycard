@@ -26,8 +26,8 @@ public class SecureChannel {
     scKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
 
     scKeypair = new KeyPair(KeyPair.ALG_EC_FP, SC_KEY_LENGTH);
-    SEC256k1.setCurveParameters((ECKey) scKeypair.getPrivate());
-    SEC256k1.setCurveParameters((ECKey) scKeypair.getPublic());
+    SECP256k1.setCurveParameters((ECKey) scKeypair.getPrivate());
+    SECP256k1.setCurveParameters((ECKey) scKeypair.getPublic());
     scKeypair.genKeyPair();
 
     scAgreement = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH, false);
