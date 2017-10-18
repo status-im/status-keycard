@@ -176,4 +176,9 @@ public class WalletAppletCommandSet {
     CommandAPDU sign = new CommandAPDU(0x80, WalletApplet.INS_SIGN, dataType, p2, secureChannel.encryptAPDU(data));
     return apduChannel.transmit(sign);
   }
+
+  public ResponseAPDU deriveKey(byte[] data) throws CardException {
+    CommandAPDU deriveKey = new CommandAPDU(0x80, WalletApplet.INS_DERIVE_KEY, 0x00, 0x00, secureChannel.encryptAPDU(data));
+    return apduChannel.transmit(deriveKey);
+  }
 }

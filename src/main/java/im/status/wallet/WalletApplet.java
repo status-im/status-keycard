@@ -343,7 +343,38 @@ public class WalletApplet extends Applet {
   }
 
   private void deriveKey(APDU apdu) {
-    ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+    apdu.setIncomingAndReceive();
+
+    if (!(secureChannel.isOpen() && pin.isValidated() && isExtended)) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    byte[] apduBuffer = apdu.getBuffer();
+
+    short len = secureChannel.decryptAPDU(apduBuffer);
+
+    if ((short) (len % 4) != 0) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    resetKeys(apduBuffer, len);
+
+    for (short i = 0; i < len; i += 4) {
+      Crypto.bip32CKDPriv(apduBuffer, i, privateKey, publicKey, chainCode, (short) 0);
+      short pubLen = SECP256k1.derivePublicKey(privateKey, apduBuffer, (short) 0);
+      publicKey.setW(apduBuffer, (short) 0, pubLen);
+    }
+  }
+
+  private void resetKeys(byte[] buffer, short offset) {
+    short pubOff = (short) (offset + masterPrivate.getS(buffer, offset));
+    short pubLen = masterPublic.getW(buffer, pubOff);
+
+    JCSystem.beginTransaction();
+    Util.arrayCopy(masterChainCode, (short) 0, chainCode, (short) 0, CHAIN_CODE_SIZE);
+    privateKey.setS(buffer, offset, CHAIN_CODE_SIZE);
+    publicKey.setW(buffer, pubOff, pubLen);
+    JCSystem.commitTransaction();
   }
 
   private void generateMnemonic(APDU apdu) {

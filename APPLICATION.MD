@@ -157,7 +157,7 @@ signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command
 * Response SW = 0x9000 on success, 0x6A80 if the format is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be verified, an extended keyset must be loaded
 
-This command is used before a signing session to generated a private key according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
+This command is used before a signing session to generate a private key according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
 specifications. The generated key is used for all subsequent SIGN sessions.
 
 ### GENERATE MNEMONIC

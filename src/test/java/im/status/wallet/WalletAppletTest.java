@@ -4,6 +4,9 @@ import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.smartcardio.CardTerminalSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
 import javacard.framework.AID;
+import org.bitcoinj.crypto.ChildNumber;
+import org.bitcoinj.crypto.DeterministicKey;
+import org.bitcoinj.crypto.HDKeyDerivation;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.util.encoders.Hex;
@@ -329,7 +332,7 @@ public class WalletAppletTest {
   @DisplayName("GENERATE MNEMONIC command")
   void generateMnemonicTest() throws Exception {
     // Security condition violation: SecureChannel not open
-    ResponseAPDU response = cmdSet.getStatus();
+    ResponseAPDU response = cmdSet.generateMnemonic(4);
     assertEquals(0x6985, response.getSW());
     cmdSet.openSecureChannel();
 
@@ -360,6 +363,46 @@ public class WalletAppletTest {
     response = cmdSet.generateMnemonic(8);
     assertEquals(0x9000, response.getSW());
     assertMnemonic(24, secureChannel.decryptAPDU(response.getData()));
+  }
+
+  @Test
+  @DisplayName("DERIVE KEY command")
+  void deriveKeyTest() throws Exception {
+    // Security condition violation: SecureChannel not open
+    ResponseAPDU response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00});
+    assertEquals(0x6985, response.getSW());
+
+    cmdSet.openSecureChannel();
+
+    // Security condition violation: PIN is not verified
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00});
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    KeyPairGenerator g = keypairGenerator();
+    KeyPair keyPair = g.generateKeyPair();
+    byte[] chainCode = new byte[32];
+    new Random().nextBytes(chainCode);
+
+    // Condition violation: keyset is not extended
+    response = cmdSet.loadKey(keyPair);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00});
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.loadKey(keyPair, false, chainCode);
+    assertEquals(0x9000, response.getSW());
+
+    // Wrong data format (data length not a multiple of 4)
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00});
+    assertEquals(0x6A80, response.getSW());
+
+    // Correct example
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00});
+    assertEquals(0x9000, response.getSW());
+    verifyKeyDerivation(keyPair, chainCode, new int[] { 1 });
   }
 
   @Test
@@ -588,6 +631,24 @@ public class WalletAppletTest {
         fail("Checksum is invalid");
       }
     }
+  }
+
+  private void verifyKeyDerivation(KeyPair keyPair, byte[] chainCode, int[] path) throws Exception {
+    DeterministicKey key = HDKeyDerivation.createMasterPrivKeyFromBytes(((org.bouncycastle.jce.interfaces.ECPrivateKey) keyPair.getPrivate()).getD().toByteArray(), chainCode);
+
+    for (int i : path) {
+      key = HDKeyDerivation.deriveChildKey(key, new ChildNumber(i));
+    }
+
+    byte[] hash = Hash.sha3(new byte[8]);
+    ResponseAPDU resp = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH, true, true);
+    assertEquals(0x9000, resp.getSW());
+    byte[] sig = secureChannel.decryptAPDU(resp.getData());
+    byte[] publicKey = extractPublicKey(sig);
+    sig = extractSignature(sig);
+
+    assertTrue(key.verify(hash, sig));
+    assertArrayEquals(key.getPubKeyPoint().getEncoded(false), publicKey);
   }
 
   private Sign.SignatureData signMessage(byte[] message) throws Exception {
