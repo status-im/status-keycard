@@ -357,12 +357,13 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
-    resetKeys(apduBuffer, len);
+    short chainEnd = (short) (ISO7816.OFFSET_CDATA + len);
+    resetKeys(apduBuffer, chainEnd);
 
-    for (short i = 0; i < len; i += 4) {
+    for (short i = ISO7816.OFFSET_CDATA; i < chainEnd; i += 4) {
       Crypto.bip32CKDPriv(apduBuffer, i, privateKey, publicKey, chainCode, (short) 0);
-      short pubLen = SECP256k1.derivePublicKey(privateKey, apduBuffer, (short) 0);
-      publicKey.setW(apduBuffer, (short) 0, pubLen);
+      short pubLen = SECP256k1.derivePublicKey(privateKey, apduBuffer, chainEnd);
+      publicKey.setW(apduBuffer, chainEnd, pubLen);
     }
   }
 

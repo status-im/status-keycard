@@ -34,6 +34,7 @@ public class Crypto {
       hmacSHA512 = Signature.getInstance(Signature.ALG_HMAC_SHA_512, false);
       hmacKey = (HMACKey) KeyBuilder.buildKey(KeyBuilder.TYPE_HMAC_TRANSIENT_DESELECT, KEY_SECRET_SIZE, false);
     } catch (CryptoException e) {
+      hmacSHA512 = null;
       sha512 = MessageDigest.getInstance(MessageDigest.ALG_SHA_512, false);
       blockSize = HMAC_BLOCK_SIZE;
     }
@@ -49,7 +50,7 @@ public class Crypto {
       off += privateKey.getS(tmp, off);
     } else {
       off = (short) (publicKey.getW(tmp, (short) 0) - 1);
-      tmp[0] = ((tmp[(short) off] & 1) != 0 ? (byte) 0x03 : (byte) 0x02);
+      tmp[0] = ((tmp[off] & 1) != 0 ? (byte) 0x03 : (byte) 0x02);
       off = (short) ((short) (off / 2) + 1);
     }
 
@@ -63,7 +64,7 @@ public class Crypto {
 
     privateKey.getS(tmp, (short) 0);
 
-    addm256(tmp, off, tmp, (short) 0, SECP256k1.SECP256K1_R, (short)0, tmp, off);
+    addm256(tmp, off, tmp, (short) 0, SECP256k1.SECP256K1_R, (short) 0, tmp, off);
 
     if (isZero256(tmp, off)) {
       return false;
@@ -135,10 +136,9 @@ public class Crypto {
   }
 
   private static short add256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
-
     short outI = 0;
     for (short i = 31 ; i >= 0 ; i--) {
-      outI = (short) ((short)(a[(short)(aOff + i)] & 0x00FF) + (short)(b[(short)(bOff + i)] & 0xFF) + outI);
+      outI = (short) ((short)(a[(short)(aOff + i)] & 0xFF) + (short)(b[(short)(bOff + i)] & 0xFF) + outI);
       out[(short)(outOff + i)] = (byte)outI ;
       outI = (short)(outI >> 8);
     }
