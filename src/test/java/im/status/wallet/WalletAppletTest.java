@@ -408,6 +408,11 @@ public class WalletAppletTest {
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01, (byte) 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02});
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[] { 1, 0x80000000, 2});
+
+    // Reset master key
+    response = cmdSet.deriveKey(new byte[0]);
+    assertEquals(0x9000, response.getSW());
+    verifyKeyDerivation(keyPair, chainCode, new int[0]);
   }
 
   @Test
