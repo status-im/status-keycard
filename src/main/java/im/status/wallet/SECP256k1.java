@@ -1,5 +1,7 @@
 package im.status.wallet;
 
+import javacard.framework.ISO7816;
+import javacard.framework.ISOException;
 import javacard.security.CryptoException;
 import javacard.security.ECKey;
 import javacard.security.ECPrivateKey;
@@ -47,19 +49,16 @@ public class SECP256k1 {
   private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6; // constant from JavaCard 3.0.5
 
   private static KeyAgreement ecPointMultiplier;
-  private static ECConfig ecConfig;
-  private static ECCurve ecCurve;
-  private static ECPoint ecPoint;
+  private static KeyAgreement ecPointMultiplierX;
 
   static void init() {
     try {
       ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
     } catch(CryptoException e) {
-      ecConfig = new ECConfig((short) 256);
-      ecCurve = new ECCurve(false, SECP256K1_FP, SECP256K1_A, SECP256K1_B, SECP256K1_G, SECP256K1_R, ecConfig);
-      ecPoint = new ECPoint(ecCurve, ecConfig);
+      ecPointMultiplier = null;
     }
 
+    ecPointMultiplierX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
   }
 
   static void setCurveParameters(ECKey key) {
@@ -75,23 +74,28 @@ public class SECP256k1 {
     return multiplyPoint(privateKey, SECP256K1_G, (short) 0, (short) SECP256K1_G.length, pubOut, pubOff);
   }
 
-  /*
-   * This works efficiently only if KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY is implemented. Otherwise  performance will
-   * be very slow, around 5s for a single multiplication.
-   */
-  static short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
-    if(ecPointMultiplier != null) {
-      ecPointMultiplier.init(privateKey);
-      return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
-    } else {
-      ecPoint.setW(point, pointOff, pointLen);
-      short len = privateKey.getS(out, outOff);
-      ecPoint.multiplication(out, outOff, len);
-      return ecPoint.getW(out, outOff);
-    }
+  static short derivePublicX(ECPrivateKey privateKey, byte[] xOut, short xOff) {
+    return multiplyX(privateKey, SECP256K1_G, (short) 0, (short) SECP256K1_G.length, xOut, xOff);
   }
 
-  static boolean hasFastECPointMultiplication() {
+  static short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
+    assetECPointMultiplicationSupport();
+    ecPointMultiplier.init(privateKey);
+    return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
+  }
+
+  static short multiplyX(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
+    ecPointMultiplierX.init(privateKey);
+    return ecPointMultiplierX.generateSecret(point, pointOff, pointLen, out, outOff);
+  }
+
+  static boolean hasECPointMultiplication() {
     return ecPointMultiplier != null;
+  }
+
+  static void assetECPointMultiplicationSupport() {
+    if(!hasECPointMultiplication()) {
+      ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
+    }
   }
 }

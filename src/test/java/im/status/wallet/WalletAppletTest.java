@@ -120,7 +120,7 @@ public class WalletAppletTest {
     cmdSet.openSecureChannel();
 
     // Good case. Since the order of test execution is undefined, the test cannot know if the keys are initialized or not.
-    // Additionally, support for fast public key derivation is hw dependent.
+    // Additionally, support for public key derivation is hw dependent.
     response = cmdSet.getStatus();
     assertEquals(0x9000, response.getSW());
     byte[] data = secureChannel.decryptAPDU(response.getData());

@@ -47,7 +47,7 @@ public class WalletApplet extends Applet {
   static final byte TLV_PIN_RETRY_COUNT = (byte) 0xC0;
   static final byte TLV_PUK_RETRY_COUNT = (byte) 0xC1;
   static final byte TLV_KEY_INITIALIZATION_STATUS = (byte) 0xC2;
-  static final byte TLV_FAST_PUBLIC_KEY_DERIVATION = (byte) 0xC3;
+  static final byte TLV_PUBLIC_KEY_DERIVATION = (byte) 0xC3;
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -176,9 +176,9 @@ public class WalletApplet extends Applet {
     apduBuffer[off++] = TLV_KEY_INITIALIZATION_STATUS;
     apduBuffer[off++] = 1;
     apduBuffer[off++] = privateKey.isInitialized() ? (byte) 0x01 : (byte) 0x00;
-    apduBuffer[off++] = TLV_FAST_PUBLIC_KEY_DERIVATION;
+    apduBuffer[off++] = TLV_PUBLIC_KEY_DERIVATION;
     apduBuffer[off++] = 1;
-    apduBuffer[off++] = SECP256k1.hasFastECPointMultiplication() ? (byte) 0x01 : (byte) 0x00;
+    apduBuffer[off++] = SECP256k1.hasECPointMultiplication() ? (byte) 0x01 : (byte) 0x00;
 
     short len = secureChannel.encryptAPDU(apduBuffer, (short) (off - SecureChannel.SC_OUT_OFFSET));
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
@@ -276,6 +276,7 @@ public class WalletApplet extends Applet {
     short chainOffset = (short)(privOffset + apduBuffer[(short)(privOffset + 1)] + 2);
 
     if (apduBuffer[pubOffset] != TLV_PUB_KEY) {
+      SECP256k1.assetECPointMultiplicationSupport();
       chainOffset = privOffset;
       privOffset = pubOffset;
       pubOffset = -1;
@@ -322,6 +323,8 @@ public class WalletApplet extends Applet {
   }
 
   private void loadSeed(byte[] apduBuffer) {
+    SECP256k1.assetECPointMultiplicationSupport();
+
     if (apduBuffer[ISO7816.OFFSET_LC] != SEED_SIZE) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
@@ -343,6 +346,8 @@ public class WalletApplet extends Applet {
   }
 
   private void deriveKey(APDU apdu) {
+    SECP256k1.assetECPointMultiplicationSupport();
+
     apdu.setIncomingAndReceive();
 
     if (!(secureChannel.isOpen() && pin.isValidated() && isExtended)) {
@@ -359,6 +364,7 @@ public class WalletApplet extends Applet {
 
     short chainEnd = (short) (ISO7816.OFFSET_CDATA + len);
     resetKeys(apduBuffer, chainEnd);
+    signInProgress = false;
 
     for (short i = ISO7816.OFFSET_CDATA; i < chainEnd; i += 4) {
       Crypto.bip32CKDPriv(apduBuffer, i, privateKey, publicKey, chainCode, (short) 0);

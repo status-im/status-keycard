@@ -26,9 +26,10 @@ The PIN can be changed by the user after authentication.
 
 ## Keys & Signature
 
-The application allows loading a replacing of a single EC keyset, defined on the SECP256k1 curve. This keyset is used
-to sign transactions. When the applet is first installed, no keyset is available so signing will fail. It is necessary
-to first load the keyset in order for the application to be fully operational.
+The application allows loading a replacing of a single EC keyset, defined on the SECP256k1 curve. The keyset can contain
+a 32-byte chain code to further derive keys according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) 
+specifications. This keyset is used to sign transactions. When the applet is first installed, no keyset is available so 
+signing will fail. It is necessary to first load the keyset in order for the application to be fully operational.
 
 Signing of transactions is done by uploading the data in blocks no larger than 255 bytes (including the overhead caused
 by the Secure Channel). Segmentation must be handled at the application protocol.
@@ -69,7 +70,7 @@ Response Data format:
   - Tag 0xC0 = PIN retry count (1 byte)
   - Tag 0xC1 = PUK retry count (1 byte)
   - Tag 0xC2 = 0 if key is not initialized, 1 otherwise
-  - Tag 0xC3 = 1 if public key derivation is hw optimized, 0 otherwise
+  - Tag 0xC3 = 1 if public key derivation is supported, 0 otherwise
 
 ### VERIFY PIN
 
@@ -125,7 +126,8 @@ always returns 0x63C0, even if the PUK is inserted correctly. In this case the w
 * P1 = key type
 * P2 = 0x00
 * Data = the key data
-* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A86 if P1 is invalid
+* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A86 if P1 is invalid, 0x6A81 if public key
+  derivation is not supported and the public key is omitted
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
 P1:
@@ -137,12 +139,13 @@ Data:
 
 If P1 is 0x01 or 0x02
 - Tag 0xA1 = keypair template
-  - Tag 0x80 = ECC public key component (can be omitted)
+  - Tag 0x80 = ECC public key component (can be omitted if public key derivation is supported)
   - Tag 0x81 = ECC private key component
   - Tag 0x82 = chain code (if P1=0x02)
   
 If P1 is 0x03 a 64 byte sequence generated according to the BIP39 specifications is expected. The master key will be
-generated according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) specifications.
+generated according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) specifications. This
+is only supported if the hardware supports public key derivation.
 
 This command is used to load or replace the keypair used for signing on the card. This command always aborts open
 signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command will use this keypair for signature.
@@ -151,14 +154,37 @@ signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command
 
 * CLA = 0x80
 * INS = 0xD1
-* P1 = 0x00
-* P2 = 0x00
-* Data = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used.
-* Response SW = 0x9000 on success, 0x6A80 if the format is invalid
+* P1 = derivation options
+* P2 = assisted derivation phase
+* Data = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used. On assisted
+         derivation contains a public key when P2 = 0x02.
+* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A81 if public key derivation is not supported and
+  bit 0 of P1 is set, 0x6A86 if P2 = 0x01 and bit 0 of P1 is not set.
+* Response Data = On assisted derivation and P2 = 0x01 the key derivation template. Empty otherwise.
 * Preconditions: Secure Channel must be opened, user PIN must be verified, an extended keyset must be loaded
 
 This command is used before a signing session to generate a private key according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
-specifications. The generated key is used for all subsequent SIGN sessions.
+specifications. This command always aborts open signing sessions, if any. The generated key is used for all subsequent 
+SIGN sessions. Because JavaCard does not offer native EC point multiplication before version 3.0.5, there is an 
+alternative mode of operation where the public key is partially derived off-card and loaded back on card. In this mode
+of operation only 1 derivation step at the time can be completed and as such during assisted derivation the data can
+contain a single 32-bit integer, instead of a sequence.
+
+P1:
+* bit 0 = if 0 derive autonomously (only works if public key derivation is supported), if 1 do assisted derivation
+* bit 1-6 = reserved
+* bit 7 = if 0 derive from master keys, if 1 derive from current keys
+
+P2:
+* 0x00 = data is 32 a sequence of 32-bit integers
+* 0x01 = data is a public key
+
+Response Data format:
+- Tag 0xA3 = key derivation template
+  - Tag 0x83 = ECC Public Key X component
+  - Tag 0x30 = ECDSA Signature
+    - Tag 0x02 = R value
+    - Tag 0x02 = S value
 
 ### GENERATE MNEMONIC
 
