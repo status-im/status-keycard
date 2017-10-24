@@ -178,7 +178,15 @@ public class WalletAppletCommandSet {
   }
 
   public ResponseAPDU deriveKey(byte[] data) throws CardException {
-    CommandAPDU deriveKey = new CommandAPDU(0x80, WalletApplet.INS_DERIVE_KEY, 0x00, 0x00, secureChannel.encryptAPDU(data));
+    return deriveKey(data, true, false, false);
+  }
+
+  public ResponseAPDU deriveKey(byte[] data, boolean reset, boolean assisted, boolean isPublicKey) throws CardException {
+    byte p1 = assisted ? WalletApplet.DERIVE_P1_ASSISTED_MASK : 0;
+    p1 |= reset ? 0 : WalletApplet.DERIVE_P1_APPEND_MASK;
+    byte p2 = isPublicKey ? WalletApplet.DERIVE_P2_PUBLIC_KEY : WalletApplet.DERIVE_P2_KEY_PATH;
+
+    CommandAPDU deriveKey = new CommandAPDU(0x80, WalletApplet.INS_DERIVE_KEY, p1, p2, secureChannel.encryptAPDU(data));
     return apduChannel.transmit(deriveKey);
   }
 }

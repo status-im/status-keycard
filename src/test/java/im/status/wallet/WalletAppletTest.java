@@ -404,7 +404,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[] { 1 });
 
-    // 3 level with hardned key
+    // 3 levels with hardened key
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01, (byte) 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02});
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[] { 1, 0x80000000, 2});
@@ -413,6 +413,15 @@ public class WalletAppletTest {
     response = cmdSet.deriveKey(new byte[0]);
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[0]);
+
+    // 3 levels with hardened key using separate commands
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, true, false, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x00}, false, false, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, false, false);
+    assertEquals(0x9000, response.getSW());
+    verifyKeyDerivation(keyPair, chainCode, new int[] { 1, 0x80000000, 2});
   }
 
   @Test

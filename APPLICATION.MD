@@ -180,7 +180,9 @@ P2:
 * 0x01 = data is a public key
 
 Response Data format:
-- Tag 0xA3 = key derivation template
+The signature is calculated over the SHA-256 hash of the message "STATUS KEY DERIVATION"
+
+- Tag 0xA2 = key derivation template
   - Tag 0x83 = ECC Public Key X component
   - Tag 0x30 = ECDSA Signature
     - Tag 0x02 = R value
