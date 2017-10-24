@@ -58,7 +58,7 @@ public class WalletApplet extends Applet {
   static final byte TLV_KEY_INITIALIZATION_STATUS = (byte) 0xC2;
   static final byte TLV_PUBLIC_KEY_DERIVATION = (byte) 0xC3;
 
-  private static final byte[] ASSISTED_DERIVATION_HASH = { (byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
+  static final byte[] ASSISTED_DERIVATION_HASH = { (byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -367,8 +367,20 @@ public class WalletApplet extends Applet {
     short len = secureChannel.decryptAPDU(apduBuffer);
 
     boolean assistedDerivation = (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_ASSISTED_MASK) == DERIVE_P1_ASSISTED_MASK;
+    boolean isPublicKey = apduBuffer[ISO7816.OFFSET_P2]  == DERIVE_P2_PUBLIC_KEY;
+    boolean isReset = (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_APPEND_MASK) != DERIVE_P1_APPEND_MASK;
 
-    if (((short) (len % 4) != 0) || (assistedDerivation && len > 0)) {
+    if ((isPublicKey != (expectPublicKey && !isReset)) || (isPublicKey && !assistedDerivation)) {
+      ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+    }
+
+    if (isPublicKey) {
+      publicKey.setW(apduBuffer, ISO7816.OFFSET_CDATA, len);
+      expectPublicKey = false;
+      return;
+    }
+
+    if (((short) (len % 4) != 0) || (assistedDerivation && (len > 4))) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
@@ -378,7 +390,7 @@ public class WalletApplet extends Applet {
 
     short chainEnd = (short) (ISO7816.OFFSET_CDATA + len);
 
-    if ((apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_APPEND_MASK) != DERIVE_P1_APPEND_MASK) {
+    if (isReset) {
       resetKeys(apduBuffer, chainEnd);
       expectPublicKey = false;
     }
@@ -387,9 +399,33 @@ public class WalletApplet extends Applet {
 
     for (short i = ISO7816.OFFSET_CDATA; i < chainEnd; i += 4) {
       Crypto.bip32CKDPriv(apduBuffer, i, privateKey, publicKey, chainCode, (short) 0);
-      short pubLen = SECP256k1.derivePublicKey(privateKey, apduBuffer, chainEnd);
-      publicKey.setW(apduBuffer, chainEnd, pubLen);
+
+      if (assistedDerivation) {
+        expectPublicKey = true;
+        outputPublicX(apdu, apduBuffer);
+        return;
+      } else {
+        short pubLen = SECP256k1.derivePublicKey(privateKey, apduBuffer, chainEnd);
+        publicKey.setW(apduBuffer, chainEnd, pubLen);
+      }
     }
+
+    expectPublicKey = false;
+  }
+
+  private void outputPublicX(APDU apdu, byte[] apduBuffer) {
+    short xLen = SECP256k1.derivePublicX(privateKey, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 4));
+
+    signature.init(privateKey, Signature.MODE_SIGN);
+    short sigLen = signature.signPreComputedHash(ASSISTED_DERIVATION_HASH, (short) 0, (short) ASSISTED_DERIVATION_HASH.length, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + xLen + 4));
+
+    apduBuffer[SecureChannel.SC_OUT_OFFSET] = TLV_KEY_DERIVATION_TEMPLATE;
+    apduBuffer[(short) (SecureChannel.SC_OUT_OFFSET + 1)] = (byte) (xLen + sigLen + 2);
+    apduBuffer[(short) (SecureChannel.SC_OUT_OFFSET + 2)] = TLV_PUB_X;
+    apduBuffer[(short) (SecureChannel.SC_OUT_OFFSET + 3)] = (byte) xLen;
+
+    short outLen = secureChannel.encryptAPDU(apduBuffer, (short) (xLen + sigLen + 4));
+    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, outLen);
   }
 
   private void resetKeys(byte[] buffer, short offset) {

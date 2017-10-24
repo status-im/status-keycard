@@ -4,6 +4,7 @@ import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.smartcardio.CardTerminalSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
 import javacard.framework.AID;
+import org.bitcoinj.core.ECKey;
 import org.bitcoinj.crypto.ChildNumber;
 import org.bitcoinj.crypto.DeterministicKey;
 import org.bitcoinj.crypto.HDKeyDerivation;
@@ -395,8 +396,18 @@ public class WalletAppletTest {
     response = cmdSet.loadKey(keyPair, false, chainCode);
     assertEquals(0x9000, response.getSW());
 
-    // Wrong data format (data length not a multiple of 4)
+    // Wrong P1/P2
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, false, true, true);
+    assertEquals(0x6A86, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, false, false, true);
+    assertEquals(0x6A86, response.getSW());
+
+    // Wrong data format
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00});
+    assertEquals(0x6A80, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00, 0x00});
+    assertEquals(0x6A80, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, true,  true, false);
     assertEquals(0x6A80, response.getSW());
 
     // Correct
@@ -422,6 +433,28 @@ public class WalletAppletTest {
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, false, false);
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[] { 1, 0x80000000, 2});
+
+    // Assisted derivation
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, true, true, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    assertEquals(0x9000, response.getSW());
+    verifyKeyDerivation(keyPair, chainCode, new int[] { 1 });
+
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, true, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    assertEquals(0x9000, response.getSW());
+    verifyKeyDerivation(keyPair, chainCode, new int[] { 1, 2 });
+
+    // Try to derive two keys at once
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, true, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, true, false);
+    assertEquals(0x6a86, response.getSW());
+    response = cmdSet.deriveKey(new byte[0]);
+    assertEquals(0x9000, response.getSW());
+    verifyKeyDerivation(keyPair, chainCode, new int[0]);
   }
 
   @Test
@@ -668,6 +701,21 @@ public class WalletAppletTest {
 
     assertTrue(key.verify(hash, sig));
     assertArrayEquals(key.getPubKeyPoint().getEncoded(false), publicKey);
+  }
+
+  private byte[] derivePublicKey(byte[] data) {
+    byte[] pubKey = Arrays.copyOfRange(data, 3, 4 + data[3]);
+    byte[] signature = Arrays.copyOfRange(data, 4 + data[3], data.length);
+
+    pubKey[0] = 0x02;
+    ECKey candidate = ECKey.fromPublicOnly(pubKey);
+    if (!candidate.verify(WalletApplet.ASSISTED_DERIVATION_HASH, signature)) {
+      pubKey[0] = 0x03;
+      candidate = ECKey.fromPublicOnly(pubKey);
+      assertTrue(candidate.verify(WalletApplet.ASSISTED_DERIVATION_HASH, signature));
+    }
+
+    return candidate.decompress().getPubKey();
   }
 
   private Sign.SignatureData signMessage(byte[] message) throws Exception {
