@@ -279,6 +279,7 @@ public class WalletApplet extends Applet {
     }
 
     signInProgress = false;
+    expectPublicKey = false;
   }
 
   private void loadKeyPair(byte[] apduBuffer, boolean newExtended) {
@@ -500,7 +501,7 @@ public class WalletApplet extends Applet {
   private void sign(APDU apdu) {
     apdu.setIncomingAndReceive();
 
-    if (!(secureChannel.isOpen() && pin.isValidated() && privateKey.isInitialized())) {
+    if (!(secureChannel.isOpen() && pin.isValidated() && privateKey.isInitialized() && !expectPublicKey)) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 

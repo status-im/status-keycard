@@ -282,6 +282,8 @@ public class WalletAppletTest {
 
     cmdSet.openSecureChannel();
 
+    int publicKeyDerivationSW = cmdSet.getPublicKeyDerivationSupport() ? 0x9000 : 0x6a81;
+
     // Security condition violation: PIN not verified
     response = cmdSet.loadKey(keyPair);
     assertEquals(0x6985, response.getSW());
@@ -320,13 +322,13 @@ public class WalletAppletTest {
 
     // Check omitted public key
     response = cmdSet.loadKey(keyPair, true, null);
-    assertEquals(0x9000, response.getSW());
+    assertEquals(publicKeyDerivationSW, response.getSW());
     response = cmdSet.loadKey(keyPair, true, chainCode);
-    assertEquals(0x9000, response.getSW());
+    assertEquals(publicKeyDerivationSW, response.getSW());
 
     // Check seed load
     response = cmdSet.loadKey(keyPair.getPrivate(), chainCode);
-    assertEquals(0x9000, response.getSW());
+    assertEquals(publicKeyDerivationSW, response.getSW());
   }
 
   @Test
@@ -374,6 +376,7 @@ public class WalletAppletTest {
     assertEquals(0x6985, response.getSW());
 
     cmdSet.openSecureChannel();
+    boolean autonomousDerivation = cmdSet.getPublicKeyDerivationSupport();
 
     // Security condition violation: PIN is not verified
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00});
@@ -410,29 +413,35 @@ public class WalletAppletTest {
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, true,  true, false);
     assertEquals(0x6A80, response.getSW());
 
-    // Correct
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01});
-    assertEquals(0x9000, response.getSW());
-    verifyKeyDerivation(keyPair, chainCode, new int[] { 1 });
 
-    // 3 levels with hardened key
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01, (byte) 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02});
-    assertEquals(0x9000, response.getSW());
-    verifyKeyDerivation(keyPair, chainCode, new int[] { 1, 0x80000000, 2});
+    if (autonomousDerivation) {
+      // Correct
+      response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x01});
+      assertEquals(0x9000, response.getSW());
+      verifyKeyDerivation(keyPair, chainCode, new int[]{1});
 
-    // Reset master key
-    response = cmdSet.deriveKey(new byte[0]);
-    assertEquals(0x9000, response.getSW());
-    verifyKeyDerivation(keyPair, chainCode, new int[0]);
+      // 3 levels with hardened key
+      response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x01, (byte) 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02});
+      assertEquals(0x9000, response.getSW());
+      verifyKeyDerivation(keyPair, chainCode, new int[]{1, 0x80000000, 2});
 
-    // 3 levels with hardened key using separate commands
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, true, false, false);
-    assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x00}, false, false, false);
-    assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, false, false);
-    assertEquals(0x9000, response.getSW());
-    verifyKeyDerivation(keyPair, chainCode, new int[] { 1, 0x80000000, 2});
+      // Reset master key
+      response = cmdSet.deriveKey(new byte[0]);
+      assertEquals(0x9000, response.getSW());
+      verifyKeyDerivation(keyPair, chainCode, new int[0]);
+
+      // 3 levels with hardened key using separate commands
+      response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x01}, true, false, false);
+      assertEquals(0x9000, response.getSW());
+      response = cmdSet.deriveKey(new byte[]{(byte) 0x80, 0x00, 0x00, 0x00}, false, false, false);
+      assertEquals(0x9000, response.getSW());
+      response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x02}, false, false, false);
+      assertEquals(0x9000, response.getSW());
+      verifyKeyDerivation(keyPair, chainCode, new int[]{1, 0x80000000, 2});
+    } else {
+      response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x01});
+      assertEquals(0x6a81, response.getSW());
+    }
 
     // Assisted derivation
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, true, true, false);
@@ -452,9 +461,21 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, true, false);
     assertEquals(0x6a86, response.getSW());
+
+    // Reset master key
     response = cmdSet.deriveKey(new byte[0]);
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[0]);
+
+    // Try to sign before load public key, then resume loading public key
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, true, false);
+    assertEquals(0x9000, response.getSW());
+    byte[] key = derivePublicKey(secureChannel.decryptAPDU(response.getData()));
+    response = cmdSet.sign(sha256("test".getBytes()), WalletApplet.SIGN_P1_PRECOMPUTED_HASH, true, true);
+    assertEquals(0x6985, response.getSW());
+    response = cmdSet.deriveKey(key, false, true, true);
+    assertEquals(0x9000, response.getSW());
+    verifyKeyDerivation(keyPair, chainCode, new int[] { 2 });
   }
 
   @Test
@@ -732,13 +753,14 @@ public class WalletAppletTest {
   private byte[] derivePublicKey(byte[] data) {
     byte[] pubKey = Arrays.copyOfRange(data, 3, 4 + data[3]);
     byte[] signature = Arrays.copyOfRange(data, 4 + data[3], data.length);
+    byte[] hash = sha256("STATUS KEY DERIVATION".getBytes());
 
     pubKey[0] = 0x02;
     ECKey candidate = ECKey.fromPublicOnly(pubKey);
-    if (!candidate.verify(WalletApplet.ASSISTED_DERIVATION_HASH, signature)) {
+    if (!candidate.verify(hash, signature)) {
       pubKey[0] = 0x03;
       candidate = ECKey.fromPublicOnly(pubKey);
-      assertTrue(candidate.verify(WalletApplet.ASSISTED_DERIVATION_HASH, signature));
+      assertTrue(candidate.verify(hash, signature));
     }
 
     return candidate.decompress().getPubKey();
