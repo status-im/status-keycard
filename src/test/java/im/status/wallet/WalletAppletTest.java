@@ -460,22 +460,59 @@ public class WalletAppletTest {
   @Test
   @DisplayName("SIGN command")
   void signTest() throws Exception {
-    Random r = new Random();
-    byte[] data = new byte[SecureChannelSession.PAYLOAD_MAX_SIZE];
-    byte[] smallData = Arrays.copyOf(data, 20);
-    r.nextBytes(data);
+    byte[] data = "some data to be hashed".getBytes();
+    byte[] hash = sha256(data);
 
     // Security condition violation: SecureChannel not open
-    ResponseAPDU response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,true, true);
+    ResponseAPDU response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
     assertEquals(0x6985, response.getSW());
 
     cmdSet.openSecureChannel();
 
     // Security condition violation: PIN not verified
-    response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,true,true);
+    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true,true);
     assertEquals(0x6985, response.getSW());
 
     response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    KeyPair keyPair = keypairGenerator().generateKeyPair();
+    Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
+    signature.initVerify(keyPair.getPublic());
+
+    response = cmdSet.loadKey(keyPair);
+    assertEquals(0x9000, response.getSW());
+
+    // Wrong P2: no active signing session but first block bit not set
+    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,false, false);
+    assertEquals(0x6A86, response.getSW());
+
+    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,false, true);
+    assertEquals(0x6A86, response.getSW());
+
+    // Correctly sign a precomputed hash
+    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    assertEquals(0x9000, response.getSW());
+    byte[] sig = secureChannel.decryptAPDU(response.getData());
+    byte[] keyData = extractPublicKey(sig);
+    sig = extractSignature(sig);
+    assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, keyData.length);
+    signature.update(data);
+    assertTrue(signature.verify(sig));
+  }
+
+  @Test
+  @DisplayName("SIGN data (unused for the current scenario)")
+  @Tag("manual")
+  void signDataTest() throws Exception {
+    Random r = new Random();
+    byte[] data = new byte[SecureChannelSession.PAYLOAD_MAX_SIZE];
+    byte[] smallData = Arrays.copyOf(data, 20);
+    r.nextBytes(data);
+
+    cmdSet.openSecureChannel();
+
+    ResponseAPDU response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
 
     KeyPair keyPair = keypairGenerator().generateKeyPair();
@@ -492,21 +529,10 @@ public class WalletAppletTest {
     response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,false, true);
     assertEquals(0x6A86, response.getSW());
 
-    // Correctly sign a precomputed hash
-    MessageDigest md = MessageDigest.getInstance("SHA-256", "BC");
-    response = cmdSet.sign(md.digest(data), WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
-    assertEquals(0x9000, response.getSW());
-    byte[] sig = secureChannel.decryptAPDU(response.getData());
-    byte[] keyData = extractPublicKey(sig);
-    sig = extractSignature(sig);
-    assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, keyData.length);
-    signature.update(data);
-    assertTrue(signature.verify(sig));
-
     // Correctly sign 1 block (P2: 0x81)
     response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,true, true);
     assertEquals(0x9000, response.getSW());
-    sig = extractSignature(secureChannel.decryptAPDU(response.getData()));
+    byte[] sig = extractSignature(secureChannel.decryptAPDU(response.getData()));
     signature.update(smallData);
     assertTrue(signature.verify(sig));
 
