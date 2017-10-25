@@ -37,13 +37,13 @@ public class WalletAppletCommandSet {
     return secureChannel.openSecureChannel(apduChannel);
   }
 
-  public ResponseAPDU getStatus() throws CardException {
-    CommandAPDU getStatus = new CommandAPDU(0x80, WalletApplet.INS_GET_STATUS, 0, 0, 256);
+  public ResponseAPDU getStatus(byte info) throws CardException {
+    CommandAPDU getStatus = new CommandAPDU(0x80, WalletApplet.INS_GET_STATUS, info, 0, 256);
     return apduChannel.transmit(getStatus);
   }
 
   public boolean getPublicKeyDerivationSupport() throws CardException {
-    ResponseAPDU resp = getStatus();
+    ResponseAPDU resp = getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     byte[] data = secureChannel.decryptAPDU(resp.getData());
     return data[data.length - 1] == 1;
   }

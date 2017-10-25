@@ -22,6 +22,9 @@ public class WalletApplet extends Applet {
   static final short CHAIN_CODE_SIZE = 32;
   static final short SEED_SIZE = CHAIN_CODE_SIZE * 2;
 
+  static final byte GET_STATUS_P1_APPLICATION = 0x00;
+  static final byte GET_STATUS_P1_KEY_PATH = 0x01;
+
   static final byte LOAD_KEY_P1_EC = 0x01;
   static final byte LOAD_KEY_P1_EXT_EC = 0x02;
   static final byte LOAD_KEY_P1_SEED = 0x03;
@@ -58,7 +61,8 @@ public class WalletApplet extends Applet {
   static final byte TLV_KEY_INITIALIZATION_STATUS = (byte) 0xC2;
   static final byte TLV_PUBLIC_KEY_DERIVATION = (byte) 0xC3;
 
-  static final byte[] ASSISTED_DERIVATION_HASH = { (byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
+  private static final byte[] ASSISTED_DERIVATION_HASH = { (byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
+  private static final short KEY_PATH_MAX_DEPTH = 10;
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -72,6 +76,9 @@ public class WalletApplet extends Applet {
   private ECPublicKey publicKey;
   private ECPrivateKey privateKey;
   private byte[] chainCode;
+
+  private byte[] keyPath;
+  private short keyPathLen;
 
   private Signature signature;
   private boolean signInProgress;
@@ -101,6 +108,7 @@ public class WalletApplet extends Applet {
     masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
     masterChainCode = new byte[32];
     chainCode = new byte[32];
+    keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
 
     publicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
     privateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
@@ -176,6 +184,22 @@ public class WalletApplet extends Applet {
     short off = SecureChannel.SC_OUT_OFFSET;
     byte[] apduBuffer = apdu.getBuffer();
 
+    short len;
+
+    if (apduBuffer[ISO7816.OFFSET_P1] == GET_STATUS_P1_APPLICATION) {
+      len = getApplicationStatus(apduBuffer, off);
+    } else if (apduBuffer[ISO7816.OFFSET_P1] == GET_STATUS_P1_KEY_PATH) {
+      len = getKeyStatus(apduBuffer, off);
+    } else {
+      ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+      return;
+    }
+
+    len = secureChannel.encryptAPDU(apduBuffer, len);
+    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
+  }
+
+  private short getApplicationStatus(byte[] apduBuffer, short off) {
     apduBuffer[off++] = TLV_APPLICATION_STATUS_TEMPLATE;
     apduBuffer[off++] = 9;
     apduBuffer[off++] = TLV_PIN_RETRY_COUNT;
@@ -191,8 +215,16 @@ public class WalletApplet extends Applet {
     apduBuffer[off++] = 1;
     apduBuffer[off++] = SECP256k1.hasECPointMultiplication() ? (byte) 0x01 : (byte) 0x00;
 
-    short len = secureChannel.encryptAPDU(apduBuffer, (short) (off - SecureChannel.SC_OUT_OFFSET));
-    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
+    return (short) (off - SecureChannel.SC_OUT_OFFSET);
+  }
+
+  private short getKeyStatus(byte[] apduBuffer, short off) {
+    if (expectPublicKey) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    Util.arrayCopyNonAtomic(keyPath, (short) 0, apduBuffer, off, keyPathLen);
+    return keyPathLen;
   }
 
   private void verifyPIN(APDU apdu) {
@@ -280,6 +312,7 @@ public class WalletApplet extends Applet {
 
     signInProgress = false;
     expectPublicKey = false;
+    keyPathLen = 0;
   }
 
   private void loadKeyPair(byte[] apduBuffer, boolean newExtended) {
@@ -378,10 +411,11 @@ public class WalletApplet extends Applet {
     if (isPublicKey) {
       publicKey.setW(apduBuffer, ISO7816.OFFSET_CDATA, len);
       expectPublicKey = false;
+      keyPathLen += 4;
       return;
     }
 
-    if (((short) (len % 4) != 0) || (assistedDerivation && (len > 4))) {
+    if (((short) (len % 4) != 0) || (assistedDerivation && (len > 4)) || ((short)(len + (isReset ? 0 : keyPathLen)) > keyPath.length)) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
@@ -394,9 +428,12 @@ public class WalletApplet extends Applet {
     if (isReset) {
       resetKeys(apduBuffer, chainEnd);
       expectPublicKey = false;
+      keyPathLen = 0;
     }
 
     signInProgress = false;
+
+    Util.arrayCopyNonAtomic(apduBuffer, ISO7816.OFFSET_CDATA, keyPath, keyPathLen, len);
 
     for (short i = ISO7816.OFFSET_CDATA; i < chainEnd; i += 4) {
       Crypto.bip32CKDPriv(apduBuffer, i, privateKey, publicKey, chainCode, (short) 0);
@@ -412,6 +449,7 @@ public class WalletApplet extends Applet {
     }
 
     expectPublicKey = false;
+    keyPathLen += len;
   }
 
   private void outputPublicX(APDU apdu, byte[] apduBuffer) {

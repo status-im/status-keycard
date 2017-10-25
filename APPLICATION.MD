@@ -59,18 +59,22 @@ The OPEN SECURE CHANNEL command is as specified in the [SECURE_CHANNEL.MD](SECUR
 ### GET STATUS
 * CLA = 0x80
 * INS = 0xF2
-* P1 = 0x00
+* P1 = 0x00 for application status, 0x01 for key path status
 * P2 = 0x00
-* Response SW = 0x9000 on success
-* Response Data = Application Status Template
-* Preconditions: Secure Channel must be opened
+* Response SW = 0x9000 on success, 0x6A86 on undefined P1
+* Response Data = Application Status Template or Key Path
+* Preconditions: Secure Channel must be opened, if Key Path is required then the card must not be in the  middle of a derivation session
 
 Response Data format:
+if P1 = 0x00:
 - Tag 0xA3 = Application Status Template
   - Tag 0xC0 = PIN retry count (1 byte)
   - Tag 0xC1 = PUK retry count (1 byte)
   - Tag 0xC2 = 0 if key is not initialized, 1 otherwise
   - Tag 0xC3 = 1 if public key derivation is supported, 0 otherwise
+
+if P1 = 0x01
+- a sequence of 32-bit numbers indicating the current key path. Empty if master key is selected.
 
 ### VERIFY PIN
 
@@ -168,7 +172,8 @@ specifications. This command always aborts open signing sessions, if any. The ge
 SIGN sessions. Because JavaCard does not offer native EC point multiplication before version 3.0.5, there is an 
 alternative mode of operation where the public key is partially derived off-card and loaded back on card. In this mode
 of operation only 1 derivation step at the time can be completed and as such during assisted derivation the data can
-contain a single 32-bit integer, instead of a sequence.
+contain a single 32-bit integer, instead of a sequence. The maximum depth of derivation from the master key is 10. Any
+attempt to get deeper results in 0x6A80 being returned.
 
 P1:
 * bit 0 = if 0 derive autonomously (only works if public key derivation is supported), if 1 do assisted derivation

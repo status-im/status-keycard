@@ -30,7 +30,10 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.security.*;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.Security;
+import java.security.Signature;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -116,30 +119,36 @@ public class WalletAppletTest {
   @DisplayName("GET STATUS command")
   void getStatusTest() throws CardException {
     // Security condition violation: SecureChannel not open
-    ResponseAPDU response = cmdSet.getStatus();
+    ResponseAPDU response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x6985, response.getSW());
     cmdSet.openSecureChannel();
 
     // Good case. Since the order of test execution is undefined, the test cannot know if the keys are initialized or not.
     // Additionally, support for public key derivation is hw dependent.
-    response = cmdSet.getStatus();
+    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
     byte[] data = secureChannel.decryptAPDU(response.getData());
     assertTrue(Hex.toHexString(data).matches("a309c00103c10105c2010[0-1]c3010[0-1]"));
 
     response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C2, response.getSW());
-    response = cmdSet.getStatus();
+    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
     data = secureChannel.decryptAPDU(response.getData());
     assertTrue(Hex.toHexString(data).matches("a309c00102c10105c2010[0-1]c3010[0-1]"));
 
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.getStatus();
+    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
     data = secureChannel.decryptAPDU(response.getData());
     assertTrue(Hex.toHexString(data).matches("a309c00103c10105c2010[0-1]c3010[0-1]"));
+
+    // Check that key path is empty
+    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);
+    assertEquals(0x9000, response.getSW());
+    data = secureChannel.decryptAPDU(response.getData());
+    assertEquals(0, data.length);
   }
 
   @Test
@@ -467,15 +476,22 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[0]);
 
-    // Try to sign before load public key, then resume loading public key
+    // Try to sign and get key path before load public key, then resume loading public key
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, true, false);
     assertEquals(0x9000, response.getSW());
     byte[] key = derivePublicKey(secureChannel.decryptAPDU(response.getData()));
     response = cmdSet.sign(sha256("test".getBytes()), WalletApplet.SIGN_P1_PRECOMPUTED_HASH, true, true);
     assertEquals(0x6985, response.getSW());
+    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);
+    assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(key, false, true, true);
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[] { 2 });
+
+    // Reset master key
+    response = cmdSet.deriveKey(new byte[0]);
+    assertEquals(0x9000, response.getSW());
+    verifyKeyDerivation(keyPair, chainCode, new int[0]);
   }
 
   @Test
@@ -748,6 +764,18 @@ public class WalletAppletTest {
 
     assertTrue(key.verify(hash, sig));
     assertArrayEquals(key.getPubKeyPoint().getEncoded(false), publicKey);
+
+    resp = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);
+    assertEquals(0x9000, resp.getSW());
+    byte[] rawPath = secureChannel.decryptAPDU(resp.getData());
+
+    assertEquals(path.length * 4, rawPath.length);
+
+    for (int i = 0; i < path.length; i++) {
+      int k = path[i];
+      int k1 = (rawPath[i * 4] << 24) | (rawPath[(i * 4) + 1] << 16) | (rawPath[(i * 4) + 2] << 8) | rawPath[(i * 4) + 3];
+      assertEquals(k, k1);
+    }
   }
 
   private byte[] derivePublicKey(byte[] data) {

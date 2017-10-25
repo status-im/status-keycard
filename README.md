@@ -35,11 +35,11 @@ In order to test with the simulator, you need to pass these additional parameter
 ```
 com.fidesmo.gradle.javacard.home=/home/username/javacard-3_0_4
 im.status.gradle.gpshell=/usr/local/bin/gpshell
-im.status.gradle.gpshell.isd=A000000003000000
+im.status.gradle.gpshell.isd=A000000151000000
 im.status.gradle.gpshell.mac_key=404142434445464748494a4b4c4d4e4f
 im.status.gradle.gpshell.enc_key=404142434445464748494a4b4c4d4e4f
 im.status.gradle.gpshell.kek_key=404142434445464748494a4b4c4d4e4f
-im.status.gradle.gpshell.kvn=2
+im.status.gradle.gpshell.kvn=0
 ```
 
 ## Implementation notes
