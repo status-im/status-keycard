@@ -539,6 +539,95 @@ public class WalletAppletTest {
   }
 
   @Test
+  @DisplayName("SET PINLESS PATH command")
+  void setPinlessPathTest() throws Exception {
+    byte[] data = "some data to be hashed".getBytes();
+    byte[] hash = sha256(data);
+
+    KeyPairGenerator g = keypairGenerator();
+    KeyPair keyPair = g.generateKeyPair();
+    byte[] chainCode = new byte[32];
+    new Random().nextBytes(chainCode);
+
+    // Security condition violation: SecureChannel not open
+    ResponseAPDU response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02});
+    assertEquals(0x6985, response.getSW());
+
+    cmdSet.openSecureChannel();
+
+    // Security condition violation: PIN not verified
+    response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02});
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.loadKey(keyPair, false, chainCode);
+    assertEquals(0x9000, response.getSW());
+
+    // Wrong data
+    response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00});
+    assertEquals(0x6a80, response.getSW());
+    response = cmdSet.setPinlessPath(new byte[(WalletApplet.KEY_PATH_MAX_DEPTH + 1)* 4]);
+    assertEquals(0x6a80, response.getSW());
+
+    // Correct
+    response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02});
+    assertEquals(0x9000, response.getSW());
+
+    // Verify that only PINless path can be used without PIN
+    resetAndSelectAndOpenSC();
+    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    assertEquals(0x6985, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, true, true, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, false, true, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    assertEquals(0x6985, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, true, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    assertEquals(0x9000, response.getSW());
+
+    // Verify changing path
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01});
+    assertEquals(0x9000, response.getSW());
+    resetAndSelectAndOpenSC();
+    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    assertEquals(0x6985, response.getSW());
+    assertEquals(0x6985, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, true, true, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, false, true, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    assertEquals(0x9000, response.getSW());
+
+    // Reset
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.setPinlessPath(new byte[] {});
+    assertEquals(0x9000, response.getSW());
+    resetAndSelectAndOpenSC();
+    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    assertEquals(0x6985, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, true, true, false);
+    assertEquals(0x6985, response.getSW());
+  }
+
+  @Test
   @DisplayName("SIGN data (unused for the current scenario)")
   @Tag("manual")
   void signDataTest() throws Exception {

@@ -12,11 +12,13 @@ public class WalletApplet extends Applet {
   static final byte INS_DERIVE_KEY = (byte) 0xD1;
   static final byte INS_GENERATE_MNEMONIC = (byte) 0xD2;
   static final byte INS_SIGN = (byte) 0xC0;
+  static final byte INS_SET_PINLESS_PATH = (byte) 0xC1;
 
   static final byte PUK_LENGTH = 12;
   static final byte PUK_MAX_RETRIES = 5;
   static final byte PIN_LENGTH = 6;
   static final byte PIN_MAX_RETRIES = 3;
+  static final short KEY_PATH_MAX_DEPTH = 10;
 
   static final short EC_KEY_SIZE = 256;
   static final short CHAIN_CODE_SIZE = 32;
@@ -62,7 +64,6 @@ public class WalletApplet extends Applet {
   static final byte TLV_PUBLIC_KEY_DERIVATION = (byte) 0xC3;
 
   private static final byte[] ASSISTED_DERIVATION_HASH = { (byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
-  private static final short KEY_PATH_MAX_DEPTH = 10;
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -79,6 +80,9 @@ public class WalletApplet extends Applet {
 
   private byte[] keyPath;
   private short keyPathLen;
+
+  private byte[] pinlessPath;
+  private short pinlessPathLen;
 
   private Signature signature;
   private boolean signInProgress;
@@ -109,6 +113,7 @@ public class WalletApplet extends Applet {
     masterChainCode = new byte[32];
     chainCode = new byte[32];
     keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
+    pinlessPath = new byte[KEY_PATH_MAX_DEPTH * 4];
 
     publicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
     privateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
@@ -159,6 +164,9 @@ public class WalletApplet extends Applet {
         break;
       case INS_SIGN:
         sign(apdu);
+        break;
+      case INS_SET_PINLESS_PATH:
+        setPinlessPath(apdu);
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
@@ -391,7 +399,7 @@ public class WalletApplet extends Applet {
   }
 
   private void deriveKey(APDU apdu) {
-    if (!(secureChannel.isOpen() && pin.isValidated() && isExtended)) {
+    if (!(secureChannel.isOpen() && (pin.isValidated() || (pinlessPathLen > 0)) && isExtended)) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
@@ -539,7 +547,7 @@ public class WalletApplet extends Applet {
   private void sign(APDU apdu) {
     apdu.setIncomingAndReceive();
 
-    if (!(secureChannel.isOpen() && pin.isValidated() && privateKey.isInitialized() && !expectPublicKey)) {
+    if (!(secureChannel.isOpen() && (pin.isValidated() || isPinless()) && privateKey.isInitialized() && !expectPublicKey)) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
@@ -581,6 +589,26 @@ public class WalletApplet extends Applet {
     }
   }
 
+  private void setPinlessPath(APDU apdu) {
+    apdu.setIncomingAndReceive();
+
+    if (!(secureChannel.isOpen() && pin.isValidated())) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    byte[] apduBuffer = apdu.getBuffer();
+    short len = secureChannel.decryptAPDU(apduBuffer);
+
+    if (((short) (len % 4) != 0) || (len > pinlessPath.length)) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    JCSystem.beginTransaction();
+    pinlessPathLen = len;
+    Util.arrayCopy(apduBuffer, ISO7816.OFFSET_CDATA, pinlessPath, (short) 0, len);
+    JCSystem.commitTransaction();
+  }
+
   private boolean allDigits(byte[] buffer, short off, short len) {
     while(len > 0) {
       len--;
@@ -593,5 +621,9 @@ public class WalletApplet extends Applet {
     }
 
     return true;
+  }
+
+  private boolean isPinless() {
+    return (pinlessPathLen > 0) && (pinlessPathLen == keyPathLen) && (Util.arrayCompare(keyPath, (short) 0, pinlessPath, (short) 0, keyPathLen) == 0);
   }
 }

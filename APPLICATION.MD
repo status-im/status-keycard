@@ -20,7 +20,7 @@ and passed as an installation parameter to the applet according to the JavaCard 
 to unblock the applet using the PUK, the PUK is blocked, meaning the the wallet is lost.
 
 After authentication, the user remains authenticated until the application is either deselected or the card is reset.
-Authentication with PIN is a requirement for all further commands to succeed.
+Authentication with PIN is a requirement for most commands to succeed.
 
 The PIN can be changed by the user after authentication.
 
@@ -32,7 +32,9 @@ specifications. This keyset is used to sign transactions. When the applet is fir
 signing will fail. It is necessary to first load the keyset in order for the application to be fully operational.
 
 Signing of transactions is done by uploading the data in blocks no larger than 255 bytes (including the overhead caused
-by the Secure Channel). Segmentation must be handled at the application protocol.
+by the Secure Channel). Segmentation must be handled at the application protocol. Another option is to sign the hash
+of the transaction, with the hash being calculated off-card. Signing generally requires the PIN to be authenticated,
+however the user can set a special key path which requires no authentication.
 
 ## APDUs
 
@@ -57,6 +59,7 @@ be used by the client to establish the Secure Channel.
 The OPEN SECURE CHANNEL command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD).
 
 ### GET STATUS
+
 * CLA = 0x80
 * INS = 0xF2
 * P1 = 0x00 for application status, 0x01 for key path status
@@ -165,7 +168,7 @@ signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command
 * Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A81 if public key derivation is not supported and
   bit 0 of P1 is set, 0x6A86 if P2 = 0x01 and bit 0 of P1 is not set.
 * Response Data = On assisted derivation and P2 = 0x01 the key derivation template. Empty otherwise.
-* Preconditions: Secure Channel must be opened, user PIN must be verified, an extended keyset must be loaded
+* Preconditions: Secure Channel must be opened, user PIN must be verified (if no PIN-less key is defined), an extended keyset must be loaded
 
 This command is used before a signing session to generate a private key according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
 specifications. This command always aborts open signing sessions, if any. The generated key is used for all subsequent 
@@ -181,7 +184,7 @@ P1:
 * bit 7 = if 0 derive from master keys, if 1 derive from current keys
 
 P2:
-* 0x00 = data is 32 a sequence of 32-bit integers
+* 0x00 = data is a sequence of 32-bit integers
 * 0x01 = data is a public key
 
 Response Data format:
@@ -216,14 +219,13 @@ human-readable mnemonic. Each integer can have a value from 0 to 2047.
 * Data = the data to sign
 * Response = if P2 indicates last segment, the public key and the signature are returned
 * Response SW = 0x9000 on success, 0x6A86 if P2 is invalid
-* Preconditions: Secure Channel must be opened, user PIN must be verified, a valid keypair must be loaded
+* Preconditions: Secure Channel must be opened, user PIN must be verified (or a PIN-less key must be active), a valid keypair must be loaded
 
 P1:
 * 0x00 = transaction data
 * 0x01 = precomputed hash
 
 P2:
-
 * bit 0 = if 1 first block, if 0 other block
 * bit 1-6 = reserved
 * bit 7 = if 0 more blocks, if 1 last block
@@ -255,3 +257,16 @@ This segmentation scheme allows resuming signature sessions if other commands mu
 the same time avoid generating signatures over partial data, since both the first and the last block are marked.
 
 On applet selection any pending signing session is aborted.
+
+### SET PINLESS PATH
+
+* CLA = 0x80
+* INS = 0xC1
+* P1 = 0x00
+* P2 = 0x00
+* Data = a sequence of 32-bit integers
+* Response SW = 0x9000 on success, 0x6A80 if data is invalid
+* Preconditions: Secure Channel must be opened, user PIN must be verified
+
+Sets the given sequence of 32-bit integers as a PIN-less path. When the current derived key matches this path, SIGN
+will work even if no PIN authentication has been performed. An empty sequence means that no PIN-less path is defined.
