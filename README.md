@@ -28,7 +28,16 @@ In order to test with the simulator, you need to pass these additional parameter
 1. Download and install the JavaCard 3.0.4 SDK from [Oracle](http://www.oracle.com/technetwork/java/javasebusiness/downloads/java-archive-downloads-javame-419430.html#java_card_kit-classic-3_0_4-rr-bin-do)
 2. Clone the Github repo for our fork of [jCardSim](https://github.com/status-im/jcardsim)
 3. Create a gradle.properties (see below for an example)
-4. Run `./gradlew build`
+4. Run `./gradlew convertJavacard`
+
+## Installation
+1. Follow all steps from the Compilation phase (except the last one)
+2. Disconnect all card reader terminals from the system, except the one with the card where you want to install the applet
+3. Run `./gradlew install`
+
+## Testing
+1. Follow all steps from the Installation phase (except the last one)
+2. Run `./gradlew test`
 
 ## Example gradle.properties file
 
@@ -46,6 +55,3 @@ im.status.gradle.gpshell.kvn=0
 
 * The applet requires JavaCard 3.0.4 or later.
 * The class byte of the APDU is not checked since there are no conflicting INS code.
-* Automated tests using JUnit 5 are included. The test require the application to be already installed. The first
-  card terminal found by Java will be used, to please disconnect all card terminals except the one to be used for
-  testing.
