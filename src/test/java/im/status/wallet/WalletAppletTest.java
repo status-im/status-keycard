@@ -531,7 +531,7 @@ public class WalletAppletTest {
     response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
     assertEquals(0x9000, response.getSW());
     byte[] sig = secureChannel.decryptAPDU(response.getData());
-    byte[] keyData = extractPublicKey(sig);
+    byte[] keyData = extractPublicKeyFromSignature(sig);
     sig = extractSignature(sig);
     assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, keyData.length);
     signature.update(data);
@@ -624,6 +624,63 @@ public class WalletAppletTest {
     response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, true, true, false);
+    assertEquals(0x6985, response.getSW());
+  }
+
+  @Test
+  @DisplayName("EXPORT KEY command")
+  void exportKey() throws Exception {
+    KeyPairGenerator g = keypairGenerator();
+    KeyPair keyPair = g.generateKeyPair();
+    byte[] chainCode = new byte[32];
+    new Random().nextBytes(chainCode);
+
+    // Security condition violation: SecureChannel not open
+    ResponseAPDU response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    assertEquals(0x6985, response.getSW());
+
+    cmdSet.openSecureChannel();
+
+    // Security condition violation: PIN not verified
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.loadKey(keyPair, false, chainCode);
+    assertEquals(0x9000, response.getSW());
+
+    // Security condition violation: current key is not Whisper key
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, true, true, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    assertEquals(0x6985, response.getSW());
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, false, true, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    assertEquals(0x9000, response.getSW());
+
+    // Wrong P1
+    response = cmdSet.exportKey((byte) 0);
+    assertEquals(0x6a86, response.getSW());
+    response = cmdSet.exportKey((byte) 2);
+    assertEquals(0x6a86, response.getSW());
+
+    // Correct
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    assertEquals(0x9000, response.getSW());
+    byte[] keyTemplate = secureChannel.decryptAPDU(response.getData());
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 1, 1 });
+
+    // Reset
+    response = cmdSet.deriveKey(new byte[] {}, true, false, false);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
     assertEquals(0x6985, response.getSW());
   }
 
@@ -785,7 +842,7 @@ public class WalletAppletTest {
     return Arrays.copyOfRange(sig, off, off + sig[off + 1] + 2);
   }
 
-  private byte[] extractPublicKey(byte[] sig) {
+  private byte[] extractPublicKeyFromSignature(byte[] sig) {
     assertEquals(WalletApplet.TLV_SIGNATURE_TEMPLATE, sig[0]);
     assertEquals((byte) 0x81, sig[1]);
     assertEquals(WalletApplet.TLV_PUB_KEY, sig[3]);
@@ -838,17 +895,13 @@ public class WalletAppletTest {
   }
 
   private void verifyKeyDerivation(KeyPair keyPair, byte[] chainCode, int[] path) throws Exception {
-    DeterministicKey key = HDKeyDerivation.createMasterPrivKeyFromBytes(((org.bouncycastle.jce.interfaces.ECPrivateKey) keyPair.getPrivate()).getD().toByteArray(), chainCode);
-
-    for (int i : path) {
-      key = HDKeyDerivation.deriveChildKey(key, new ChildNumber(i));
-    }
+    DeterministicKey key = deriveKey(keyPair, chainCode, path);
 
     byte[] hash = Hash.sha3(new byte[8]);
     ResponseAPDU resp = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH, true, true);
     assertEquals(0x9000, resp.getSW());
     byte[] sig = secureChannel.decryptAPDU(resp.getData());
-    byte[] publicKey = extractPublicKey(sig);
+    byte[] publicKey = extractPublicKeyFromSignature(sig);
     sig = extractSignature(sig);
 
     assertTrue(key.verify(hash, sig));
@@ -865,6 +918,34 @@ public class WalletAppletTest {
       int k1 = (rawPath[i * 4] << 24) | (rawPath[(i * 4) + 1] << 16) | (rawPath[(i * 4) + 2] << 8) | rawPath[(i * 4) + 3];
       assertEquals(k, k1);
     }
+  }
+
+  private void verifyExportedKey(byte[] keyTemplate, KeyPair keyPair, byte[] chainCode, int[] path) {
+    ECKey key = deriveKey(keyPair, chainCode, path).decompress();
+    assertEquals(WalletApplet.TLV_KEY_TEMPLATE, keyTemplate[0]);
+    assertEquals(WalletApplet.TLV_PUB_KEY, keyTemplate[2]);
+    byte[] pubKey = Arrays.copyOfRange(keyTemplate, 4, 4 + keyTemplate[3]);
+    assertEquals(WalletApplet.TLV_PRIV_KEY, keyTemplate[4 + pubKey.length]);
+    byte[] privateKey = Arrays.copyOfRange(keyTemplate, 6 + pubKey.length, 6 + pubKey.length + keyTemplate[5 + pubKey.length]);
+
+    byte[] tPrivKey = key.getPrivKey().toByteArray();
+
+    if (tPrivKey[0] == 0x00) {
+      tPrivKey = Arrays.copyOfRange(tPrivKey, 1, tPrivKey.length);
+    }
+
+    assertArrayEquals(key.getPubKey(), pubKey);
+    assertArrayEquals(tPrivKey, privateKey);
+  }
+
+  private DeterministicKey deriveKey(KeyPair keyPair, byte[] chainCode, int[] path) {
+    DeterministicKey key = HDKeyDerivation.createMasterPrivKeyFromBytes(((org.bouncycastle.jce.interfaces.ECPrivateKey) keyPair.getPrivate()).getD().toByteArray(), chainCode);
+
+    for (int i : path) {
+      key = HDKeyDerivation.deriveChildKey(key, new ChildNumber(i));
+    }
+
+    return key;
   }
 
   private byte[] derivePublicKey(byte[] data) {
@@ -909,7 +990,7 @@ public class WalletAppletTest {
     Method recoverFromSignature = Sign.class.getDeclaredMethod("recoverFromSignature", int.class, ecdsaSignature, byte[].class);
     recoverFromSignature.setAccessible(true);
 
-    byte[] pubData = extractPublicKey(respData);
+    byte[] pubData = extractPublicKeyFromSignature(respData);
     BigInteger publicKey = new BigInteger(Arrays.copyOfRange(pubData, 1, pubData.length));
 
     int recId = -1;

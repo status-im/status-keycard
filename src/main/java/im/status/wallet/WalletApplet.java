@@ -13,6 +13,7 @@ public class WalletApplet extends Applet {
   static final byte INS_GENERATE_MNEMONIC = (byte) 0xD2;
   static final byte INS_SIGN = (byte) 0xC0;
   static final byte INS_SET_PINLESS_PATH = (byte) 0xC1;
+  static final byte INS_EXPORT_KEY = (byte) 0xC2;
 
   static final byte PUK_LENGTH = 12;
   static final byte PUK_MAX_RETRIES = 5;
@@ -47,6 +48,8 @@ public class WalletApplet extends Applet {
   static final byte GENERATE_MNEMONIC_P1_CS_MAX = 8;
   static final byte GENERATE_MNEMONIC_TMP_OFF = SecureChannel.SC_OUT_OFFSET + ((((GENERATE_MNEMONIC_P1_CS_MAX * 32) + GENERATE_MNEMONIC_P1_CS_MAX) / 11) * 2);
 
+  static final byte EXPORT_KEY_P1_WHISPER = 0x01;
+
   static final byte TLV_SIGNATURE_TEMPLATE = (byte) 0xA0;
 
   static final byte TLV_KEY_TEMPLATE = (byte) 0xA1;
@@ -64,6 +67,7 @@ public class WalletApplet extends Applet {
   static final byte TLV_PUBLIC_KEY_DERIVATION = (byte) 0xC3;
 
   private static final byte[] ASSISTED_DERIVATION_HASH = { (byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
+  private static final byte[] WHISPER_KEY_PATH = { 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01};
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -167,6 +171,9 @@ public class WalletApplet extends Applet {
         break;
       case INS_SET_PINLESS_PATH:
         setPinlessPath(apdu);
+        break;
+      case INS_EXPORT_KEY:
+        exportKey(apdu);
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
@@ -587,6 +594,49 @@ public class WalletApplet extends Applet {
     } else {
       signature.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
     }
+  }
+
+  private void exportKey(APDU apdu) {
+    apdu.setIncomingAndReceive();
+
+    if (!(secureChannel.isOpen() && pin.isValidated())) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    byte[] apduBuffer = apdu.getBuffer();
+    byte[] toExport;
+
+    switch (apduBuffer[ISO7816.OFFSET_P1]) {
+      case EXPORT_KEY_P1_WHISPER:
+        toExport = WHISPER_KEY_PATH;
+        break;
+      default:
+        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        return;
+    }
+
+    if (!((keyPathLen == toExport.length) && (Util.arrayCompare(keyPath, (short) 0, toExport, (short) 0, keyPathLen) == 0))) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    short off = SecureChannel.SC_OUT_OFFSET;
+
+    apduBuffer[off++] = TLV_KEY_TEMPLATE;
+    off++;
+    apduBuffer[off++] = TLV_PUB_KEY;
+    off++;
+    short len = publicKey.getW(apduBuffer, off);
+    apduBuffer[(short)(off - 1)] = (byte) len;
+    off += len;
+    apduBuffer[off++] = TLV_PRIV_KEY;
+    off++;
+    len = privateKey.getS(apduBuffer, off);
+    apduBuffer[(short)(off - 1)] = (byte) len;
+    len += (off - SecureChannel.SC_OUT_OFFSET);
+    apduBuffer[(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) (len - 2);
+
+    len = secureChannel.encryptAPDU(apduBuffer, (short) len);
+    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
   }
 
   private void setPinlessPath(APDU apdu) {

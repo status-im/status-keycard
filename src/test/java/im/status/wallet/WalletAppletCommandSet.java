@@ -200,4 +200,9 @@ public class WalletAppletCommandSet {
     CommandAPDU setPinlessPath = new CommandAPDU(0x80, WalletApplet.INS_SET_PINLESS_PATH, 0x00, 0x00, secureChannel.encryptAPDU(data));
     return apduChannel.transmit(setPinlessPath);
   }
+
+  public ResponseAPDU exportKey(byte keyPathIndex) throws CardException {
+    CommandAPDU exportKey = new CommandAPDU(0x80, WalletApplet.INS_EXPORT_KEY, keyPathIndex, 0x00, 256);
+    return apduChannel.transmit(exportKey);
+  }
 }

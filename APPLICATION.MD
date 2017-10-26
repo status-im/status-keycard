@@ -270,3 +270,25 @@ On applet selection any pending signing session is aborted.
 
 Sets the given sequence of 32-bit integers as a PIN-less path. When the current derived key matches this path, SIGN
 will work even if no PIN authentication has been performed. An empty sequence means that no PIN-less path is defined.
+
+### EXPORT KEY
+
+* CLA = 0x80
+* INS = 0xC2
+* P1 = 0x01 (Whisper key)
+* P2 = 0x00
+* Response SW = 0x9000 on success, 0x6A86 if P1 is wrong
+* Response Data = key pair template
+* Preconditions: Secure Channel must be opened, user PIN must be verified, the current key path must match the one of
+  the key selected through P1
+  
+Response Data format:
+- Tag 0xA1 = keypair template
+  - Tag 0x80 = ECC public key component
+  - Tag 0x81 = ECC private key component
+  
+This command exports the current public and private key if and only if the current key path matches the one of the key
+selected by P1. P1 is only an index, the actual key path is stored immutably in the applet itself. At the moment only
+the Whisper key (P1=0x01) can be exported and its key path is m/1/1. Other key paths could be added in the future, but
+the last should remain as short as possible because of the security implications of revealing private keys to a possibly
+compromised device. The current chain code is never exported to make it impossible to further derive keys off-card.
