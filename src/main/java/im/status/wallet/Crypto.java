@@ -70,10 +70,8 @@ public class Crypto {
       return false;
     }
 
-    JCSystem.beginTransaction();
     privateKey.setS(tmp, off, (short) KEY_SECRET_SIZE);
     Util.arrayCopy(tmp, (short)(off + KEY_SECRET_SIZE), chain, chainOff, (short) KEY_SECRET_SIZE);
-    JCSystem.commitTransaction();
 
     return true;
   }

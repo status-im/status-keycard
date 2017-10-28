@@ -3,6 +3,9 @@ package im.status.wallet;
 import javacard.framework.*;
 import javacard.security.*;
 
+/**
+ * The applet's main class. All incoming commands a processed by this class.
+ */
 public class WalletApplet extends Applet {
   static final byte INS_GET_STATUS = (byte) 0xF2;
   static final byte INS_VERIFY_PIN = (byte) 0x20;
@@ -66,8 +69,8 @@ public class WalletApplet extends Applet {
   static final byte TLV_KEY_INITIALIZATION_STATUS = (byte) 0xC2;
   static final byte TLV_PUBLIC_KEY_DERIVATION = (byte) 0xC3;
 
-  private static final byte[] ASSISTED_DERIVATION_HASH = { (byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
-  private static final byte[] WHISPER_KEY_PATH = { 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01};
+  private static final byte[] ASSISTED_DERIVATION_HASH = {(byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
+  private static final byte[] WHISPER_KEY_PATH = {0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01};
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -92,10 +95,28 @@ public class WalletApplet extends Applet {
   private boolean signInProgress;
   private boolean expectPublicKey;
 
+  /**
+   * Invoked during applet installation. Creates an instance of this class. The installation parameters are passed in
+   * the given buffer.
+   *
+   * @param bArray installation parameters buffer
+   * @param bOffset offset where the installation parameters begin
+   * @param bLength length of the installation parameters
+   */
   public static void install(byte[] bArray, short bOffset, byte bLength) {
     new WalletApplet(bArray, bOffset, bLength);
   }
 
+  /**
+   * Application constructor. All memory allocation is done here. The reason for this is two-fold: first the card might
+   * not have Garbage Collection so dynamic allocation will eventually eat all memory. The second reason is to be sure
+   * that if the application installs successfully, there is no risk of running out of memory because of other applets
+   * allocating memory. The constructor also registers the applet with the JCRE so that it becomes selectable.
+   *
+   * @param bArray installation parameters buffer
+   * @param bOffset offset where the installation parameters begin
+   * @param bLength length of the installation parameters
+   */
   public WalletApplet(byte[] bArray, short bOffset, byte bLength) {
     SECP256k1.init();
     Crypto.init();
@@ -133,7 +154,15 @@ public class WalletApplet extends Applet {
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
 
+  /**
+   * This method is called on every incoming APDU. This method is just a dispatcher which invokes the correct method
+   * depending on the INS of the APDU.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   * @throws ISOException any processing error
+   */
   public void process(APDU apdu) throws ISOException {
+    // Since selection can happen not only by a SELECT command, we check for that separately.
     if (selectingApplet()) {
       selectApplet(apdu);
       return;
@@ -181,6 +210,12 @@ public class WalletApplet extends Applet {
     }
   }
 
+  /**
+   * Invoked on applet (re-)selection. Aborts any in-progress signing session and sets PIN and PUK to not verified.
+   * Responds with a SECP256k1 public key which the client must use to establish a secure channel.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void selectApplet(APDU apdu) {
     signInProgress = false;
     pin.reset();
@@ -191,20 +226,25 @@ public class WalletApplet extends Applet {
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, keyLength);
   }
 
+  /**
+   * Processes the GET STATUS command according to the application's specifications. This command is always a Case-2 APDU.
+   * Requires an open secure channel but does not check if the PIN has been verified.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void getStatus(APDU apdu) {
     if (!secureChannel.isOpen()) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    short off = SecureChannel.SC_OUT_OFFSET;
     byte[] apduBuffer = apdu.getBuffer();
 
     short len;
 
     if (apduBuffer[ISO7816.OFFSET_P1] == GET_STATUS_P1_APPLICATION) {
-      len = getApplicationStatus(apduBuffer, off);
+      len = getApplicationStatus(apduBuffer, SecureChannel.SC_OUT_OFFSET);
     } else if (apduBuffer[ISO7816.OFFSET_P1] == GET_STATUS_P1_KEY_PATH) {
-      len = getKeyStatus(apduBuffer, off);
+      len = getKeyStatus(apduBuffer, SecureChannel.SC_OUT_OFFSET);
     } else {
       ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
       return;
@@ -214,6 +254,15 @@ public class WalletApplet extends Applet {
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
   }
 
+  /**
+   * Writes the Application Status Template to the APDU buffer. Invoked internally by the getStatus method. This
+   * template is useful to understand if the card is blocked, if it has valid keys and if public key derivation is
+   * supported.
+   *
+   * @param apduBuffer the APDU buffer
+   * @param off the offset in the buffer where the application status template must be written at.
+   * @return the length in bytes of the data to output
+   */
   private short getApplicationStatus(byte[] apduBuffer, short off) {
     apduBuffer[off++] = TLV_APPLICATION_STATUS_TEMPLATE;
     apduBuffer[off++] = 9;
@@ -233,6 +282,16 @@ public class WalletApplet extends Applet {
     return (short) (off - SecureChannel.SC_OUT_OFFSET);
   }
 
+  /**
+   * Writes the key path status to the APDU buffer. Invoked internally by the getStatus method. The key path indicates
+   * at which point in the BIP32 hierarchy we are at. The data is unformatted and is simply a sequence of 32-bit
+   * big endian integers. The Master key is not indicated so nothing will be written if no derivation has been performed.
+   * However, because of the secure channel, the response will still contain the IV and the padding.
+   *
+   * @param apduBuffer the APDU buffer
+   * @param off the offset in the buffer where the key status template must be written at.
+   * @return the length in bytes of the data to output
+   */
   private short getKeyStatus(byte[] apduBuffer, short off) {
     if (expectPublicKey) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
@@ -242,6 +301,13 @@ public class WalletApplet extends Applet {
     return keyPathLen;
   }
 
+  /**
+   * Processes the VERIFY PIN command. Requires a secure channel to be already open. If a PIN longer or shorter than 6
+   * digits is provided, the method will still proceed with its verification and will decrease the remaining tries
+   * counter.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void verifyPIN(APDU apdu) {
     apdu.setIncomingAndReceive();
 
@@ -257,6 +323,13 @@ public class WalletApplet extends Applet {
     }
   }
 
+  /**
+   * Processes the VERIFY PIN command. Requires a secure channel to be already open and the PIN to be verified. Since
+   * the PIN is fixed to a 6-digits format, longer or shorter PINs or PINs containing non-numeric characters will be
+   * refused.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void changePIN(APDU apdu) {
     apdu.setIncomingAndReceive();
 
@@ -275,6 +348,14 @@ public class WalletApplet extends Applet {
     pin.check(apduBuffer, ISO7816.OFFSET_CDATA, len);
   }
 
+  /**
+   * Processes the UNBLOCK PIN command. Requires a secure channel to be already open and the PIN to be blocked. The PUK
+   * and the new PIN are sent in the same APDU with no separator. This is possible because the PUK is exactly 12 digits
+   * long and the PIN is 6 digits long. If the data is not in the correct format (i.e: anything other than 18 digits),
+   * PUK verification is not attempted, so the remaining tries counter of the PUK is not decreased.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void unblockPIN(APDU apdu) {
     apdu.setIncomingAndReceive();
 
@@ -299,6 +380,15 @@ public class WalletApplet extends Applet {
     puk.reset();
   }
 
+  /**
+   * Processes the LOAD KEY command. Requires a secure channel to be already open and the PIN to be verified. The key
+   * being loaded will be treated as the master key. If the key is not in extended format (i.e: does not contain a chain
+   * code) no further derivation will be possible. Loading a key resets the current key path and the loaded key becomes
+   * the one used for signing. Transactions are used to make sure that either all key components are loaded correctly
+   * or none is loaded at all.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void loadKey(APDU apdu) {
     apdu.setIncomingAndReceive();
 
@@ -330,6 +420,14 @@ public class WalletApplet extends Applet {
     keyPathLen = 0;
   }
 
+  /**
+   * Called internally by the loadKey method to load a key in the TLV format. The presence of the public key is optional
+   * if public key derivation is supported on card, otherwise it is mandatory. The presence of a chain code is indicated
+   * explicitly through the newExtended argument (which is set depending on the P1 parameter of the command).
+   *
+   * @param apduBuffer the APDU buffer
+   * @param newExtended whether the key to load contains a chain code or not
+   */
   private void loadKeyPair(byte[] apduBuffer, boolean newExtended) {
     short pubOffset = (short)(ISO7816.OFFSET_CDATA + (apduBuffer[(short) (ISO7816.OFFSET_CDATA + 1)] == (byte) 0x81 ? 3 : 2));
     short privOffset = (short)(pubOffset + apduBuffer[(short)(pubOffset + 1)] + 2);
@@ -382,6 +480,14 @@ public class WalletApplet extends Applet {
     JCSystem.commitTransaction();
   }
 
+  /**
+   * Called internally by the loadKey method to load a key from a sequence of 64 bytes, supposedly generated according
+   * to the algorithms described in the BIP39 specifications. This way of loading keys is only supported when public
+   * key derivation is available. If not, the public key must be derived off-card and the key must be formatted in the
+   * TLV format processed by the loadKeyPair method.
+   *
+   * @param apduBuffer the APDU buffer
+   */
   private void loadSeed(byte[] apduBuffer) {
     SECP256k1.assetECPointMultiplicationSupport();
 
@@ -405,6 +511,30 @@ public class WalletApplet extends Applet {
     JCSystem.commitTransaction();
   }
 
+  /**
+   * Processes the DERIVE KEY command. Requires a secure channel to be already open. Unless a PIN-less path exists, t
+   * the PIN must be verified as well. The master key must be already loaded and have a chain code. In the happy case
+   * this method is quite straightforward, since it takes a sequence of 32-bit big-endian integers and perform key
+   * derivations, updating the current key path accordingly.
+   *
+   * However, since public key derivation might not be supported on card this method also supports the so called
+   * assisted derivation scheme. In this scheme the client first sends a single 32-bit big-endian integer. The cards
+   * derives the new private key and by taking advantage the EC-DH algorithm returns the X of the public key along with
+   * a signature of the SHA-256 hash of a fixed message ("STATUS KEY DERIVATION" in ASCII). The client must then
+   * calculate the two possible Y and try to verify the signature with each of the 2 candidate public keys. The public
+   * key which correctly verifies the signature is the real one and must be uploaded (as an uncompressed point) through
+   * this command again. At this point the current key path is updated and the derived key can be used for signing.
+   *
+   * In all cases transactions are used to make sure that the current key is always complete (private, chain and public
+   * components are coherent) and the key path matches the actual status of the card. This makes recovery from a sudden
+   * power loss easy.
+   *
+   * When the reset flag is set and the data is empty, the assisted key derivation flag is ignored, since in this case
+   * no derivation is done and the master key becomes the current key. Note that because of the secure channel, the
+   * command must still contain the IV and padding even if no actual data is sent.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void deriveKey(APDU apdu) {
     if (!(secureChannel.isOpen() && (pin.isValidated() || (pinlessPathLen > 0)) && isExtended)) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
@@ -424,9 +554,11 @@ public class WalletApplet extends Applet {
     }
 
     if (isPublicKey) {
+      JCSystem.beginTransaction();
       publicKey.setW(apduBuffer, ISO7816.OFFSET_CDATA, len);
       expectPublicKey = false;
       keyPathLen += 4;
+      JCSystem.commitTransaction();
       return;
     }
 
@@ -442,31 +574,35 @@ public class WalletApplet extends Applet {
 
     if (isReset) {
       resetKeys(apduBuffer, chainEnd);
-      expectPublicKey = false;
-      keyPathLen = 0;
     }
 
     signInProgress = false;
 
-    Util.arrayCopyNonAtomic(apduBuffer, ISO7816.OFFSET_CDATA, keyPath, keyPathLen, len);
-
     for (short i = ISO7816.OFFSET_CDATA; i < chainEnd; i += 4) {
+      JCSystem.beginTransaction();
       Crypto.bip32CKDPriv(apduBuffer, i, privateKey, publicKey, chainCode, (short) 0);
+      Util.arrayCopy(apduBuffer, i, keyPath, keyPathLen, (short) 4);
 
       if (assistedDerivation) {
         expectPublicKey = true;
         outputPublicX(apdu, apduBuffer);
-        return;
       } else {
         short pubLen = SECP256k1.derivePublicKey(privateKey, apduBuffer, chainEnd);
         publicKey.setW(apduBuffer, chainEnd, pubLen);
+        keyPathLen += 4;
       }
-    }
 
-    expectPublicKey = false;
-    keyPathLen += len;
+      JCSystem.commitTransaction();
+    }
   }
 
+  /**
+   * Outputs the X of the public key for the current private. Called internally by the deriveKey method and used during
+   * assisted key derivation.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   * @param apduBuffer the APDU buffer.
+   */
   private void outputPublicX(APDU apdu, byte[] apduBuffer) {
     short xLen = SECP256k1.derivePublicX(privateKey, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 4));
 
@@ -482,6 +618,13 @@ public class WalletApplet extends Applet {
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, outLen);
   }
 
+  /**
+   * Resets the current key and key path to the master key. A transaction is used to make sure this all happens at once.
+   * This method is called internally by the deriveKey method.
+   *
+   * @param buffer a buffer which can be overwritten (currently the APDU buffer)
+   * @param offset the offset at which the buffer is free
+   */
   private void resetKeys(byte[] buffer, short offset) {
     short pubOff = (short) (offset + masterPrivate.getS(buffer, offset));
     short pubLen = masterPublic.getW(buffer, pubOff);
@@ -490,9 +633,24 @@ public class WalletApplet extends Applet {
     Util.arrayCopy(masterChainCode, (short) 0, chainCode, (short) 0, CHAIN_CODE_SIZE);
     privateKey.setS(buffer, offset, CHAIN_CODE_SIZE);
     publicKey.setW(buffer, pubOff, pubLen);
+    expectPublicKey = false;
+    keyPathLen = 0;
     JCSystem.commitTransaction();
   }
 
+  /**
+   * Generates a mnemonic phrase according to the BIP39 specifications. Requires an open secure channel. Since embedding
+   * the strings in the applet would be unreasonable, the data returned is actually a sequence of 16-bit big-endian
+   * integers with values ranging from 0 to 2047. These numbers should be used by the client as indexes in their own
+   * string tables which is used to actually generate the mnemonic phrase.
+   *
+   * The P1 parameter is the length of the checksum which indirectly also defines the length of the secret and finally
+   * the number of generated words. Although using the length of the checksum as the defining parameter (as opposed to
+   * the word count for example) might seem peculiar, this is done because it's valid values are strictly in the
+   * inclusive range from 4 to 8 which makes it easy to validate input.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void generateMnemonic(APDU apdu) {
     if (!secureChannel.isOpen()) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
@@ -537,7 +695,18 @@ public class WalletApplet extends Applet {
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, outLen);
   }
 
-  // This works on simulator AND on JavaCard. Since we do not do a lot of these operations, the performance hit is non-existent
+  /**
+   * Logically shifts the given short to the right. Used internally by the generateMnemonic method. This method exists
+   * because a simple logical right shift using shorts would most likely work on the actual target (which does math on
+   * shorts) but not on the simulator since a negative short would first be extended to 32-bit, shifted and then cut
+   * back to 16-bit, doing the equivalent of an arithmetic shift. Simply masking by 0x0000FFFF before shifting is not an
+   * option because the code would not convert to CAP file (because of int usage). Since this method works on both
+   * JavaCard and simulator and it is not invoked very often, the performance hit is non-existent.
+   *
+   * @param v value to shift
+   * @param amount amount
+   * @return logically right shifted value
+   */
   private short logicrShift(short v, short amount) {
     if (amount == 0) return v; // short circuit on 0
     short tmp = (short) (v & 0x7fff);
@@ -551,6 +720,19 @@ public class WalletApplet extends Applet {
     return (short) ((short)((short) 0x4000 >>> (short) (amount - 1)) | tmp);
   }
 
+  /**
+   * Processes the SIGN command. Requires a secure channel to open and either the PIN to be verified or the PIN-less key
+   * path to be the current key path. This command supports signing data using SHA-256 with possible segmentation over
+   * multiple APDUs as well as signing a precomputed 32-bytes hash. The latter option is the actual use case at the
+   * moment, since Ethereum signatures actually require Keccak-256 hashes, which are not supported by any version of
+   * JavaCard (including 3.0.5 which supports SHA-3 but not Keccak-256 which is slightly different). The signature is
+   * generated using the current keys, so if no keys are loaded the command does not work. The result of the execution
+   * is not the plain signature, but a TLV object containing the public key which must be used to verify the signature
+   * and the signature itself. The client should use this to calculate 'v' and format the signature according to the
+   * format required for the transaction to be correctly inserted in the blockchain.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void sign(APDU apdu) {
     apdu.setIncomingAndReceive();
 
@@ -596,6 +778,45 @@ public class WalletApplet extends Applet {
     }
   }
 
+  /**
+   * Processes the SET PINLESS PATH command. Requires an open secure channel and the PIN to be verified. It does not
+   * require keys to be loaded or the current key path to be set at a specific value. The data is formatted in the same
+   * way as for DERIVE KEY. In case the sequence of integers is empty, the PIN-less path is simply unset, so the master
+   * key can never become PIN-less.
+   *
+   * Note that because of the secure channel, the command must still contain the IV and padding even if no actual data
+   * is sent.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
+  private void setPinlessPath(APDU apdu) {
+    apdu.setIncomingAndReceive();
+
+    if (!(secureChannel.isOpen() && pin.isValidated())) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    byte[] apduBuffer = apdu.getBuffer();
+    short len = secureChannel.decryptAPDU(apduBuffer);
+
+    if (((short) (len % 4) != 0) || (len > pinlessPath.length)) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    JCSystem.beginTransaction();
+    pinlessPathLen = len;
+    Util.arrayCopy(apduBuffer, ISO7816.OFFSET_CDATA, pinlessPath, (short) 0, len);
+    JCSystem.commitTransaction();
+  }
+
+  /**
+   * Processes the EXPORT KEY command. Requires an open secure channel and the PIN to be verified. The P1 parameter is
+   * an index to which key must be exported from the list of exportable ones. At the moment only the Whisper key with
+   * key path m/1/1 is exportable. The key is exported only if the current key path matches the key path of the key to
+   * be exported.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void exportKey(APDU apdu) {
     apdu.setIncomingAndReceive();
 
@@ -639,26 +860,14 @@ public class WalletApplet extends Applet {
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
   }
 
-  private void setPinlessPath(APDU apdu) {
-    apdu.setIncomingAndReceive();
-
-    if (!(secureChannel.isOpen() && pin.isValidated())) {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-    }
-
-    byte[] apduBuffer = apdu.getBuffer();
-    short len = secureChannel.decryptAPDU(apduBuffer);
-
-    if (((short) (len % 4) != 0) || (len > pinlessPath.length)) {
-      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-    }
-
-    JCSystem.beginTransaction();
-    pinlessPathLen = len;
-    Util.arrayCopy(apduBuffer, ISO7816.OFFSET_CDATA, pinlessPath, (short) 0, len);
-    JCSystem.commitTransaction();
-  }
-
+  /**
+   * Utility method to verify if all the bytes in the buffer between off (included) and off + len (excluded) are digits.
+   *
+   * @param buffer the buffer
+   * @param off the offset to begin checking
+   * @param len the length of the data
+   * @return whether all checked bytes are digits or not
+   */
   private boolean allDigits(byte[] buffer, short off, short len) {
     while(len > 0) {
       len--;
@@ -673,6 +882,10 @@ public class WalletApplet extends Applet {
     return true;
   }
 
+  /**
+   * Returns whether the current key path is the same as the one defined as PIN-less or not
+   * @return whether the current key path is the same as the one defined as PIN-less or not
+   */
   private boolean isPinless() {
     return (pinlessPathLen > 0) && (pinlessPathLen == keyPathLen) && (Util.arrayCompare(keyPath, (short) 0, pinlessPath, (short) 0, keyPathLen) == 0);
   }
