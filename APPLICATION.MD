@@ -166,7 +166,8 @@ signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command
 * Data = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used. On assisted
          derivation contains a public key when P2 = 0x02.
 * Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A81 if public key derivation is not supported and
-  bit 0 of P1 is set, 0x6A86 if P2 = 0x01 and bit 0 of P1 is not set.
+  bit 0 of P1 is set, 0x6A86 if P2 = 0x01 and bit 0 of P1 is not set, 0x6984 if one of the components in the path
+  generates an invalid key.
 * Response Data = On assisted derivation and P2 = 0x01 the key derivation template. Empty otherwise.
 * Preconditions: Secure Channel must be opened, user PIN must be verified (if no PIN-less key is defined), an extended keyset must be loaded
 
@@ -176,7 +177,9 @@ SIGN sessions. Because JavaCard does not offer native EC point multiplication be
 alternative mode of operation where the public key is partially derived off-card and loaded back on card. In this mode
 of operation only 1 derivation step at the time can be completed and as such during assisted derivation the data can
 contain a single 32-bit integer, instead of a sequence. The maximum depth of derivation from the master key is 10. Any
-attempt to get deeper results in 0x6A80 being returned.
+attempt to get deeper results in 0x6A80 being returned. The BIP32 specifications define a few checks which must be
+performed on the derived keys. If these fail, the 0x6984 is returned and the invalid key is discarded. A client should
+perform a GET STATUS command to get the actual current key path and resume derivation using a different path.
 
 P1:
 * bit 0 = if 0 derive autonomously (only works if public key derivation is supported), if 1 do assisted derivation

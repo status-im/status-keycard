@@ -580,7 +580,11 @@ public class WalletApplet extends Applet {
 
     for (short i = ISO7816.OFFSET_CDATA; i < chainEnd; i += 4) {
       JCSystem.beginTransaction();
-      Crypto.bip32CKDPriv(apduBuffer, i, privateKey, publicKey, chainCode, (short) 0);
+
+      if (!Crypto.bip32CKDPriv(apduBuffer, i, privateKey, publicKey, chainCode, (short) 0)) {
+        ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+      }
+
       Util.arrayCopy(apduBuffer, i, keyPath, keyPathLen, (short) 4);
 
       if (assistedDerivation) {
