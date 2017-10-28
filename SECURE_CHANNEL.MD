@@ -5,7 +5,8 @@ A Secure Channel must be established to allow communication between the applet a
 a secure channel is to avoid traffic snooping. What we achieve with the secure channel below is only secrecy, not
 authentication. Authentication would require either a set of pre-shared keys or the usage of certificates. In particular,
 it does not protect from MITM attacks. If the risk of such attacks exists, protection should be set up in a different
-layer or the protocol must be extended for mutual authentication.
+layer or the protocol must be extended for mutual authentication. A command counter should be added to protect from
+replay attacks.
 
 A short description of the protocol is as follows
 
