@@ -7,6 +7,10 @@ import javacard.security.ECKey;
 import javacard.security.ECPrivateKey;
 import javacard.security.KeyAgreement;
 
+/**
+ * Utility methods to work with the SECP256k1 curve. This class is not meant to be instantiated, but its init method
+ * must be called during applet installation.
+ */
 public class SECP256k1 {
   static final byte SECP256K1_FP[] = {
       (byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,(byte)0xFF,
@@ -51,6 +55,9 @@ public class SECP256k1 {
   private static KeyAgreement ecPointMultiplier;
   private static KeyAgreement ecPointMultiplierX;
 
+  /**
+   * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
+   */
   static void init() {
     try {
       ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
@@ -61,6 +68,11 @@ public class SECP256k1 {
     ecPointMultiplierX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
   }
 
+  /**
+   * Sets the SECP256k1 curve parameters to the given ECKey (public or private).
+   *
+   * @param key the key where the curve parameters must be set
+   */
   static void setCurveParameters(ECKey key) {
     key.setA(SECP256K1_A, (short) 0x00, (short) SECP256K1_A.length);
     key.setB(SECP256K1_B, (short) 0x00, (short) SECP256K1_B.length);
@@ -70,29 +82,65 @@ public class SECP256k1 {
     key.setK(SECP256K1_K);
   }
 
+  /**
+   * Derives the public key from the given private key and outputs it in the pubOut buffer. This is done by multiplying
+   * the private key by the G point of the curve.
+   *
+   * @param privateKey the private key
+   * @param pubOut the output buffer for the public key
+   * @param pubOff the offset in pubOut
+   * @return the length of the public key
+   */
   static short derivePublicKey(ECPrivateKey privateKey, byte[] pubOut, short pubOff) {
     return multiplyPoint(privateKey, SECP256K1_G, (short) 0, (short) SECP256K1_G.length, pubOut, pubOff);
   }
 
+  /**
+   * Derives the X of the public key from the given private key and outputs it in the xOut buffer. This is the plain
+   * output of the EC-DH algorithm calculated using the G point of the curve in place of the public key of the second
+   * party.
+   *
+   * @param privateKey the private key
+   * @param xOut the output buffer for the X of the public key
+   * @param xOff the offset in xOut
+   * @return the length of X
+   */
   static short derivePublicX(ECPrivateKey privateKey, byte[] xOut, short xOff) {
-    return multiplyX(privateKey, SECP256K1_G, (short) 0, (short) SECP256K1_G.length, xOut, xOff);
+    ecPointMultiplierX.init(privateKey);
+    return ecPointMultiplierX.generateSecret(SECP256K1_G, (short) 0, (short) SECP256K1_G.length, xOut, xOff);
   }
 
+  /**
+   * Multiplies a scalar in the form of a private key by the given point. Internally uses a special version of EC-DH
+   * supported since JavaCard 3.0.5 which outputs both X and Y in their uncompressed form.
+   *
+   * @param privateKey the scalar in a private key object
+   * @param point the point to multiply
+   * @param pointOff the offset of the point
+   * @param pointLen the length of the point
+   * @param out the output buffer
+   * @param outOff the offset in the output buffer
+   * @return the length of the data written in the out buffer
+   */
   static short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
     assetECPointMultiplicationSupport();
     ecPointMultiplier.init(privateKey);
     return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
   }
 
-  static short multiplyX(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
-    ecPointMultiplierX.init(privateKey);
-    return ecPointMultiplierX.generateSecret(point, pointOff, pointLen, out, outOff);
-  }
-
+  /**
+   * Returns whether the card supports EC point multiplication or not.
+   *
+   * @return whether the card supports EC point multiplication or not
+   */
   static boolean hasECPointMultiplication() {
     return ecPointMultiplier != null;
   }
 
+  /**
+   * Asserts that EC point multiplication is supported. If not, the 0x6A81 status word is returned by throwing an
+   * ISOException.
+   */
   static void assetECPointMultiplicationSupport() {
     if(!hasECPointMultiplication()) {
       ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
