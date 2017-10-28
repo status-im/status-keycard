@@ -24,7 +24,7 @@ public class SecureChannel {
   private byte[] secret;
 
   /**
-   * Instatiates a Secure Channel. All memory allocations needed for the secure channel are peformed here. The keypair
+   * Instantiates a Secure Channel. All memory allocations needed for the secure channel are peformed here. The keypair
    * used for the EC-DH algorithm is also generated here.
    */
   public SecureChannel() {
