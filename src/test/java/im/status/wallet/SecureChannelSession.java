@@ -15,6 +15,9 @@ import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
 import java.security.*;
 
+/**
+ * Handles a SecureChannel session with the card.
+ */
 public class SecureChannelSession {
   public static final int PAYLOAD_MAX_SIZE = 223;
 
@@ -24,7 +27,13 @@ public class SecureChannelSession {
   private SecretKeySpec sessionKey;
   private SecureRandom random;
 
-
+  /**
+   * Constructs a SecureChannel session on the client. The client should generate a fresh key pair for each session.
+   * The public key of the card is used as input for the EC-DH algorithm. The output is hashed with SHA1 and is stored
+   * as the secret.
+   *
+   * @param keyData the public key returned by the applet as response to the SELECT command
+   */
   public SecureChannelSession(byte[] keyData) {
     try {
       random = new SecureRandom();
@@ -49,6 +58,17 @@ public class SecureChannelSession {
     }
   }
 
+  /**
+   * Establishes a Secure Channel with the card. The command parameters are the public key generated in the first step.
+   * The card returns a secret value which must be appended to the secret previously generated through the EC-DH
+   * algorithm. This entire value must be hashed using SHA-256. The hash will be used as the key for an AES CBC cipher
+   * using ISO9797-1 Method 2 padding. From this point all further APDU must be sent encrypted and all responses from
+   * the card must be decrypted using this secure channel.
+   *
+   * @param apduChannel the apdu channel
+   * @return the card response
+   * @throws CardException communication error
+   */
   public ResponseAPDU openSecureChannel(CardChannel apduChannel) throws CardException {
     CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_OPEN_SECURE_CHANNEL, 0, 0, publicKey);
     ResponseAPDU response = apduChannel.transmit(openSecureChannel);
@@ -66,6 +86,14 @@ public class SecureChannelSession {
     return response;
   }
 
+  /**
+   * Encrypts the plaintext data using the session key. The maximum plaintext size is 223 bytes. The returned ciphertext
+   * already includes the IV and padding and can be sent as-is in the APDU payload. If the input is an empty byte array
+   * the returned data will still contain the IV and padding.
+   *
+   * @param data the plaintext data
+   * @return the encrypted data
+   */
   public byte[] encryptAPDU(byte[] data) {
     assert data.length <= PAYLOAD_MAX_SIZE;
 
@@ -92,6 +120,13 @@ public class SecureChannelSession {
     }
   }
 
+  /**
+   * Decrypts the response from the card using the session key. The returned data is already stripped from IV and padding
+   * and can be potentially empty.
+   *
+   * @param data the ciphetext
+   * @return the plaintext
+   */
   public byte[] decryptAPDU(byte[] data) {
     if (sessionKey == null) {
       return data;

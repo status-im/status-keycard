@@ -948,6 +948,21 @@ public class WalletAppletTest {
     return key;
   }
 
+  /**
+   * This method takes the response from the first stage of an assisted key derivation command and derives the complete
+   * public key from the received X and signature. Outside of test code, proper TLV parsing would be a better idea, here
+   * we just assume that the data is where we expect it to be.
+   *
+   * The algorithm used to derive the public key is dead simple. We take the X and we preprend the 0x02 byte so it
+   * becomes a compressed public key with even parity. We then try to verify the signature using this key. If it verifies
+   * then we have found the key, otherwise we set the first byte to 0x03 to turn the key to odd parity. Again we try
+   * to verify the signature using this key, it must work this time.
+   *
+   * We then uncompress the point we found and return it. This will be sent in the next DERIVE KEY command.
+   *
+   * @param data the unencrypted response from the card
+   * @return the uncompressed public key
+   */
   private byte[] derivePublicKey(byte[] data) {
     byte[] pubKey = Arrays.copyOfRange(data, 3, 4 + data[3]);
     byte[] signature = Arrays.copyOfRange(data, 4 + data[3], data.length);
@@ -964,6 +979,20 @@ public class WalletAppletTest {
     return candidate.decompress().getPubKey();
   }
 
+  /**
+   * Signs a signature using the card. Returns a SignatureData object which contains v, r and s. The algorithm to do
+   * this is as follow:
+   *
+   * 1) The Keccak-256 hash of transaction is generated off-card
+   * 2) A SIGN command is sent to the card to sign the precomputed hash
+   * 3) The returned data is the public key and the signature
+   * 4) The signature and public key can be used to generate the v value. The v value allows to recover the public key
+   *    from the signature. Here we use the web3j implementation through reflection
+   * 5) v, r and s are the final signature to append to the transaction
+   *
+   * @param message the raw transaction
+   * @return the signature data
+   */
   private Sign.SignatureData signMessage(byte[] message) throws Exception {
     byte[] messageHash = Hash.sha3(message);
 
