@@ -1,18 +1,18 @@
 # Secure Channel
 
 ## Overview
-A Secure Channel must be established to allow communication between the applet and the client. The reason for using
-a secure channel is to avoid traffic snooping. What we achieve with the secure channel below is only secrecy, not
-authentication. Authentication would require either a set of pre-shared keys or the usage of certificates. In particular,
-it does not protect from MITM attacks. If the risk of such attacks exists, protection should be set up in a different
-layer or the protocol must be extended for mutual authentication. A command counter should be added to protect from
-replay attacks.
+A Secure Channel must be established to allow communication between the applet and the client. This secure channel has
+the concept of pairing with multiple devices (how many clients can be paired at the same time is defined by the applet).
+The SecureChannel guarantees protection from snooping, MITM and replay attacks across different sessions, since the way
+a session is established makes it impossible to generate the same session keys twice. Since a session is automatically
+aborted as soon as power is lost or the application is reselected, it not possible to resume the last session and
+perform replay attacks there.
 
-A short description of the protocol is as follows
+A short description of establishing a session is as follows
 
 1. The client selects the application on card. The application responds with a public EC key.
-2. The client sends an OPEN SECURE CHANNEL command with its public key. The EC-DH algorithm is used by both parties to
-generate a shared 256-bit secret (more details below).
+2. The client sends an OPEN SECURE CHANNEL command with its public key. The EC-DH algorithm is used by both parties to 
+   generate a shared 256-bit secret (more details below).
 3. The generated secret is used as an AES key to encrypt all further communication. CBC mode is used with a random IV
 generated for each APDU and prepended to the APDU payload. Both command and responses are encrypted.
 
@@ -24,24 +24,77 @@ opened.
 
 ### OPEN SECURE CHANNEL
 
-This APDU is sent to establish a Secure Channel session. A session is aborted when the application is deselected,
-either directly or because of a card reset/tear. This APDU and its response are not encrypted.
-
 * CLA = 0x80
 * INS = 0x10
-* P1 = 0x00
+* P1 = the pairing index (1-127)
 * P2 = 0x00
 * Data = An EC-256 public key on the SECP256k1 curve encoded as an uncompressed point.
 * Response Data = A 256-bit salt
 * Response SW = 0x9000
 
+This APDU is sent to establish a Secure Channel session. A session is aborted when the application is deselected,
+either directly or because of a card reset/tear. This APDU and its response are not encrypted.
+
 The card generates a random 256-bit salt which is sent to the client. Both the client and the card do the following
 for key derivation
 
-1. Use their private key and the counterpart public key to generate a secret using the EC-DH algorithm. The JavaCard
-EC_SVDP_DH implementation actually output the SHA-1 of the plain secret, so the client must do the same.
-2. The generated secret and the salt are concatenated and their SHA-256 is calculated.
+1. Use their private key and the counterpart public key to generate a secret using the EC-DH algorithm.
+2. The generated secret, he pairing key and the salt are concatenated and the SHA-256 of the concatenated value is 
+   calculated.
 3. The output of the SHA-256 algorithm is used as the AES key for further communication.
+
+TODO: define a second step where client and card mutually verify that they have the same keys and thus are authenticated
+
+### PAIR
+
+* CLA = 0x80
+* INS = 0x11
+* P1 = pairing phase
+* P2 = 0x00
+* Data = see below
+* Response Data = see below
+* Response SW = 0x9000 on success, 0x6A80 if the data are in the wrong format, 0x6982 if client cryptogram verification 
+fails, 0x6A84 if all available pairing slot are taken
+
+P1:
+* 0x00: First step
+* 0x01: Final step
+
+Data:
+* On first step: a 256-bit random client challenge
+* On second step: the client cryptogram as SHA-256(shared secret, card challenge)
+
+Response Data:
+* On first step: the card cryptogram as SHA-256(shared secret, client challenge) followed by a 256-bit card challenge
+* On second step: the pairing index followed by a 256-bit salt
+
+This APDU is sent to pair a client. Pairing is performed with two commands which must be sent immediately one after the
+other. 
+
+In the first phase the client sends a random challenge to the card. The card replies with the SHA-256 hash of the
+challenge and the shared secret followed by its random challenge. The client is thus able to authenticate the card by
+verifying the card cryptogram (since the client can generate the same and verify that is matches).
+
+In the second phase the client sends the client cryptogram which is the SHA-256 hash of the shared secret and the card
+challenge. The card verifies the cryptogram and thus authenticates the client. On success the card generates a random
+256-bit salt which is appended to the shared secret. The SHA-256 hash of the concatenated value is stored in the fist
+available pairing slot and will be further used to derive session keys. The card responds with the pairing index (which
+the client must send in all OPEN SECURE CHANNEL commands) and the salt used to generate the key, so that the client can
+generate and store the same key.
+
+### UNPAIR
+
+* CLA = 0x80
+* INS = 0x12
+* P1 = the index to unpair
+* P2 = 0x00
+* Data = the same index as in P1
+* Response SW = 0x9000 on success, 0x6985 if security conditions are not met
+
+This APDU is sent to unpair a client. An existing secure channel session must be open. The application implementing this
+protocol may apply additional restrictions, such as the verification of a user PIN. The reason to repeat P1 in the data
+field is to verify that the client indeed performed authentication and has the correct session keys. On success the
+pairing slot at the given index will be freed and will be made available to pair other clients.
 
 ### Encrypted APDUs
 

@@ -58,6 +58,16 @@ be used by the client to establish the Secure Channel.
 
 The OPEN SECURE CHANNEL command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD).
 
+### PAIR
+
+The PAIR command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD). The shared secret is the SHA-256 of the
+PUK.
+
+### UNPAIR
+
+The UNPAIR command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD). The user PIN must be verified for the
+command to work.
+
 ### GET STATUS
 
 * CLA = 0x80
