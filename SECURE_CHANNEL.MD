@@ -26,11 +26,11 @@ opened.
 
 * CLA = 0x80
 * INS = 0x10
-* P1 = the pairing index (1-127)
+* P1 = the pairing index
 * P2 = 0x00
 * Data = An EC-256 public key on the SECP256k1 curve encoded as an uncompressed point.
 * Response Data = A 256-bit salt
-* Response SW = 0x9000
+* Response SW = 0x9000 on success, 0x6A86 if P1 is invalid
 
 This APDU is sent to establish a Secure Channel session. A session is aborted when the application is deselected,
 either directly or because of a card reset/tear. This APDU and its response are not encrypted.
@@ -54,7 +54,8 @@ TODO: define a second step where client and card mutually verify that they have 
 * Data = see below
 * Response Data = see below
 * Response SW = 0x9000 on success, 0x6A80 if the data are in the wrong format, 0x6982 if client cryptogram verification 
-fails, 0x6A84 if all available pairing slot are taken
+fails, 0x6A84 if all available pairing slot are taken, 0x6A86 if P1 is invalid or is 0x01 but the first phase was not 
+completed
 
 P1:
 * 0x00: First step
@@ -82,6 +83,9 @@ available pairing slot and will be further used to derive session keys. The card
 the client must send in all OPEN SECURE CHANNEL commands) and the salt used to generate the key, so that the client can
 generate and store the same key.
 
+The shared secret is a 256-bit value which must be be known to both parts being paired. The exact means of how this
+happens depend on the specific applet.
+
 ### UNPAIR
 
 * CLA = 0x80
@@ -89,12 +93,14 @@ generate and store the same key.
 * P1 = the index to unpair
 * P2 = 0x00
 * Data = the same index as in P1
-* Response SW = 0x9000 on success, 0x6985 if security conditions are not met
+* Response SW = 0x9000 on success, 0x6985 if security conditions are not met, 0x6A86 if the index is higher than the
+  highest possible pairing index.
 
 This APDU is sent to unpair a client. An existing secure channel session must be open. The application implementing this
 protocol may apply additional restrictions, such as the verification of a user PIN. The reason to repeat P1 in the data
 field is to verify that the client indeed performed authentication and has the correct session keys. On success the
-pairing slot at the given index will be freed and will be made available to pair other clients.
+pairing slot at the given index will be freed and will be made available to pair other clients. If the index is already
+free nothing will happen.
 
 ### Encrypted APDUs
 

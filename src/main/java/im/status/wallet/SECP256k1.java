@@ -53,7 +53,6 @@ public class SECP256k1 {
   private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6; // constant from JavaCard 3.0.5
 
   private static KeyAgreement ecPointMultiplier;
-  private static KeyAgreement ecPointMultiplierX;
 
   /**
    * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
@@ -64,8 +63,6 @@ public class SECP256k1 {
     } catch(CryptoException e) {
       ecPointMultiplier = null;
     }
-
-    ecPointMultiplierX = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
   }
 
   /**
@@ -106,8 +103,8 @@ public class SECP256k1 {
    * @return the length of X
    */
   static short derivePublicX(ECPrivateKey privateKey, byte[] xOut, short xOff) {
-    ecPointMultiplierX.init(privateKey);
-    return ecPointMultiplierX.generateSecret(SECP256K1_G, (short) 0, (short) SECP256K1_G.length, xOut, xOff);
+    Crypto.ecdh.init(privateKey);
+    return Crypto.ecdh.generateSecret(SECP256K1_G, (short) 0, (short) SECP256K1_G.length, xOut, xOff);
   }
 
   /**

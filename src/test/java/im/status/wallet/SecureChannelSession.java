@@ -29,8 +29,7 @@ public class SecureChannelSession {
 
   /**
    * Constructs a SecureChannel session on the client. The client should generate a fresh key pair for each session.
-   * The public key of the card is used as input for the EC-DH algorithm. The output is hashed with SHA1 and is stored
-   * as the secret.
+   * The public key of the card is used as input for the EC-DH algorithm. The output is stored as the secret.
    *
    * @param keyData the public key returned by the applet as response to the SELECT command
    */
@@ -51,7 +50,7 @@ public class SecureChannelSession {
       ECPublicKey cardKey = (ECPublicKey) KeyFactory.getInstance("ECDSA", "BC").generatePublic(cardKeySpec);
 
       keyAgreement.doPhase(cardKey, true);
-      secret = MessageDigest.getInstance("SHA1", "BC").digest(keyAgreement.generateSecret());
+      secret = keyAgreement.generateSecret();
 
     } catch(Exception e) {
       throw new RuntimeException("Is BouncyCastle in the classpath?", e);

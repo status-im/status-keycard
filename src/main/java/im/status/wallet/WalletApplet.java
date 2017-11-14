@@ -22,7 +22,8 @@ public class WalletApplet extends Applet {
   static final byte PUK_MAX_RETRIES = 5;
   static final byte PIN_LENGTH = 6;
   static final byte PIN_MAX_RETRIES = 3;
-  static final short KEY_PATH_MAX_DEPTH = 10;
+  static final byte KEY_PATH_MAX_DEPTH = 10;
+  static final byte PAIRING_MAX_CLIENT_COUNT = 5;
 
   static final short EC_KEY_SIZE = 256;
   static final short CHAIN_CODE_SIZE = 32;
@@ -118,25 +119,13 @@ public class WalletApplet extends Applet {
    * @param bLength length of the installation parameters
    */
   public WalletApplet(byte[] bArray, short bOffset, byte bLength) {
-    SECP256k1.init();
     Crypto.init();
-
-    short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
-    c9Off += (short)(bArray[c9Off] + 2); // Skip Privileges and parameter length
-
-    puk = new OwnerPIN(PUK_MAX_RETRIES, PUK_LENGTH);
-    puk.update(bArray, c9Off, PUK_LENGTH);
-
-    Util.arrayFillNonAtomic(bArray, c9Off, PIN_LENGTH, (byte) 0x30);
-    pin = new OwnerPIN(PIN_MAX_RETRIES, PIN_LENGTH);
-    pin.update(bArray, c9Off, PIN_LENGTH);
-
-    secureChannel = new SecureChannel();
+    SECP256k1.init();
 
     masterPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
     masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
-    masterChainCode = new byte[32];
-    chainCode = new byte[32];
+    masterChainCode = new byte[CHAIN_CODE_SIZE];
+    chainCode = new byte[CHAIN_CODE_SIZE];
     keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
     pinlessPath = new byte[KEY_PATH_MAX_DEPTH * 4];
 
@@ -150,6 +139,20 @@ public class WalletApplet extends Applet {
     SECP256k1.setCurveParameters(privateKey);
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
+
+    short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
+    c9Off += (short)(bArray[c9Off] + 2); // Skip Privileges and parameter length
+
+    Crypto.sha256.doFinal(bArray, c9Off, PUK_LENGTH, chainCode, (short) 0);
+    secureChannel = new SecureChannel(PAIRING_MAX_CLIENT_COUNT, chainCode, (short) 0);
+    Util.arrayFillNonAtomic(chainCode, (short) 0, CHAIN_CODE_SIZE, (byte) 0);
+
+    puk = new OwnerPIN(PUK_MAX_RETRIES, PUK_LENGTH);
+    puk.update(bArray, c9Off, PUK_LENGTH);
+
+    Util.arrayFillNonAtomic(bArray, c9Off, PIN_LENGTH, (byte) 0x30);
+    pin = new OwnerPIN(PIN_MAX_RETRIES, PIN_LENGTH);
+    pin.update(bArray, c9Off, PIN_LENGTH);
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
@@ -173,6 +176,12 @@ public class WalletApplet extends Applet {
     switch(apduBuffer[ISO7816.OFFSET_INS]) {
       case SecureChannel.INS_OPEN_SECURE_CHANNEL:
         secureChannel.openSecureChannel(apdu);
+        break;
+      case SecureChannel.INS_PAIR:
+        secureChannel.pair(apdu);
+        break;
+      case SecureChannel.INS_UNPAIR:
+        unpair(apdu);
         break;
       case INS_GET_STATUS:
         getStatus(apdu);
@@ -207,6 +216,21 @@ public class WalletApplet extends Applet {
       default:
         ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
         break;
+    }
+  }
+
+  /**
+   * Checks that the PIN is validated and if it is call the unpair method of the secure channel. If the PIN is not
+   * validated the 0x6985 exception is thrown.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
+  private void unpair(APDU apdu) {
+    if (pin.isValidated()) {
+      secureChannel.unpair(apdu);
+    } else {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+
     }
   }
 

@@ -20,6 +20,8 @@ public class Crypto {
 
   // The below two objects are meant to be access from the entire applet
   static RandomData random;
+  static KeyAgreement ecdh;
+
   static MessageDigest sha256;
   
   private static MessageDigest sha512;
@@ -34,6 +36,7 @@ public class Crypto {
   static void init() {
     random = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
     sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
+    ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
 
     short blockSize;
 
