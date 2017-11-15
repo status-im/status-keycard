@@ -48,11 +48,17 @@ SW 0x6985 is returned. All tagged data structures are encoded in the [BER-TLV fo
 * P1 = 0x04
 * P2 = 0x00
 * Data = 53746174757357616C6C6574417070 (hex)
-* Response = The public key used to establish the SecureChannel
+* Response = Application Info Template
+
+Response Data format:
+- Tag 0xA4 = Application Info Template
+ - Tag 0xC0 = Instance UID (16 bytes)
+ - Tag 0x80 = ECC public Key
 
 The SELECT command is documented in the ISO 7816-4 specifications and is used to select the application on the card,
-making it the active one. The data field is the AID of the application. The response is the public key which must
-be used by the client to establish the Secure Channel.
+making it the active one. The data field is the AID of the application. The response is the Application Info template
+which contains the instance UID (which can be used by the client to keep track of multiple cards) and the public key 
+which must be used by the client to establish the Secure Channel.
 
 ### OPEN SECURE CHANNEL
 

@@ -84,7 +84,7 @@ public class WalletAppletTest {
   void init() throws CardException {
     reset();
     cmdSet = new WalletAppletCommandSet(apduChannel);
-    byte[] keyData = cmdSet.select().getData();
+    byte[] keyData = extractPublicKeyFromSelect(cmdSet.select().getData());
     secureChannel = new SecureChannelSession(keyData);
     cmdSet.setSecureChannel(secureChannel);
     cmdSet.autoPair(sha256("123456789012".getBytes()));
@@ -853,6 +853,14 @@ public class WalletAppletTest {
     assertEquals(WalletApplet.TLV_PUB_KEY, sig[3]);
 
     return Arrays.copyOfRange(sig, 5, 5 + sig[4]);
+  }
+
+  private byte[] extractPublicKeyFromSelect(byte[] select) {
+    assertEquals(WalletApplet.TLV_APPLICATION_INFO_TEMPLATE, select[0]);
+    assertEquals(WalletApplet.TLV_UID, select[2]);
+    assertEquals(WalletApplet.TLV_PUB_KEY, select[20]);
+
+    return Arrays.copyOfRange(select, 22, select.length);
   }
 
   private void reset() {

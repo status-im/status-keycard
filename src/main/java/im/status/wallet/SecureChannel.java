@@ -233,7 +233,7 @@ public class SecureChannel {
    * @param off the offset in the buffer
    * @return the length of the public key
    */
-  public short copyPublicKey(byte[] buf, byte off) {
+  public short copyPublicKey(byte[] buf, short off) {
     ECPublicKey pk = (ECPublicKey) scKeypair.getPublic();
     return pk.getW(buf, off);
   }
