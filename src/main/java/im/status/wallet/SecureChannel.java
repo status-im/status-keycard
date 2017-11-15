@@ -80,7 +80,7 @@ public class SecureChannel {
     short len = Crypto.ecdh.generateSecret(apduBuffer, ISO7816.OFFSET_CDATA, apduBuffer[ISO7816.OFFSET_LC], secret, (short) 0);
     Crypto.random.generateData(apduBuffer, (short) 0, SC_SECRET_LENGTH);
     Crypto.sha256.update(secret, (short) 0, len);
-    Crypto.sha256.update(pairingSecret, pairingKeyOff, SC_SECRET_LENGTH);
+    Crypto.sha256.update(pairingKeys, pairingKeyOff, SC_SECRET_LENGTH);
     Crypto.sha256.doFinal(apduBuffer, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
     scKey.setKey(secret, (short) 0);
     apdu.setOutgoingAndSend((short) 0, SC_SECRET_LENGTH);

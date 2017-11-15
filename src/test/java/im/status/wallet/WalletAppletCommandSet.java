@@ -56,6 +56,38 @@ public class WalletAppletCommandSet {
   }
 
   /**
+   * Automatically pairs. Calls the corresponding method of the SecureChannel class.
+   *
+   * @throws CardException communication error
+   */
+  public void autoPair(byte[] sharedSecret) throws CardException {
+    secureChannel.autoPair(apduChannel, sharedSecret);
+  }
+
+  /**
+   * Automatically unpairs. Calls the corresponding method of the SecureChannel class.
+   *
+   * @throws CardException communication error
+   */
+  public void autoUnpair() throws CardException {
+    secureChannel.autoUnpair(apduChannel);
+  }
+
+  /**
+   * Sends a PAIR APDU. Calls the corresponding method of the SecureChannel class.
+   */
+  public ResponseAPDU pair(byte p1, byte[] data) throws CardException {
+    return secureChannel.pair(apduChannel, p1, data);
+  }
+
+  /**
+   * Sends a UNPAIR APDU. Calls the corresponding method of the SecureChannel class.
+   */
+  public ResponseAPDU unpair(byte p1, byte[] data) throws CardException {
+    return secureChannel.unpair(apduChannel, p1, data);
+  }
+
+  /**
    * Sends a GET STATUS APDU. The info byte is the P1 parameter of the command, valid constants are defined in the applet
    * class itself.
    *

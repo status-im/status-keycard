@@ -87,10 +87,15 @@ public class WalletAppletTest {
     byte[] keyData = cmdSet.select().getData();
     secureChannel = new SecureChannelSession(keyData);
     cmdSet.setSecureChannel(secureChannel);
+    cmdSet.autoPair(sha256("123456789012".getBytes()));
   }
 
   @AfterEach
-  void tearDown() {
+  void tearDown() throws CardException {
+    resetAndSelectAndOpenSC();
+    ResponseAPDU response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    cmdSet.autoUnpair();
   }
 
   @AfterAll

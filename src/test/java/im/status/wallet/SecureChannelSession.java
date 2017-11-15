@@ -14,6 +14,7 @@ import javax.smartcardio.CardException;
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
 import java.security.*;
+import java.util.Arrays;
 
 /**
  * Handles a SecureChannel session with the card.
@@ -23,6 +24,8 @@ public class SecureChannelSession {
 
   private byte[] secret;
   private byte[] publicKey;
+  private byte[] pairingKey;
+  private byte pairingIndex;
   private Cipher sessionCipher;
   private SecretKeySpec sessionKey;
   private SecureRandom random;
@@ -69,13 +72,14 @@ public class SecureChannelSession {
    * @throws CardException communication error
    */
   public ResponseAPDU openSecureChannel(CardChannel apduChannel) throws CardException {
-    CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_OPEN_SECURE_CHANNEL, 0, 0, publicKey);
+    CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_OPEN_SECURE_CHANNEL, pairingIndex, 0, publicKey);
     ResponseAPDU response = apduChannel.transmit(openSecureChannel);
     byte[] salt = response.getData();
 
     try {
       MessageDigest md = MessageDigest.getInstance("SHA256", "BC");
       md.update(secret);
+      md.update(pairingKey);
       sessionKey = new SecretKeySpec(md.digest(salt), "AES");
       sessionCipher = Cipher.getInstance("AES/CBC/ISO7816-4Padding", "BC");
     } catch(Exception e) {
@@ -83,6 +87,98 @@ public class SecureChannelSession {
     }
 
     return response;
+  }
+
+  /**
+   * Handles the entire pairing procedure in order to be able to use the secure channel
+   *
+   * @param apduChannel the apdu channel
+   * @throws CardException communication error
+   */
+  public void autoPair(CardChannel apduChannel, byte[] sharedSecret) throws CardException {
+    byte[] challenge = new byte[32];
+    random.nextBytes(challenge);
+    ResponseAPDU resp = pair(apduChannel, SecureChannel.PAIR_P1_FIRST_STEP, challenge);
+
+    if (resp.getSW() != 0x9000) {
+      throw new CardException("Pairing failed on step 1");
+    }
+
+    byte[] respData = resp.getData();
+    byte[] cardCryptogram = Arrays.copyOf(respData, 32);
+    byte[] cardChallenge = Arrays.copyOfRange(respData, 32, respData.length);
+    byte[] checkCryptogram;
+
+    MessageDigest md;
+
+    try {
+      md = MessageDigest.getInstance("SHA256", "BC");
+    } catch(Exception e) {
+      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
+    }
+
+    md.update(sharedSecret);
+    checkCryptogram = md.digest(challenge);
+
+    if (!Arrays.equals(checkCryptogram, cardCryptogram)) {
+      throw new CardException("Invalid card cryptogram");
+    }
+
+    md.update(sharedSecret);
+    checkCryptogram = md.digest(cardChallenge);
+
+    resp = pair(apduChannel, SecureChannel.PAIR_P1_LAST_STEP, checkCryptogram);
+
+    if (resp.getSW() != 0x9000) {
+      throw new CardException("Pairing failed on step 2");
+    }
+
+    respData = resp.getData();
+    md.update(sharedSecret);
+    pairingKey = md.digest(Arrays.copyOfRange(respData, 1, respData.length));
+    pairingIndex = respData[0];
+  }
+
+  /**
+   * Unpairs the current paired key
+   *
+   * @param apduChannel the apdu channel
+   * @throws CardException communication error
+   */
+  public void autoUnpair(CardChannel apduChannel) throws CardException {
+    ResponseAPDU resp = unpair(apduChannel, pairingIndex, new byte[] { pairingIndex });
+
+    if (resp.getSW() != 0x9000) {
+      throw new CardException("Unpairing failed");
+    }
+  }
+
+  /**
+   * Sends a PAIR APDU.
+   *
+   * @param apduChannel the apdu channel
+   * @param p1 the P1 parameter
+   * @param data the data
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU pair(CardChannel apduChannel, byte p1, byte[] data) throws CardException {
+    CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_PAIR, p1, 0, data);
+    return apduChannel.transmit(openSecureChannel);
+  }
+
+  /**
+   * Sends a UNPAIR APDU.
+   *
+   * @param apduChannel the apdu channel
+   * @param p1 the P1 parameter
+   * @param data the data
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU unpair(CardChannel apduChannel, byte p1, byte[] data) throws CardException {
+    CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_UNPAIR, p1, 0, encryptAPDU(data));
+    return apduChannel.transmit(openSecureChannel);
   }
 
   /**
