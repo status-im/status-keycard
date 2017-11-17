@@ -80,7 +80,15 @@ public class SecureChannel {
     }
 
     Crypto.ecdh.init(scKeypair.getPrivate());
-    short len = Crypto.ecdh.generateSecret(apduBuffer, ISO7816.OFFSET_CDATA, apduBuffer[ISO7816.OFFSET_LC], secret, (short) 0);
+    short len;
+
+    try {
+      len = Crypto.ecdh.generateSecret(apduBuffer, ISO7816.OFFSET_CDATA, apduBuffer[ISO7816.OFFSET_LC], secret, (short) 0);
+    } catch(Exception e) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      return;
+    }
+
     Crypto.random.generateData(apduBuffer, (short) 0, SC_SECRET_LENGTH);
     Crypto.sha256.update(secret, (short) 0, len);
     Crypto.sha256.update(pairingKeys, pairingKeyOff, SC_SECRET_LENGTH);
@@ -111,6 +119,7 @@ public class SecureChannel {
     Crypto.sha256.doFinal(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH, apduBuffer, ISO7816.OFFSET_CDATA);
 
     if (Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_SECRET_LENGTH), SC_SECRET_LENGTH) != 0) {
+      scKey.clearKey();
       ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
     }
 

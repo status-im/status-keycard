@@ -108,14 +108,77 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.select();
     assertEquals(0x9000, response.getSW());
     byte[] data = response.getData();
-    assertEquals(0x04, data[0]);
-    assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, data.length);
+    assertEquals(WalletApplet.TLV_APPLICATION_INFO_TEMPLATE, data[0]);
+    assertEquals(WalletApplet.TLV_UID, data[2]);
+    assertEquals(WalletApplet.TLV_PUB_KEY, data[20]);
   }
 
   @Test
   @DisplayName("OPEN SECURE CHANNEL command")
   void openSecureChannelTest() throws CardException {
+    // Wrong P1
+    ResponseAPDU response = cmdSet.openSecureChannel((byte)(secureChannel.getPairingIndex() + 1), new byte[65]);
+    assertEquals(0x6A86, response.getSW());
+
+    // Wrong data
+    response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), new byte[65]);
+    assertEquals(0x6A80, response.getSW());
+
+    // Good case
+    response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
+    assertEquals(0x9000, response.getSW());
+    assertEquals(SecureChannel.SC_SECRET_LENGTH, response.getData().length);
+    secureChannel.processOpenSecureChannelResponse(response);
+
+    // Send command before MUTUALLY AUTHENTICATE
+    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    assertEquals(0x6985, response.getSW());
+
+    // Perform mutual authentication
+    response = cmdSet.mutuallyAuthenticate();
+    assertEquals(0x9000, response.getSW());
+    assertTrue(secureChannel.verifyMutuallyAuthenticateResponse(response));
+
+    // Verify that the channel is open
+    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    assertEquals(0x9000, response.getSW());
+  }
+
+  @Test
+  @DisplayName("MUTUALLY AUTHENTICATE command")
+  void mutuallyAuthenticateTest() throws CardException {
+    // Mutual authentication before opening a Secure Channel
+    ResponseAPDU response = cmdSet.mutuallyAuthenticate();
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
+    assertEquals(0x9000, response.getSW());
+    secureChannel.processOpenSecureChannelResponse(response);
+
+    // Wrong data format
+    response = cmdSet.mutuallyAuthenticate(new byte[63]);
+    assertEquals(0x6A80, response.getSW());
+
+    // Wrong authentication data
+    response = cmdSet.mutuallyAuthenticate(new byte[64]);
+    assertEquals(0x6982, response.getSW());
+
+    // Verify that after wrong authentication, the command does not work
+    response = cmdSet.mutuallyAuthenticate();
+    assertEquals(0x6985, response.getSW());
+
+    // Good case
     cmdSet.autoOpenSecureChannel();
+
+    // MUTUALLY AUTHENTICATE has no effect on an already open secure channel
+    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    assertEquals(0x9000, response.getSW());
+
+    response = cmdSet.mutuallyAuthenticate();
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    assertEquals(0x9000, response.getSW());
   }
 
   @Test

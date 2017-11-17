@@ -83,6 +83,13 @@ public class WalletAppletCommandSet {
   /**
    * Sends a MUTUALLY AUTHENTICATE APDU. Calls the corresponding method of the SecureChannel class.
    */
+  public ResponseAPDU mutuallyAuthenticate() throws CardException {
+    return secureChannel.mutuallyAuthenticate(apduChannel);
+  }
+
+  /**
+   * Sends a MUTUALLY AUTHENTICATE APDU. Calls the corresponding method of the SecureChannel class.
+   */
   public ResponseAPDU mutuallyAuthenticate(byte[] data) throws CardException {
     return secureChannel.mutuallyAuthenticate(apduChannel, data);
   }

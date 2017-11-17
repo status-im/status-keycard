@@ -32,7 +32,7 @@ opened.
 * P2 = 0x00
 * Data = An EC-256 public key on the SECP256k1 curve encoded as an uncompressed point.
 * Response Data = A 256-bit salt
-* Response SW = 0x9000 on success, 0x6A86 if P1 is invalid
+* Response SW = 0x9000 on success, 0x6A86 if P1 is invalid, 0x6A80 if the data is not a public key
 
 This APDU is the first step to establish a Secure Channel session. A session is aborted when the application is deselected,
 either directly or because of a card reset/tear. This APDU and its response are not encrypted.
@@ -61,7 +61,8 @@ guarantee authentication of the counterpart. The data sent by both parties is a 
 SHA-256 hash. The APDU data is sent encrypted with the keys generated in the OPEN SECURE CHANNEL step. Each party must
 verify that the hash indeed matches the value sent. If this is true, then the decryption was correct, meaning that the
 keys are matching. Only after this step has been executed the secure channel can be considered to be open and other 
-commands can be sent.
+commands can be sent. If the authentication fails with 0x6982, the OPEN SECURE CHANNEL command must be repeated to
+generate new keys. This greatly slows down brute-force attempts.
 
 ### PAIR
 

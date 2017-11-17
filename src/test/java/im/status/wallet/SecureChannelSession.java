@@ -61,6 +61,22 @@ public class SecureChannelSession {
   }
 
   /**
+   * Returns the public key
+   * @return the public key
+   */
+  public byte[] getPublicKey() {
+    return publicKey;
+  }
+
+  /**
+   * Returns the pairing index
+   * @return the pairing index
+   */
+  public byte getPairingIndex() {
+    return pairingIndex;
+  }
+
+  /**
    * Establishes a Secure Channel with the card. The command parameters are the public key generated in the first step.
    * The card returns a secret value which must be appended to the secret previously generated through the EC-DH
    * algorithm. This entire value must be hashed using SHA-256. The hash will be used as the key for an AES CBC cipher
@@ -73,42 +89,62 @@ public class SecureChannelSession {
    */
   public void autoOpenSecureChannel(CardChannel apduChannel) throws CardException {
     ResponseAPDU response = openSecureChannel(apduChannel, pairingIndex, publicKey);
-    byte[] salt = response.getData();
 
     if (response.getSW() != 0x9000) {
       throw new CardException("OPEN SECURE CHANNEL failed");
     }
 
-    MessageDigest md;
+    processOpenSecureChannelResponse(response);
 
-    try {
-      md = MessageDigest.getInstance("SHA256", "BC");
-      md.update(secret);
-      md.update(pairingKey);
-      sessionKey = new SecretKeySpec(md.digest(salt), "AES");
-      sessionCipher = Cipher.getInstance("AES/CBC/ISO7816-4Padding", "BC");
-    } catch(Exception e) {
-      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
-    }
-
-    random.nextBytes(salt);
-    byte[] digest = md.digest(salt);
-    salt = Arrays.copyOf(salt, SecureChannel.SC_SECRET_LENGTH * 2);
-    System.arraycopy(digest, 0, salt, SecureChannel.SC_SECRET_LENGTH, SecureChannel.SC_SECRET_LENGTH);
-    response = mutuallyAuthenticate(apduChannel, salt);
-    salt = decryptAPDU(response.getData());
+    response = mutuallyAuthenticate(apduChannel);
 
     if (response.getSW() != 0x9000) {
       throw new CardException("MUTUALLY AUTHENTICATE failed");
     }
 
-    md.update(salt, 0, SecureChannel.SC_SECRET_LENGTH);
-    digest = md.digest();
-    salt = Arrays.copyOfRange(salt, SecureChannel.SC_SECRET_LENGTH, salt.length);
-
-    if (!Arrays.equals(salt, digest)) {
+    if(!verifyMutuallyAuthenticateResponse(response)) {
       throw new CardException("Invalid authentication data from the card");
     }
+  }
+
+  /**
+   * Processes the response from OPEN SECURE CHANNEL. This initialize the session key and cipher internally.
+   *
+   * @param response the card response
+   */
+  public void processOpenSecureChannelResponse(ResponseAPDU response) {
+    try {
+      MessageDigest md = MessageDigest.getInstance("SHA256", "BC");
+      md.update(secret);
+      md.update(pairingKey);
+      sessionKey = new SecretKeySpec(md.digest(response.getData()), "AES");
+      sessionCipher = Cipher.getInstance("AES/CBC/ISO7816-4Padding", "BC");
+    } catch(Exception e) {
+      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
+    }
+  }
+
+  /**
+   * Verify that the response from MUTUALLY AUTHENTICATE is correct.
+   *
+   * @param response the card response
+   * @return true if response is correct, false otherwise
+   */
+  public boolean verifyMutuallyAuthenticateResponse(ResponseAPDU response) {
+    MessageDigest md;
+
+    try {
+      md = MessageDigest.getInstance("SHA256", "BC");
+    } catch (Exception e) {
+      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
+    }
+
+    byte[] data = decryptAPDU(response.getData());
+    md.update(data, 0, SecureChannel.SC_SECRET_LENGTH);
+    byte[] digest = md.digest();
+    data = Arrays.copyOfRange(data, SecureChannel.SC_SECRET_LENGTH, data.length);
+
+    return Arrays.equals(data, digest);
   }
 
   /**
@@ -187,6 +223,31 @@ public class SecureChannelSession {
   public ResponseAPDU openSecureChannel(CardChannel apduChannel, byte index, byte[] data) throws CardException {
     CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_OPEN_SECURE_CHANNEL, index, 0, data);
     return apduChannel.transmit(openSecureChannel);
+  }
+
+  /**
+   * Sends a MUTUALLY AUTHENTICATE APDU. The data is generated automatically
+   *
+   * @param apduChannel the apdu channel
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU mutuallyAuthenticate(CardChannel apduChannel) throws CardException {
+    MessageDigest md;
+
+    try {
+      md = MessageDigest.getInstance("SHA256", "BC");
+    } catch (Exception e) {
+      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
+    }
+
+    byte[] data = new byte[SecureChannel.SC_SECRET_LENGTH];
+    random.nextBytes(data);
+    byte[] digest = md.digest(data);
+    data = Arrays.copyOf(data, SecureChannel.SC_SECRET_LENGTH * 2);
+    System.arraycopy(digest, 0, data, SecureChannel.SC_SECRET_LENGTH, SecureChannel.SC_SECRET_LENGTH);
+
+    return mutuallyAuthenticate(apduChannel, data);
   }
 
   /**
