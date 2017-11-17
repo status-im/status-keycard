@@ -15,6 +15,8 @@ A short description of establishing a session is as follows
    generate a shared 256-bit secret (more details below).
 3. The generated secret is used as an AES key to encrypt all further communication. CBC mode is used with a random IV
 generated for each APDU and prepended to the APDU payload. Both command and responses are encrypted.
+4. The client sends a MUTUALLY AUTHENTICATE command to verify that the keys are matching and thus the secure channel is
+successfully established.
 
 The EC keyset used by the card for the EC-DH algorithm is generated on-card on applet installation and is not used
 for anything else. The EC keyset used by the client is generated every time a new secure channel session must be 
@@ -32,7 +34,7 @@ opened.
 * Response Data = A 256-bit salt
 * Response SW = 0x9000 on success, 0x6A86 if P1 is invalid
 
-This APDU is sent to establish a Secure Channel session. A session is aborted when the application is deselected,
+This APDU is the first step to establish a Secure Channel session. A session is aborted when the application is deselected,
 either directly or because of a card reset/tear. This APDU and its response are not encrypted.
 
 The card generates a random 256-bit salt which is sent to the client. Both the client and the card do the following
@@ -43,12 +45,28 @@ for key derivation
    calculated.
 3. The output of the SHA-256 algorithm is used as the AES key for further communication.
 
-TODO: define a second step where client and card mutually verify that they have the same keys and thus are authenticated
+### MUTUALLY AUTHENTICATE
+
+* CLA = 0x80
+* INS = 0x11
+* P1 = 0x00
+* P2 = 0x00
+* Data = 256-bit random number and its SHA-256 hash
+* Response Data = 256-bit random number and its SHA-256 hash
+* Response SW = 0x9000 on success, 0x6985 if the previous successfully executed APDU was not OPEN SECURE CHANNEL, 0x6982
+if authentication failed, 0x6A80 if the data is not exactly 64 bytes long
+
+This APDU allows both parties to verify that the keys generated in the OPEN SECURE CHANNEL step are matching and thus
+guarantee authentication of the counterpart. The data sent by both parties is a 32-bit random number followed by its own
+SHA-256 hash. The APDU data is sent encrypted with the keys generated in the OPEN SECURE CHANNEL step. Each party must
+verify that the hash indeed matches the value sent. If this is true, then the decryption was correct, meaning that the
+keys are matching. Only after this step has been executed the secure channel can be considered to be open and other 
+commands can be sent.
 
 ### PAIR
 
 * CLA = 0x80
-* INS = 0x11
+* INS = 0x12
 * P1 = pairing phase
 * P2 = 0x00
 * Data = see below
@@ -89,7 +107,7 @@ happens depend on the specific applet.
 ### UNPAIR
 
 * CLA = 0x80
-* INS = 0x12
+* INS = 0x13
 * P1 = the index to unpair
 * P2 = 0x00
 * Data = the same index as in P1

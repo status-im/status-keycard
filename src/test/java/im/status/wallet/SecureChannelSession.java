@@ -71,13 +71,18 @@ public class SecureChannelSession {
    * @return the card response
    * @throws CardException communication error
    */
-  public ResponseAPDU openSecureChannel(CardChannel apduChannel) throws CardException {
-    CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_OPEN_SECURE_CHANNEL, pairingIndex, 0, publicKey);
-    ResponseAPDU response = apduChannel.transmit(openSecureChannel);
+  public void autoOpenSecureChannel(CardChannel apduChannel) throws CardException {
+    ResponseAPDU response = openSecureChannel(apduChannel, pairingIndex, publicKey);
     byte[] salt = response.getData();
 
+    if (response.getSW() != 0x9000) {
+      throw new CardException("OPEN SECURE CHANNEL failed");
+    }
+
+    MessageDigest md;
+
     try {
-      MessageDigest md = MessageDigest.getInstance("SHA256", "BC");
+      md = MessageDigest.getInstance("SHA256", "BC");
       md.update(secret);
       md.update(pairingKey);
       sessionKey = new SecretKeySpec(md.digest(salt), "AES");
@@ -86,7 +91,24 @@ public class SecureChannelSession {
       throw new RuntimeException("Is BouncyCastle in the classpath?", e);
     }
 
-    return response;
+    random.nextBytes(salt);
+    byte[] digest = md.digest(salt);
+    salt = Arrays.copyOf(salt, SecureChannel.SC_SECRET_LENGTH * 2);
+    System.arraycopy(digest, 0, salt, SecureChannel.SC_SECRET_LENGTH, SecureChannel.SC_SECRET_LENGTH);
+    response = mutuallyAuthenticate(apduChannel, salt);
+    salt = decryptAPDU(response.getData());
+
+    if (response.getSW() != 0x9000) {
+      throw new CardException("MUTUALLY AUTHENTICATE failed");
+    }
+
+    md.update(salt, 0, SecureChannel.SC_SECRET_LENGTH);
+    digest = md.digest();
+    salt = Arrays.copyOfRange(salt, SecureChannel.SC_SECRET_LENGTH, salt.length);
+
+    if (!Arrays.equals(salt, digest)) {
+      throw new CardException("Invalid authentication data from the card");
+    }
   }
 
   /**
@@ -151,6 +173,33 @@ public class SecureChannelSession {
     if (resp.getSW() != 0x9000) {
       throw new CardException("Unpairing failed");
     }
+  }
+
+  /**
+   * Sends a OPEN SECURE CHANNEL APDU.
+   *
+   * @param apduChannel the apdu channel
+   * @param index the P1 parameter
+   * @param data the data
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU openSecureChannel(CardChannel apduChannel, byte index, byte[] data) throws CardException {
+    CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_OPEN_SECURE_CHANNEL, index, 0, data);
+    return apduChannel.transmit(openSecureChannel);
+  }
+
+  /**
+   * Sends a MUTUALLY AUTHENTICATE APDU.
+   *
+   * @param apduChannel the apdu channel
+   * @param data the data
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU mutuallyAuthenticate(CardChannel apduChannel, byte[] data) throws CardException {
+    CommandAPDU mutuallyAuthenticate = new CommandAPDU(0x80, SecureChannel.INS_MUTUALLY_AUTHENTICATE, 0, 0, encryptAPDU(data));
+    return apduChannel.transmit(mutuallyAuthenticate);
   }
 
   /**

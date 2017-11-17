@@ -64,6 +64,10 @@ which must be used by the client to establish the Secure Channel.
 
 The OPEN SECURE CHANNEL command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD).
 
+### MUTUALLY AUTHENTICATE
+
+The MUTUALLY AUTHENTICATE command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD).
+
 ### PAIR
 
 The PAIR command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD). The shared secret is the SHA-256 of the

@@ -51,8 +51,8 @@ public class WalletAppletCommandSet {
    * @return the raw card response
    * @throws CardException communication error
    */
-  public ResponseAPDU openSecureChannel() throws CardException {
-    return secureChannel.openSecureChannel(apduChannel);
+  public void autoOpenSecureChannel() throws CardException {
+    secureChannel.autoOpenSecureChannel(apduChannel);
   }
 
   /**
@@ -71,6 +71,20 @@ public class WalletAppletCommandSet {
    */
   public void autoUnpair() throws CardException {
     secureChannel.autoUnpair(apduChannel);
+  }
+
+  /**
+   * Sends a OPEN SECURE CHANNEL APDU. Calls the corresponding method of the SecureChannel class.
+   */
+  public ResponseAPDU openSecureChannel(byte index, byte[] data) throws CardException {
+    return secureChannel.openSecureChannel(apduChannel, index, data);
+  }
+
+  /**
+   * Sends a MUTUALLY AUTHENTICATE APDU. Calls the corresponding method of the SecureChannel class.
+   */
+  public ResponseAPDU mutuallyAuthenticate(byte[] data) throws CardException {
+    return secureChannel.mutuallyAuthenticate(apduChannel, data);
   }
 
   /**

@@ -15,8 +15,9 @@ public class SecureChannel {
   public static final short SC_OUT_OFFSET = ISO7816.OFFSET_CDATA + (SC_BLOCK_SIZE * 2);
 
   public static final byte INS_OPEN_SECURE_CHANNEL = 0x10;
-  public static final byte INS_PAIR = 0x11;
-  public static final byte INS_UNPAIR = 0x12;
+  public static final byte INS_MUTUALLY_AUTHENTICATE = 0x11;
+  public static final byte INS_PAIR = 0x12;
+  public static final byte INS_UNPAIR = 0x13;
 
   public static final byte PAIR_P1_FIRST_STEP = 0x00;
   public static final byte PAIR_P1_LAST_STEP = 0x01;
@@ -34,6 +35,7 @@ public class SecureChannel {
   private byte[] pairingKeys;
 
   private short preassignedPairingOffset = -1;
+  private boolean mutuallyAuthenticated = false;
 
   /**
    * Instantiates a Secure Channel. All memory allocations needed for the secure channel are performed here. The keypair
@@ -64,6 +66,7 @@ public class SecureChannel {
    */
   public void openSecureChannel(APDU apdu) {
     preassignedPairingOffset = -1;
+    mutuallyAuthenticated = false;
 
     apdu.setIncomingAndReceive();
     byte[] apduBuffer = apdu.getBuffer();
@@ -84,6 +87,39 @@ public class SecureChannel {
     Crypto.sha256.doFinal(apduBuffer, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
     scKey.setKey(secret, (short) 0);
     apdu.setOutgoingAndSend((short) 0, SC_SECRET_LENGTH);
+  }
+
+  /**
+   * Processes the MUTUALLY AUTHENTICATE command.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
+  public void mutuallyAuthenticate(APDU apdu) {
+    if (!scKey.isInitialized() || mutuallyAuthenticated) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    apdu.setIncomingAndReceive();
+    byte[] apduBuffer = apdu.getBuffer();
+
+    short len = decryptAPDU(apduBuffer);
+
+    if (len != (short) (SC_SECRET_LENGTH * 2)) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    Crypto.sha256.doFinal(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH, apduBuffer, ISO7816.OFFSET_CDATA);
+
+    if (Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_SECRET_LENGTH), SC_SECRET_LENGTH) != 0) {
+      ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+    }
+
+    mutuallyAuthenticated = true;
+
+    Crypto.random.generateData(apduBuffer, SC_OUT_OFFSET, SC_SECRET_LENGTH);
+    Crypto.sha256.doFinal(apduBuffer, SC_OUT_OFFSET, SC_SECRET_LENGTH, apduBuffer, (short) (SC_OUT_OFFSET + SC_SECRET_LENGTH));
+    len = encryptAPDU(apduBuffer, len);
+    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
   }
 
   /**
@@ -243,7 +279,7 @@ public class SecureChannel {
    * @return whether a secure channel is currently established or not.
    */
   public boolean isOpen() {
-    return scKey.isInitialized();
+    return scKey.isInitialized() && mutuallyAuthenticated;
   }
 
   /**

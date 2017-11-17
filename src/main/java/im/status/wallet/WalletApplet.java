@@ -185,6 +185,9 @@ public class WalletApplet extends Applet {
       case SecureChannel.INS_OPEN_SECURE_CHANNEL:
         secureChannel.openSecureChannel(apdu);
         break;
+      case SecureChannel.INS_MUTUALLY_AUTHENTICATE:
+        secureChannel.mutuallyAuthenticate(apdu);
+        break;
       case SecureChannel.INS_PAIR:
         secureChannel.pair(apdu);
         break;

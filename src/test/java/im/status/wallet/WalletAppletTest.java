@@ -115,9 +115,7 @@ public class WalletAppletTest {
   @Test
   @DisplayName("OPEN SECURE CHANNEL command")
   void openSecureChannelTest() throws CardException {
-    ResponseAPDU response = cmdSet.openSecureChannel();
-    assertEquals(0x9000, response.getSW());
-    assertEquals(SecureChannel.SC_SECRET_LENGTH, response.getData().length);
+    cmdSet.autoOpenSecureChannel();
   }
 
   @Test
@@ -126,7 +124,7 @@ public class WalletAppletTest {
     // Security condition violation: SecureChannel not open
     ResponseAPDU response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x6985, response.getSW());
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
 
     // Good case. Since the order of test execution is undefined, the test cannot know if the keys are initialized or not.
     // Additionally, support for public key derivation is hw dependent.
@@ -163,7 +161,7 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.verifyPIN("000000");
     assertEquals(0x6985, response.getSW());
 
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
 
     // Wrong PIN
     response = cmdSet.verifyPIN("123456");
@@ -198,7 +196,7 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.changePIN("123456");
     assertEquals(0x6985, response.getSW());
 
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
 
     // Security condition violation: PIN n ot verified
     response = cmdSet.changePIN("123456");
@@ -242,7 +240,7 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.unblockPIN("123456789012", "000000");
     assertEquals(0x6985, response.getSW());
 
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
 
     // Condition violation: PIN is not blocked
     response = cmdSet.unblockPIN("123456789012", "000000");
@@ -294,7 +292,7 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.loadKey(keyPair);
     assertEquals(0x6985, response.getSW());
 
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
 
     int publicKeyDerivationSW = cmdSet.getPublicKeyDerivationSupport() ? 0x9000 : 0x6a81;
 
@@ -351,7 +349,7 @@ public class WalletAppletTest {
     // Security condition violation: SecureChannel not open
     ResponseAPDU response = cmdSet.generateMnemonic(4);
     assertEquals(0x6985, response.getSW());
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
 
     // Wrong P1 (too short, too long)
     response = cmdSet.generateMnemonic(3);
@@ -389,7 +387,7 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00});
     assertEquals(0x6985, response.getSW());
 
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
     boolean autonomousDerivation = cmdSet.getPublicKeyDerivationSupport();
 
     // Security condition violation: PIN is not verified
@@ -509,7 +507,7 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
     assertEquals(0x6985, response.getSW());
 
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
 
     // Security condition violation: PIN not verified
     response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true,true);
@@ -558,7 +556,7 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02});
     assertEquals(0x6985, response.getSW());
 
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
 
     // Security condition violation: PIN not verified
     response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02});
@@ -644,7 +642,7 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
     assertEquals(0x6985, response.getSW());
 
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
 
     // Security condition violation: PIN not verified
     response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
@@ -698,7 +696,7 @@ public class WalletAppletTest {
     byte[] smallData = Arrays.copyOf(data, 20);
     r.nextBytes(data);
 
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
 
     ResponseAPDU response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
@@ -798,7 +796,7 @@ public class WalletAppletTest {
     Credentials wallet2 = WalletUtils.loadCredentials("testwallet", "testwallets/wallet2.json");
 
     // Load keys on card
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
     ResponseAPDU response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
     response = cmdSet.loadKey(wallet1.getEcKeyPair());
@@ -874,7 +872,7 @@ public class WalletAppletTest {
   private void resetAndSelectAndOpenSC() throws CardException {
     reset();
     cmdSet.select();
-    cmdSet.openSecureChannel();
+    cmdSet.autoOpenSecureChannel();
   }
 
   private void assertMnemonic(int expectedLength, byte[] data) {
