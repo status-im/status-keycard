@@ -42,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Test the Wallet Applet")
 public class WalletAppletTest {
+  public static final byte[] SHARED_SECRET = sha256("123456789012".getBytes());
   private static CardTerminal cardTerminal;
   private static CardChannel apduChannel;
   private static CardSimulator simulator;
@@ -87,7 +88,7 @@ public class WalletAppletTest {
     byte[] keyData = extractPublicKeyFromSelect(cmdSet.select().getData());
     secureChannel = new SecureChannelSession(keyData);
     cmdSet.setSecureChannel(secureChannel);
-    cmdSet.autoPair(sha256("123456789012".getBytes()));
+    cmdSet.autoPair(SHARED_SECRET);
   }
 
   @AfterEach
@@ -179,6 +180,105 @@ public class WalletAppletTest {
 
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
+  }
+
+  @Test
+  @DisplayName("PAIR command")
+  void pairTest() throws CardException {
+    // Wrong data length
+    ResponseAPDU response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, new byte[31]);
+    assertEquals(0x6A80, response.getSW());
+
+    // Wrong P1
+    response = cmdSet.pair(SecureChannel.PAIR_P1_LAST_STEP, new byte[32]);
+    assertEquals(0x6A86, response.getSW());
+
+    // Wrong client cryptogram
+    byte[] challenge = new byte[32];
+    Random random = new Random();
+    random.nextBytes(challenge);
+    response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, challenge);
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.pair(SecureChannel.PAIR_P1_LAST_STEP, challenge);
+    assertEquals(0x6982, response.getSW());
+
+    // Interrupt session
+    random.nextBytes(challenge);
+    response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, challenge);
+    assertEquals(0x9000, response.getSW());
+    cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
+    response = cmdSet.pair(SecureChannel.PAIR_P1_LAST_STEP, challenge);
+    assertEquals(0x6A86, response.getSW());
+
+    // Open secure channel
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, challenge);
+    assertEquals(0x6985, response.getSW());
+    cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
+
+
+    // Pair multiple indexes
+    for (int i = 1; i < 5; i++) {
+      cmdSet.autoPair(SHARED_SECRET);
+      assertEquals(i, secureChannel.getPairingIndex());
+      cmdSet.autoOpenSecureChannel();
+      cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
+    }
+
+    // Too many paired indexes
+    response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, challenge);
+    assertEquals(0x6A84, response.getSW());
+
+    // Unpair all (except the last, which will be unpaired in the tearDown phase)
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    for (byte i = 0; i < 4; i++) {
+      response = cmdSet.unpair(i, new byte[] { i });
+      assertEquals(0x9000, response.getSW());
+    }
+  }
+
+  @Test
+  @DisplayName("UNPAIR command")
+  void unpairTest() throws CardException {
+    // Add a spare keyset
+    byte sparePairingIndex = secureChannel.getPairingIndex();
+    cmdSet.autoPair(SHARED_SECRET);
+
+    // Proof that the old keyset is still usable
+    ResponseAPDU response = cmdSet.openSecureChannel(sparePairingIndex, secureChannel.getPublicKey());
+    assertEquals(0x9000, response.getSW());
+
+    // Security condition violation: SecureChannel not open
+    response = cmdSet.unpair(sparePairingIndex, new byte[] { sparePairingIndex });
+    assertEquals(0x6985, response.getSW());
+
+    // Not authenticated
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.unpair(sparePairingIndex, new byte[] { sparePairingIndex });
+    assertEquals(0x6985, response.getSW());
+
+    // Wrong P1
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.unpair((byte) 5, new byte[] { 5 });
+    assertEquals(0x6A86, response.getSW());
+
+    // Unmatching P1 and data
+    response = cmdSet.unpair(sparePairingIndex, new byte[] { (byte) (sparePairingIndex + 1) });
+    assertEquals(0x6985, response.getSW());
+    response = cmdSet.unpair((byte) (sparePairingIndex + 1), new byte[] { sparePairingIndex });
+    assertEquals(0x6985, response.getSW());
+
+    // Unpair spare keyset
+    response = cmdSet.unpair(sparePairingIndex, new byte[] { sparePairingIndex });
+    assertEquals(0x9000, response.getSW());
+
+    // Proof that unpaired is not usable
+    response = cmdSet.openSecureChannel(sparePairingIndex, secureChannel.getPublicKey());
+    assertEquals(0x6A86, response.getSW());
   }
 
   @Test

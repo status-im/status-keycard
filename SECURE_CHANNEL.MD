@@ -72,9 +72,9 @@ generate new keys. This greatly slows down brute-force attempts.
 * P2 = 0x00
 * Data = see below
 * Response Data = see below
-* Response SW = 0x9000 on success, 0x6A80 if the data are in the wrong format, 0x6982 if client cryptogram verification 
+* Response SW = 0x9000 on success, 0x6A80 if the data is in the wrong format, 0x6982 if client cryptogram verification 
 fails, 0x6A84 if all available pairing slot are taken, 0x6A86 if P1 is invalid or is 0x01 but the first phase was not 
-completed
+completed, 0x6985 if a secure channel is open
 
 P1:
 * 0x00: First step
@@ -93,7 +93,7 @@ other.
 
 In the first phase the client sends a random challenge to the card. The card replies with the SHA-256 hash of the
 challenge and the shared secret followed by its random challenge. The client is thus able to authenticate the card by
-verifying the card cryptogram (since the client can generate the same and verify that is matches).
+verifying the card cryptogram (since the client can generate the same and verify that it matches).
 
 In the second phase the client sends the client cryptogram which is the SHA-256 hash of the shared secret and the card
 challenge. The card verifies the cryptogram and thus authenticates the client. On success the card generates a random

@@ -138,6 +138,11 @@ public class SecureChannel {
    */
   public void pair(APDU apdu) {
     apdu.setIncomingAndReceive();
+
+    if (isOpen()) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
     byte[] apduBuffer = apdu.getBuffer();
 
     if (apduBuffer[ISO7816.OFFSET_LC] != SC_SECRET_LENGTH) {
@@ -151,7 +156,7 @@ public class SecureChannel {
     } else if ((apduBuffer[ISO7816.OFFSET_P1] == PAIR_P1_LAST_STEP) && (preassignedPairingOffset != -1)) {
       len = pairStep2(apduBuffer);
     } else {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+      ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
       return;
     }
 
