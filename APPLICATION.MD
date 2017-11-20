@@ -86,7 +86,8 @@ command to work.
 * P2 = 0x00
 * Response SW = 0x9000 on success, 0x6A86 on undefined P1
 * Response Data = Application Status Template or Key Path
-* Preconditions: Secure Channel must be opened, if Key Path is required then the card must not be in the  middle of a derivation session
+* Preconditions: Secure Channel must be opened, if Key Path is required then the card must not be in the  middle of a 
+derivation session
 
 Response Data format:
 if P1 = 0x00:
@@ -189,7 +190,8 @@ signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command
   bit 0 of P1 is set, 0x6A86 if P2 = 0x01 and bit 0 of P1 is not set, 0x6984 if one of the components in the path
   generates an invalid key.
 * Response Data = On assisted derivation and P2 = 0x01 the key derivation template. Empty otherwise.
-* Preconditions: Secure Channel must be opened, user PIN must be verified (if no PIN-less key is defined), an extended keyset must be loaded
+* Preconditions: Secure Channel must be opened, user PIN must be verified (if no PIN-less key is defined), an extended 
+keyset must be loaded
 
 This command is used before a signing session to generate a private key according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
 specifications. This command always aborts open signing sessions, if any. The generated key is used for all subsequent 
@@ -242,7 +244,8 @@ human-readable mnemonic. Each integer can have a value from 0 to 2047.
 * Data = the data to sign
 * Response = if P2 indicates last segment, the public key and the signature are returned
 * Response SW = 0x9000 on success, 0x6A86 if P2 is invalid
-* Preconditions: Secure Channel must be opened, user PIN must be verified (or a PIN-less key must be active), a valid keypair must be loaded
+* Preconditions: Secure Channel must be opened, user PIN must be verified (or a PIN-less key must be active), a valid 
+keypair must be loaded
 
 P1:
 * 0x00 = transaction data

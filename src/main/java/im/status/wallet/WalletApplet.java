@@ -179,54 +179,67 @@ public class WalletApplet extends Applet {
       return;
     }
 
+    apdu.setIncomingAndReceive();
     byte[] apduBuffer = apdu.getBuffer();
 
-    switch(apduBuffer[ISO7816.OFFSET_INS]) {
-      case SecureChannel.INS_OPEN_SECURE_CHANNEL:
-        secureChannel.openSecureChannel(apdu);
-        break;
-      case SecureChannel.INS_MUTUALLY_AUTHENTICATE:
-        secureChannel.mutuallyAuthenticate(apdu);
-        break;
-      case SecureChannel.INS_PAIR:
-        secureChannel.pair(apdu);
-        break;
-      case SecureChannel.INS_UNPAIR:
-        unpair(apdu);
-        break;
-      case INS_GET_STATUS:
-        getStatus(apdu);
-        break;
-      case INS_VERIFY_PIN:
-        verifyPIN(apdu);
-        break;
-      case INS_CHANGE_PIN:
-        changePIN(apdu);
-        break;
-      case INS_UNBLOCK_PIN:
-        unblockPIN(apdu);
-        break;
-      case INS_LOAD_KEY:
-        loadKey(apdu);
-        break;
-      case INS_DERIVE_KEY:
-        deriveKey(apdu);
-        break;
-      case INS_GENERATE_MNEMONIC:
-        generateMnemonic(apdu);
-        break;
-      case INS_SIGN:
-        sign(apdu);
-        break;
-      case INS_SET_PINLESS_PATH:
-        setPinlessPath(apdu);
-        break;
-      case INS_EXPORT_KEY:
-        exportKey(apdu);
-        break;
-      default:
-        ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
-        break;
+    try {
+      switch (apduBuffer[ISO7816.OFFSET_INS]) {
+        case SecureChannel.INS_OPEN_SECURE_CHANNEL:
+          secureChannel.openSecureChannel(apdu);
+          break;
+        case SecureChannel.INS_MUTUALLY_AUTHENTICATE:
+          secureChannel.mutuallyAuthenticate(apdu);
+          break;
+        case SecureChannel.INS_PAIR:
+          secureChannel.pair(apdu);
+          break;
+        case SecureChannel.INS_UNPAIR:
+          unpair(apdu);
+          break;
+        case INS_GET_STATUS:
+          getStatus(apdu);
+          break;
+        case INS_VERIFY_PIN:
+          verifyPIN(apdu);
+          break;
+        case INS_CHANGE_PIN:
+          changePIN(apdu);
+          break;
+        case INS_UNBLOCK_PIN:
+          unblockPIN(apdu);
+          break;
+        case INS_LOAD_KEY:
+          loadKey(apdu);
+          break;
+        case INS_DERIVE_KEY:
+          deriveKey(apdu);
+          break;
+        case INS_GENERATE_MNEMONIC:
+          generateMnemonic(apdu);
+          break;
+        case INS_SIGN:
+          sign(apdu);
+          break;
+        case INS_SET_PINLESS_PATH:
+          setPinlessPath(apdu);
+          break;
+        case INS_EXPORT_KEY:
+          exportKey(apdu);
+          break;
+        default:
+          ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
+          break;
+      }
+    } catch(ISOException sw) {
+      if (secureChannel.isOpen() && apdu.getCurrentState() != APDU.STATE_FULL_OUTGOING) {
+        secureChannel.respond(apdu, (short) 0, sw.getReason());
+      } else {
+        throw sw;
+      }
+    }
+
+    if (secureChannel.isOpen()) {
+      secureChannel.respond(apdu, (short) 0, ISO7816.SW_NO_ERROR);
     }
   }
 
@@ -237,11 +250,13 @@ public class WalletApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void unpair(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    secureChannel.preprocessAPDU(apduBuffer);
+
     if (pin.isValidated()) {
-      secureChannel.unpair(apdu);
+      secureChannel.unpair(apduBuffer);
     } else {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-
     }
   }
 
@@ -255,8 +270,8 @@ public class WalletApplet extends Applet {
     signInProgress = false;
     pin.reset();
     puk.reset();
+    secureChannel.reset();
 
-    apdu.setIncomingAndReceive();
     byte[] apduBuffer = apdu.getBuffer();
 
     apduBuffer[0] = TLV_APPLICATION_INFO_TEMPLATE;
@@ -294,8 +309,7 @@ public class WalletApplet extends Applet {
       return;
     }
 
-    len = secureChannel.encryptAPDU(apduBuffer, len);
-    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
+    secureChannel.respond(apdu, len, ISO7816.SW_NO_ERROR);
   }
 
   /**
@@ -353,14 +367,12 @@ public class WalletApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void verifyPIN(APDU apdu) {
-    apdu.setIncomingAndReceive();
-
     if (!secureChannel.isOpen()) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
     byte[] apduBuffer = apdu.getBuffer();
-    byte len = (byte) secureChannel.decryptAPDU(apduBuffer);
+    byte len = (byte) secureChannel.preprocessAPDU(apduBuffer);
 
     if (!pin.check(apduBuffer, ISO7816.OFFSET_CDATA, len)) {
       ISOException.throwIt((short)((short) 0x63c0 | (short) pin.getTriesRemaining()));
@@ -375,14 +387,12 @@ public class WalletApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void changePIN(APDU apdu) {
-    apdu.setIncomingAndReceive();
-
     if (!(secureChannel.isOpen() && pin.isValidated())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
     byte[] apduBuffer = apdu.getBuffer();
-    byte len = (byte) secureChannel.decryptAPDU(apduBuffer);
+    byte len = (byte) secureChannel.preprocessAPDU(apduBuffer);
 
     if (!(len == PIN_LENGTH && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -401,14 +411,12 @@ public class WalletApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void unblockPIN(APDU apdu) {
-    apdu.setIncomingAndReceive();
-
     if (!(secureChannel.isOpen() && pin.getTriesRemaining() == 0)) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
     byte[] apduBuffer = apdu.getBuffer();
-    byte len = (byte) secureChannel.decryptAPDU(apduBuffer);
+    byte len = (byte) secureChannel.preprocessAPDU(apduBuffer);
 
     if (!(len == (PUK_LENGTH + PIN_LENGTH) && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -434,15 +442,13 @@ public class WalletApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void loadKey(APDU apdu) {
-    apdu.setIncomingAndReceive();
-
     if (!(secureChannel.isOpen() && pin.isValidated())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
     byte[] apduBuffer = apdu.getBuffer();
 
-    secureChannel.decryptAPDU(apduBuffer);
+    secureChannel.preprocessAPDU(apduBuffer);
     boolean newExtended = false;
 
     switch (apduBuffer[ISO7816.OFFSET_P1])  {
@@ -586,8 +592,7 @@ public class WalletApplet extends Applet {
 
     byte[] apduBuffer = apdu.getBuffer();
 
-    apdu.setIncomingAndReceive();
-    short len = secureChannel.decryptAPDU(apduBuffer);
+    short len = secureChannel.preprocessAPDU(apduBuffer);
 
     boolean assistedDerivation = (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_ASSISTED_MASK) == DERIVE_P1_ASSISTED_MASK;
     boolean isPublicKey = apduBuffer[ISO7816.OFFSET_P2]  == DERIVE_P2_PUBLIC_KEY;
@@ -662,8 +667,7 @@ public class WalletApplet extends Applet {
     apduBuffer[(short) (SecureChannel.SC_OUT_OFFSET + 2)] = TLV_PUB_X;
     apduBuffer[(short) (SecureChannel.SC_OUT_OFFSET + 3)] = (byte) xLen;
 
-    short outLen = secureChannel.encryptAPDU(apduBuffer, (short) (xLen + sigLen + 4));
-    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, outLen);
+    secureChannel.respond(apdu, (short) (xLen + sigLen + 4), ISO7816.SW_NO_ERROR);
   }
 
   /**
@@ -739,8 +743,7 @@ public class WalletApplet extends Applet {
       outOff -= 2; // a last spurious 11 bit number will be generated when cs length is less than 6 because 16 - cs >= 11
     }
 
-    short outLen = secureChannel.encryptAPDU(apduBuffer, (short) (outOff - SecureChannel.SC_OUT_OFFSET));
-    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, outLen);
+    secureChannel.respond(apdu, (short) (outOff - SecureChannel.SC_OUT_OFFSET), ISO7816.SW_NO_ERROR);
   }
 
   /**
@@ -782,8 +785,6 @@ public class WalletApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void sign(APDU apdu) {
-    apdu.setIncomingAndReceive();
-
     if (!(secureChannel.isOpen() && (pin.isValidated() || isPinless()) && privateKey.isInitialized() && !expectPublicKey)) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
@@ -797,7 +798,7 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
     }
 
-    short len = secureChannel.decryptAPDU(apduBuffer);
+    short len = secureChannel.preprocessAPDU(apduBuffer);
 
     if ((apduBuffer[ISO7816.OFFSET_P2] & SIGN_P2_LAST_BLOCK_MASK) == SIGN_P2_LAST_BLOCK_MASK) {
       signInProgress = false;
@@ -819,8 +820,7 @@ public class WalletApplet extends Applet {
       apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) 0x81;
       apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 2)] = (byte) (outLen - 3);
 
-      outLen = secureChannel.encryptAPDU(apduBuffer, outLen);
-      apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, outLen);
+      secureChannel.respond(apdu, outLen, ISO7816.SW_NO_ERROR);
     } else {
       signature.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
     }
@@ -838,14 +838,12 @@ public class WalletApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void setPinlessPath(APDU apdu) {
-    apdu.setIncomingAndReceive();
-
     if (!(secureChannel.isOpen() && pin.isValidated())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
     byte[] apduBuffer = apdu.getBuffer();
-    short len = secureChannel.decryptAPDU(apduBuffer);
+    short len = secureChannel.preprocessAPDU(apduBuffer);
 
     if (((short) (len % 4) != 0) || (len > pinlessPath.length)) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -866,8 +864,6 @@ public class WalletApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void exportKey(APDU apdu) {
-    apdu.setIncomingAndReceive();
-
     if (!(secureChannel.isOpen() && pin.isValidated())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
@@ -904,8 +900,7 @@ public class WalletApplet extends Applet {
     len += (off - SecureChannel.SC_OUT_OFFSET);
     apduBuffer[(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) (len - 2);
 
-    len = secureChannel.encryptAPDU(apduBuffer, (short) len);
-    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
+    secureChannel.respond(apdu, (short) len, ISO7816.SW_NO_ERROR);
   }
 
   /**

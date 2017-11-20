@@ -22,8 +22,10 @@ public class SecureChannel {
   public static final byte PAIR_P1_FIRST_STEP = 0x00;
   public static final byte PAIR_P1_LAST_STEP = 0x01;
 
-  private AESKey scKey;
+  private AESKey scEncKey;
+  private AESKey scMacKey;
   private Cipher scCipher;
+  private Signature scSignature;
   private KeyPair scKeypair;
   private byte[] secret;
   private byte[] pairingSecret;
@@ -43,15 +45,17 @@ public class SecureChannel {
    */
   public SecureChannel(byte pairingLimit, byte[] aPairingSecret, short off) {
     scCipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
+    scSignature = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
 
-    scKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
+    scEncKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
+    scMacKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
 
     scKeypair = new KeyPair(KeyPair.ALG_EC_FP, SC_KEY_LENGTH);
     SECP256k1.setCurveParameters((ECKey) scKeypair.getPrivate());
     SECP256k1.setCurveParameters((ECKey) scKeypair.getPublic());
     scKeypair.genKeyPair();
 
-    secret = JCSystem.makeTransientByteArray(SC_SECRET_LENGTH, JCSystem.CLEAR_ON_DESELECT);
+    secret = JCSystem.makeTransientByteArray((byte)(SC_SECRET_LENGTH * 2), JCSystem.CLEAR_ON_DESELECT);
     pairingSecret = new byte[SC_SECRET_LENGTH];
     pairingKeys = new byte[(short)(PAIRING_KEY_LENGTH * pairingLimit)];
 
@@ -68,7 +72,6 @@ public class SecureChannel {
     preassignedPairingOffset = -1;
     mutuallyAuthenticated = false;
 
-    apdu.setIncomingAndReceive();
     byte[] apduBuffer = apdu.getBuffer();
 
     short pairingKeyOff = checkPairingIndexAndGetOffset(apduBuffer[ISO7816.OFFSET_P1]);
@@ -89,12 +92,15 @@ public class SecureChannel {
       return;
     }
 
-    Crypto.random.generateData(apduBuffer, (short) 0, SC_SECRET_LENGTH);
-    Crypto.sha256.update(secret, (short) 0, len);
-    Crypto.sha256.update(pairingKeys, pairingKeyOff, SC_SECRET_LENGTH);
-    Crypto.sha256.doFinal(apduBuffer, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
-    scKey.setKey(secret, (short) 0);
-    apdu.setOutgoingAndSend((short) 0, SC_SECRET_LENGTH);
+    Crypto.random.generateData(apduBuffer, (short) 0, (short) (SC_SECRET_LENGTH + SC_BLOCK_SIZE));
+    Crypto.sha512.update(secret, (short) 0, len);
+    Crypto.sha512.update(pairingKeys, pairingKeyOff, SC_SECRET_LENGTH);
+    Crypto.sha512.doFinal(apduBuffer, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+    scEncKey.setKey(secret, (short) 0);
+    scMacKey.setKey(secret, SC_SECRET_LENGTH);
+    Util.arrayCopyNonAtomic(apduBuffer, SC_SECRET_LENGTH, secret, (short) 0, SC_BLOCK_SIZE);
+    Util.arrayFillNonAtomic(secret, SC_BLOCK_SIZE, SC_SECRET_LENGTH, (byte) 0);
+    apdu.setOutgoingAndSend((short) 0, (short) (SC_SECRET_LENGTH + SC_BLOCK_SIZE));
   }
 
   /**
@@ -103,14 +109,13 @@ public class SecureChannel {
    * @param apdu the JCRE-owned APDU object.
    */
   public void mutuallyAuthenticate(APDU apdu) {
-    if (!scKey.isInitialized() || mutuallyAuthenticated) {
+    if (!scEncKey.isInitialized() || mutuallyAuthenticated) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    apdu.setIncomingAndReceive();
     byte[] apduBuffer = apdu.getBuffer();
 
-    short len = decryptAPDU(apduBuffer);
+    short len = preprocessAPDU(apduBuffer);
 
     if (len != (short) (SC_SECRET_LENGTH * 2)) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -119,7 +124,7 @@ public class SecureChannel {
     Crypto.sha256.doFinal(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH, apduBuffer, ISO7816.OFFSET_CDATA);
 
     if (Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_SECRET_LENGTH), SC_SECRET_LENGTH) != 0) {
-      scKey.clearKey();
+      reset();
       ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
     }
 
@@ -127,8 +132,7 @@ public class SecureChannel {
 
     Crypto.random.generateData(apduBuffer, SC_OUT_OFFSET, SC_SECRET_LENGTH);
     Crypto.sha256.doFinal(apduBuffer, SC_OUT_OFFSET, SC_SECRET_LENGTH, apduBuffer, (short) (SC_OUT_OFFSET + SC_SECRET_LENGTH));
-    len = encryptAPDU(apduBuffer, len);
-    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
+    respond(apdu, len, ISO7816.SW_NO_ERROR);
   }
 
   /**
@@ -137,8 +141,6 @@ public class SecureChannel {
    * @param apdu the JCRE-owned APDU object.
    */
   public void pair(APDU apdu) {
-    apdu.setIncomingAndReceive();
-
     if (isOpen()) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
@@ -222,38 +224,42 @@ public class SecureChannel {
   }
 
   /**
-   * Processes the UNPAIR command. For security reasons the key is not only marked as free but also zero-ed out.
+   * Processes the UNPAIR command. For security reasons the key is not only marked as free but also zero-ed out. This
+   * method assumes that all security checks have been performed by the calling method.
    *
-   * @param apdu the JCRE-owned APDU object.
+   * @param apduBuffer the APDU buffer
    */
-  public void unpair(APDU apdu) {
-    if (!isOpen()) {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-    }
-
-    apdu.setIncomingAndReceive();
-    byte[] apduBuffer = apdu.getBuffer();
-    short v = decryptAPDU(apduBuffer);
-
-    if ((v != 1) || (apduBuffer[ISO7816.OFFSET_CDATA] != apduBuffer[ISO7816.OFFSET_P1])) {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-    }
-
-    v = checkPairingIndexAndGetOffset(apduBuffer[ISO7816.OFFSET_P1]);
-    Util.arrayFillNonAtomic(pairingKeys, v, PAIRING_KEY_LENGTH, (byte) 0);
+  public void unpair(byte[] apduBuffer) {
+    short off = checkPairingIndexAndGetOffset(apduBuffer[ISO7816.OFFSET_P1]);
+    Util.arrayFillNonAtomic(pairingKeys, off, PAIRING_KEY_LENGTH, (byte) 0);
   }
 
   /**
    * Decrypts the given APDU buffer. The plaintext is written in-place starting at the ISO7816.OFFSET_CDATA offset. The
-   * IV and padding are stripped. The LC byte is overwritten with the plaintext length.
+   * MAC and padding are stripped. The LC byte is overwritten with the plaintext length. If the MAC cannot be verified
+   * the secure channel is reset and the SW 0x6982 is thrown.
    *
    * @param apduBuffer the APDU buffer
    * @return the length of the decrypted
    */
-  public short decryptAPDU(byte[] apduBuffer) {
+  public short preprocessAPDU(byte[] apduBuffer) {
+    if (!isOpen()) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
     short apduLen = (short)((short) apduBuffer[ISO7816.OFFSET_LC] & 0xff);
 
-    scCipher.init(scKey, Cipher.MODE_DECRYPT, apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
+    scSignature.init(scMacKey, Signature.MODE_VERIFY);
+    scSignature.update(apduBuffer, (short) 0, ISO7816.OFFSET_CDATA);
+    scSignature.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - ISO7816.OFFSET_CDATA));
+
+    if (!scSignature.verify(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE)) {
+      reset();
+      ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+    }
+
+    scCipher.init(scEncKey, Cipher.MODE_DECRYPT, secret, (short) 0, SC_BLOCK_SIZE);
+    Util.arrayCopyNonAtomic(apduBuffer, ISO7816.OFFSET_CDATA, secret, (short) 0, SC_BLOCK_SIZE);
     short len = scCipher.doFinal(apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA);
 
     apduBuffer[ISO7816.OFFSET_LC] = (byte) len;
@@ -262,18 +268,31 @@ public class SecureChannel {
   }
 
   /**
-   * Encrypts the APDU buffer. The plaintext must be placed starting at the SecureChannel.SC_OUT_OFFSET offset, to leave
-   * place for the SecureChannel-specific data at the beginning of the APDU.
+   * Sends the response to the command. This method always throws an ISOException with the given SW, so nothing can be
+   * called after its execution. The response data must be placed starting at the SecureChannel.SC_OUT_OFFSET offset, to
+   * leave place for the SecureChannel-specific data at the beginning of the APDU.
    *
-   * @param apduBuffer the APDU buffer
+   * @param apdu the APDU object
    * @param len the length of the plaintext
-   * @return the length of the encrypted APDU
    */
-  public short encryptAPDU(byte[] apduBuffer, short len) {
-    Crypto.random.generateData(apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
-    scCipher.init(scKey, Cipher.MODE_ENCRYPT, apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
+  public void respond(APDU apdu, short len, short sw) {
+    byte[] apduBuffer = apdu.getBuffer();
+
+    Util.setShort(apduBuffer, (short) 0, sw);
+
+    scCipher.init(scEncKey, Cipher.MODE_ENCRYPT, secret, (short) 0, SC_BLOCK_SIZE);
     len = scCipher.doFinal(apduBuffer, SC_OUT_OFFSET, len, apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE));
-    return (short)(len + SC_BLOCK_SIZE);
+
+    scSignature.init(scMacKey, Signature.MODE_SIGN);
+    scSignature.update(apduBuffer, (short) 0, (short) 2);
+    scSignature.update(secret, SC_BLOCK_SIZE, (short)(SC_BLOCK_SIZE - 2));
+    scSignature.sign(apduBuffer, SC_OUT_OFFSET, len, apduBuffer, ISO7816.OFFSET_CDATA);
+
+    Util.arrayCopyNonAtomic(apduBuffer, ISO7816.OFFSET_CDATA, secret, (short) 0, SC_BLOCK_SIZE);
+
+    len += SC_BLOCK_SIZE;
+    apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
+    ISOException.throwIt(sw);
   }
 
   /**
@@ -293,7 +312,16 @@ public class SecureChannel {
    * @return whether a secure channel is currently established or not.
    */
   public boolean isOpen() {
-    return scKey.isInitialized() && mutuallyAuthenticated;
+    return scEncKey.isInitialized() && scMacKey.isInitialized() && mutuallyAuthenticated;
+  }
+
+  /**
+   * Resets the Secure Channel, invalidating the current session. If no session is opened, this does nothing.
+   */
+  public void reset() {
+    scEncKey.clearKey();
+    scMacKey.clearKey();
+    mutuallyAuthenticated = false;
   }
 
   /**

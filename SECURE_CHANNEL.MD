@@ -3,10 +3,8 @@
 ## Overview
 A Secure Channel must be established to allow communication between the applet and the client. This secure channel has
 the concept of pairing with multiple devices (how many clients can be paired at the same time is defined by the applet).
-The SecureChannel guarantees protection from snooping, MITM and replay attacks across different sessions, since the way
-a session is established makes it impossible to generate the same session keys twice. Since a session is automatically
-aborted as soon as power is lost or the application is reselected, it not possible to resume the last session and
-perform replay attacks there.
+The SecureChannel guarantees protection from snooping, MITM, replay attacks and provides message integrity and 
+authentication for each APDU.
 
 A short description of establishing a session is as follows
 
@@ -31,19 +29,22 @@ opened.
 * P1 = the pairing index
 * P2 = 0x00
 * Data = An EC-256 public key on the SECP256k1 curve encoded as an uncompressed point.
-* Response Data = A 256-bit salt
+* Response Data = A 256-bit salt and a 128-bit seed IV
 * Response SW = 0x9000 on success, 0x6A86 if P1 is invalid, 0x6A80 if the data is not a public key
 
-This APDU is the first step to establish a Secure Channel session. A session is aborted when the application is deselected,
-either directly or because of a card reset/tear. This APDU and its response are not encrypted.
+This APDU is the first step to establish a Secure Channel session. A session is aborted when the application is 
+deselected, either directly or because of a card reset/tear.
 
 The card generates a random 256-bit salt which is sent to the client. Both the client and the card do the following
 for key derivation
 
 1. Use their private key and the counterpart public key to generate a secret using the EC-DH algorithm.
-2. The generated secret, he pairing key and the salt are concatenated and the SHA-256 of the concatenated value is 
+2. The generated secret, the pairing key and the salt are concatenated and the SHA-512 of the concatenated value is 
    calculated.
-3. The output of the SHA-256 algorithm is used as the AES key for further communication.
+3. The output of the SHA-512 algorithm is split in two parts of 256-bit. The first part is used as the encryption key
+and the second part is used as the MAC key for further communication.
+
+The seed IV is used by the client as the IV for the next encrypted APDU.
 
 ### MUTUALLY AUTHENTICATE
 
@@ -51,18 +52,18 @@ for key derivation
 * INS = 0x11
 * P1 = 0x00
 * P2 = 0x00
-* Data = 256-bit random number and its SHA-256 hash
-* Response Data = 256-bit random number and its SHA-256 hash
+* Data = 256-bit random number
+* Response Data = 256-bit random number
 * Response SW = 0x9000 on success, 0x6985 if the previous successfully executed APDU was not OPEN SECURE CHANNEL, 0x6982
 if authentication failed, 0x6A80 if the data is not exactly 64 bytes long
 
 This APDU allows both parties to verify that the keys generated in the OPEN SECURE CHANNEL step are matching and thus
-guarantee authentication of the counterpart. The data sent by both parties is a 32-bit random number followed by its own
-SHA-256 hash. The APDU data is sent encrypted with the keys generated in the OPEN SECURE CHANNEL step. Each party must
-verify that the hash indeed matches the value sent. If this is true, then the decryption was correct, meaning that the
-keys are matching. Only after this step has been executed the secure channel can be considered to be open and other 
-commands can be sent. If the authentication fails with 0x6982, the OPEN SECURE CHANNEL command must be repeated to
-generate new keys. This greatly slows down brute-force attempts.
+guarantee authentication of the counterpart. The data sent by both parties is a 256-bit random number The APDU data is 
+sent encrypted with the keys generated in the OPEN SECURE CHANNEL step. Each party must verify the MAC of the received
+APDU. If the MAC can be verified, it means that both parties are using the same keys. Only after this step has been 
+executed the secure channel can be considered to be open and other commands can be sent. If the authentication fails 
+the card must respond with 0x6982. In this case the OPEN SECURE CHANNEL command must be repeated to generate new keys. 
+This greatly slows down brute-force attempts.
 
 ### PAIR
 
@@ -111,42 +112,50 @@ happens depend on the specific applet.
 * INS = 0x13
 * P1 = the index to unpair
 * P2 = 0x00
-* Data = the same index as in P1
 * Response SW = 0x9000 on success, 0x6985 if security conditions are not met, 0x6A86 if the index is higher than the
   highest possible pairing index.
 
 This APDU is sent to unpair a client. An existing secure channel session must be open. The application implementing this
-protocol may apply additional restrictions, such as the verification of a user PIN. The reason to repeat P1 in the data
-field is to verify that the client indeed performed authentication and has the correct session keys. On success the
-pairing slot at the given index will be freed and will be made available to pair other clients. If the index is already
-free nothing will happen.
+protocol may apply additional restrictions, such as the verification of a user PIN. On success the pairing slot at the 
+given index will be freed and will be made available to pair other clients. If the index is already free nothing will 
+happen.
 
 ### Encrypted APDUs
 
-After a SecureChannel session has been established all communication between card and client is encrypted. Note
-that only the data fields of C-APDU and R-APDU are encrypted, which means that CLA, INS, P1, P2 for C-APDU and SW1SW2 for
-R-APDU are plaintext. This means no sensitive data should be sent in these parameters.
+After a successful OPEN SECURE CHANNEL command all communication between card and client is encrypted. Note that only 
+the data fields of C-APDU and R-APDU are encrypted, which means that CLA, INS, P1, P2 for C-APDU and SW1SW2 for R-APDU 
+are plaintext. This means no sensitive data should be sent in these parameters. Additionally a MAC is calculated for the
+entire APDU, including the unencrypted fields.
 
 To encrypt the data both the card and the client do the following:
 
 1. The data is padded using the ISO/IEC 9797-1 Method 2 algorithm.
-2. A random IV is generated.
-3. The data is encrypted using AES in CBC mode using the session key.
-4. The data field of the APDU is set to the IV followed by the encrypted data.
+2. The data is encrypted using AES in CBC mode using the session key.
+3. An AES CBC-MAC is calculated over the entire APDU data
+4. The data field of the APDU is set to the MAC followed by the encrypted data.
 
 To decrypt the data both the card and the client do the following:
 
-1. The first 16 bytes of the APDU are treated as IV.
+1. The first 16 bytes of the APDU data are the MAC to be verified
 2. The remaining data is decrypted using AES in CBC mode using the session key.
 3. The padding is removed.
 
+The IV used for the encryption is the last seen MAC from the counterpart. This optimizes the number
+of transmitted bytes and guarantees protection from replay attacks. For the MAC generation, a zero IV is always used.
+
+MAC generation for C-APDUs is calculated on the concatenation of CLA INS P1 P2 LC 00 00 00 00 00 00 00 00 00 00 00 and
+the encrypted data field. The 11-byte long padding does not become part of the data field and does not affect LC
+
+MAC generation fo R-APDUs is calculated on the concatenation of Lr SW1 SW2 00 00 00 00 00 00 00 00 00 00 00 00 00 and
+the encrypted data field. The 13-byte long padding does not become part of the response field. Lr is the length of the
+encrypted response data field and is not transmitted.
+
 Because AES in CBC mode requires the data field length in bytes to be a multiple of 16, the maximum effective APDU
-size becomes 240 bytes. Of these 16 bytes are used for the IV and minimum of 1 byte for padding, making the maximum
+size becomes 240 bytes. Of these 16 bytes are used for the MAC and minimum of 1 byte for padding, making the maximum
 payload size in a single APDU 223 bytes, meaning about a 13,5% overhead.
 
 ### Error conditions
 
 1. If a sensitive command is received without an active Secure Channel, the card shall respond with SW 0x6985 (
 SW_CONDITIONS_NOT_SATISFIED)
-2. If a Secure Channel is established but a sensitive command is received plaintext, the card shall respond with
-SW 0x6982 (SW_SECURITY_STATUS_NOT_SATISFIED). The error 0x6F00 (SW_UNKNOWN) is also acceptable in this case.
+2. If a MAC cannot be verified the card shall respond 0x6982 and the Secure Channel must be closed

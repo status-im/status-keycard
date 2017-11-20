@@ -18,13 +18,12 @@ public class Crypto {
   private static final short HMAC_BLOCK_SIZE = (short) 128;
   private static final short HMAC_BLOCK_OFFSET = (short) KEY_DERIVATION_INPUT_SIZE + HMAC_OUT_SIZE;
 
-  // The below two objects are meant to be access from the entire applet
+  // The below 4 objects can be accessed anywhere from the entire applet
   static RandomData random;
   static KeyAgreement ecdh;
-
   static MessageDigest sha256;
-  
-  private static MessageDigest sha512;
+  static MessageDigest sha512;
+
   private static Signature hmacSHA512;
   private static HMACKey hmacKey;
 
@@ -37,6 +36,7 @@ public class Crypto {
     random = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
     sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
     ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
+    sha512 = MessageDigest.getInstance(MessageDigest.ALG_SHA_512, false);
 
     short blockSize;
 
@@ -46,7 +46,6 @@ public class Crypto {
       hmacKey = (HMACKey) KeyBuilder.buildKey(KeyBuilder.TYPE_HMAC_TRANSIENT_DESELECT, KEY_SECRET_SIZE, false);
     } catch (CryptoException e) {
       hmacSHA512 = null;
-      sha512 = MessageDigest.getInstance(MessageDigest.ALG_SHA_512, false);
       blockSize = HMAC_BLOCK_SIZE;
     }
 
