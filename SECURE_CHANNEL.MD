@@ -55,15 +55,14 @@ The seed IV is used by the client as the IV for the next encrypted APDU.
 * Data = 256-bit random number
 * Response Data = 256-bit random number
 * Response SW = 0x9000 on success, 0x6985 if the previous successfully executed APDU was not OPEN SECURE CHANNEL, 0x6982
-if authentication failed, 0x6A80 if the data is not exactly 64 bytes long
+if authentication failed or the data is not 256-bit long
 
 This APDU allows both parties to verify that the keys generated in the OPEN SECURE CHANNEL step are matching and thus
 guarantee authentication of the counterpart. The data sent by both parties is a 256-bit random number The APDU data is 
 sent encrypted with the keys generated in the OPEN SECURE CHANNEL step. Each party must verify the MAC of the received
 APDU. If the MAC can be verified, it means that both parties are using the same keys. Only after this step has been 
 executed the secure channel can be considered to be open and other commands can be sent. If the authentication fails 
-the card must respond with 0x6982. In this case the OPEN SECURE CHANNEL command must be repeated to generate new keys. 
-This greatly slows down brute-force attempts.
+the card must respond with 0x6982. In this case the OPEN SECURE CHANNEL command must be repeated to generate new keys.
 
 ### PAIR
 
@@ -123,9 +122,15 @@ happen.
 ### Encrypted APDUs
 
 After a successful OPEN SECURE CHANNEL command all communication between card and client is encrypted. Note that only 
-the data fields of C-APDU and R-APDU are encrypted, which means that CLA, INS, P1, P2 for C-APDU and SW1SW2 for R-APDU 
-are plaintext. This means no sensitive data should be sent in these parameters. Additionally a MAC is calculated for the
-entire APDU, including the unencrypted fields.
+the data fields of C-APDU are encrypted, which means that CLA, INS, P1, P2 for C-APDU are plaintext. This means no 
+sensitive data should be sent in these parameters. Additionally a MAC is calculated for the entire APDU, including 
+the unencrypted fields.
+
+Because R-APDU can only contain data if their SW is a success or warning status word (0x9000, 0x62XX, 0x63XX), when the
+secure channel is open all responses will have SW 0x9000. The actual SW is always appended at the end of the response
+data before encryption, which means the client must interpret the last two bytes of the plaintext response as the SW. 
+An exception to this is SW 0x6982, which indicates that the SecureChannel has been aborted and as such is returned 
+without any MAC.
 
 To encrypt the data both the card and the client do the following:
 
@@ -146,8 +151,8 @@ of transmitted bytes and guarantees protection from replay attacks. For the MAC 
 MAC generation for C-APDUs is calculated on the concatenation of CLA INS P1 P2 LC 00 00 00 00 00 00 00 00 00 00 00 and
 the encrypted data field. The 11-byte long padding does not become part of the data field and does not affect LC
 
-MAC generation fo R-APDUs is calculated on the concatenation of Lr SW1 SW2 00 00 00 00 00 00 00 00 00 00 00 00 00 and
-the encrypted data field. The 13-byte long padding does not become part of the response field. Lr is the length of the
+MAC generation fo R-APDUs is calculated on the concatenation of Lr 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 and
+the encrypted data field. The 15-byte long padding does not become part of the response field. Lr is the length of the
 encrypted response data field and is not transmitted.
 
 Because AES in CBC mode requires the data field length in bytes to be a multiple of 16, the maximum effective APDU

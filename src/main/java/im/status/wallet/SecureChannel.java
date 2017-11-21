@@ -25,7 +25,7 @@ public class SecureChannel {
   private AESKey scEncKey;
   private AESKey scMacKey;
   private Cipher scCipher;
-  private Signature scSignature;
+  private Signature scMac;
   private KeyPair scKeypair;
   private byte[] secret;
   private byte[] pairingSecret;
@@ -45,7 +45,8 @@ public class SecureChannel {
    */
   public SecureChannel(byte pairingLimit, byte[] aPairingSecret, short off) {
     scCipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
-    scSignature = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
+
+    scMac = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
 
     scEncKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
     scMacKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
@@ -61,7 +62,6 @@ public class SecureChannel {
 
     Util.arrayCopyNonAtomic(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
   }
-
 
   /**
    * Processes the OPEN SECURE CHANNEL command.
@@ -99,7 +99,7 @@ public class SecureChannel {
     scEncKey.setKey(secret, (short) 0);
     scMacKey.setKey(secret, SC_SECRET_LENGTH);
     Util.arrayCopyNonAtomic(apduBuffer, SC_SECRET_LENGTH, secret, (short) 0, SC_BLOCK_SIZE);
-    Util.arrayFillNonAtomic(secret, SC_BLOCK_SIZE, SC_SECRET_LENGTH, (byte) 0);
+    Util.arrayFillNonAtomic(secret, SC_BLOCK_SIZE, (short) (secret.length - SC_BLOCK_SIZE), (byte) 0);
     apdu.setOutgoingAndSend((short) 0, (short) (SC_SECRET_LENGTH + SC_BLOCK_SIZE));
   }
 
@@ -109,29 +109,26 @@ public class SecureChannel {
    * @param apdu the JCRE-owned APDU object.
    */
   public void mutuallyAuthenticate(APDU apdu) {
-    if (!scEncKey.isInitialized() || mutuallyAuthenticated) {
+    if (!scEncKey.isInitialized()) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    byte[] apduBuffer = apdu.getBuffer();
+    boolean oldMutuallyAuthenticated = mutuallyAuthenticated;
+    mutuallyAuthenticated = true;
 
+    byte[] apduBuffer = apdu.getBuffer();
     short len = preprocessAPDU(apduBuffer);
 
-    if (len != (short) (SC_SECRET_LENGTH * 2)) {
-      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    if (oldMutuallyAuthenticated) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    Crypto.sha256.doFinal(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH, apduBuffer, ISO7816.OFFSET_CDATA);
-
-    if (Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_SECRET_LENGTH), SC_SECRET_LENGTH) != 0) {
+    if (len != SC_SECRET_LENGTH) {
       reset();
       ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
     }
 
-    mutuallyAuthenticated = true;
-
     Crypto.random.generateData(apduBuffer, SC_OUT_OFFSET, SC_SECRET_LENGTH);
-    Crypto.sha256.doFinal(apduBuffer, SC_OUT_OFFSET, SC_SECRET_LENGTH, apduBuffer, (short) (SC_OUT_OFFSET + SC_SECRET_LENGTH));
     respond(apdu, len, ISO7816.SW_NO_ERROR);
   }
 
@@ -249,11 +246,7 @@ public class SecureChannel {
 
     short apduLen = (short)((short) apduBuffer[ISO7816.OFFSET_LC] & 0xff);
 
-    scSignature.init(scMacKey, Signature.MODE_VERIFY);
-    scSignature.update(apduBuffer, (short) 0, ISO7816.OFFSET_CDATA);
-    scSignature.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - ISO7816.OFFSET_CDATA));
-
-    if (!scSignature.verify(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE)) {
+    if (!verifyAESMAC(apduBuffer, apduLen)) {
       reset();
       ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
     }
@@ -267,10 +260,18 @@ public class SecureChannel {
     return len;
   }
 
+  public boolean verifyAESMAC(byte[] apduBuffer, short apduLen) {
+    scMac.init(scMacKey, Signature.MODE_VERIFY);
+    scMac.update(apduBuffer, (short) 0, ISO7816.OFFSET_CDATA);
+    scMac.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - ISO7816.OFFSET_CDATA));
+
+    return scMac.verify(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
+  }
+
   /**
-   * Sends the response to the command. This method always throws an ISOException with the given SW, so nothing can be
-   * called after its execution. The response data must be placed starting at the SecureChannel.SC_OUT_OFFSET offset, to
-   * leave place for the SecureChannel-specific data at the beginning of the APDU.
+   * Sends the response to the command. This the given SW is appended to the data automatically. The response data must
+   * be placed starting at the SecureChannel.SC_OUT_OFFSET offset, to leave place for the SecureChannel-specific data at
+   * the beginning of the APDU.
    *
    * @param apdu the APDU object
    * @param len the length of the plaintext
@@ -278,21 +279,27 @@ public class SecureChannel {
   public void respond(APDU apdu, short len, short sw) {
     byte[] apduBuffer = apdu.getBuffer();
 
-    Util.setShort(apduBuffer, (short) 0, sw);
+    Util.setShort(apduBuffer, (short) (SC_OUT_OFFSET + len), sw);
+    len += 2;
 
     scCipher.init(scEncKey, Cipher.MODE_ENCRYPT, secret, (short) 0, SC_BLOCK_SIZE);
     len = scCipher.doFinal(apduBuffer, SC_OUT_OFFSET, len, apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE));
 
-    scSignature.init(scMacKey, Signature.MODE_SIGN);
-    scSignature.update(apduBuffer, (short) 0, (short) 2);
-    scSignature.update(secret, SC_BLOCK_SIZE, (short)(SC_BLOCK_SIZE - 2));
-    scSignature.sign(apduBuffer, SC_OUT_OFFSET, len, apduBuffer, ISO7816.OFFSET_CDATA);
+    apduBuffer[0] = (byte) (len + SC_BLOCK_SIZE);
+
+    computeAESMAC(len, apduBuffer);
 
     Util.arrayCopyNonAtomic(apduBuffer, ISO7816.OFFSET_CDATA, secret, (short) 0, SC_BLOCK_SIZE);
 
     len += SC_BLOCK_SIZE;
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
-    ISOException.throwIt(sw);
+  }
+
+  public void computeAESMAC(short len, byte[] apduBuffer) {
+    scMac.init(scMacKey, Signature.MODE_SIGN);
+    scMac.update(apduBuffer, (short) 0, (short) 1);
+    scMac.update(secret, SC_BLOCK_SIZE, (short)(SC_BLOCK_SIZE - 1));
+    scMac.sign(apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), len, apduBuffer, ISO7816.OFFSET_CDATA);
   }
 
   /**

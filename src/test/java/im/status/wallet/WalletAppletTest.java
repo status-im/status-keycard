@@ -128,14 +128,16 @@ public class WalletAppletTest {
     // Good case
     response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
     assertEquals(0x9000, response.getSW());
-    assertEquals(SecureChannel.SC_SECRET_LENGTH, response.getData().length);
+    assertEquals(SecureChannel.SC_SECRET_LENGTH + SecureChannel.SC_BLOCK_SIZE, response.getData().length);
     secureChannel.processOpenSecureChannelResponse(response);
 
     // Send command before MUTUALLY AUTHENTICATE
+    secureChannel.reset();
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x6985, response.getSW());
 
     // Perform mutual authentication
+    secureChannel.setOpen();
     response = cmdSet.mutuallyAuthenticate();
     assertEquals(0x9000, response.getSW());
     assertTrue(secureChannel.verifyMutuallyAuthenticateResponse(response));
@@ -157,14 +159,20 @@ public class WalletAppletTest {
     secureChannel.processOpenSecureChannelResponse(response);
 
     // Wrong data format
-    response = cmdSet.mutuallyAuthenticate(new byte[63]);
-    assertEquals(0x6A80, response.getSW());
-
-    // Wrong authentication data
-    response = cmdSet.mutuallyAuthenticate(new byte[64]);
+    response = cmdSet.mutuallyAuthenticate(new byte[31]);
     assertEquals(0x6982, response.getSW());
 
     // Verify that after wrong authentication, the command does not work
+    response = cmdSet.mutuallyAuthenticate();
+    assertEquals(0x6985, response.getSW());
+
+    // Wrong authentication data
+    response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
+    assertEquals(0x9000, response.getSW());
+    secureChannel.processOpenSecureChannelResponse(response);
+    response = apduChannel.transmit(new CommandAPDU(0x80, SecureChannel.INS_MUTUALLY_AUTHENTICATE, 0, 0, new byte[48]));
+    assertEquals(0x6982, response.getSW());
+    secureChannel.reset();
     response = cmdSet.mutuallyAuthenticate();
     assertEquals(0x6985, response.getSW());
 
@@ -235,7 +243,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     for (byte i = 0; i < 4; i++) {
-      response = cmdSet.unpair(i, new byte[] { i });
+      response = cmdSet.unpair(i);
       assertEquals(0x9000, response.getSW());
     }
   }
@@ -252,28 +260,22 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     // Security condition violation: SecureChannel not open
-    response = cmdSet.unpair(sparePairingIndex, new byte[] { sparePairingIndex });
+    response = cmdSet.unpair(sparePairingIndex);
     assertEquals(0x6985, response.getSW());
 
     // Not authenticated
     cmdSet.autoOpenSecureChannel();
-    response = cmdSet.unpair(sparePairingIndex, new byte[] { sparePairingIndex });
+    response = cmdSet.unpair(sparePairingIndex);
     assertEquals(0x6985, response.getSW());
 
     // Wrong P1
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.unpair((byte) 5, new byte[] { 5 });
+    response = cmdSet.unpair((byte) 5);
     assertEquals(0x6A86, response.getSW());
 
-    // Unmatching P1 and data
-    response = cmdSet.unpair(sparePairingIndex, new byte[] { (byte) (sparePairingIndex + 1) });
-    assertEquals(0x6985, response.getSW());
-    response = cmdSet.unpair((byte) (sparePairingIndex + 1), new byte[] { sparePairingIndex });
-    assertEquals(0x6985, response.getSW());
-
     // Unpair spare keyset
-    response = cmdSet.unpair(sparePairingIndex, new byte[] { sparePairingIndex });
+    response = cmdSet.unpair(sparePairingIndex);
     assertEquals(0x9000, response.getSW());
 
     // Proof that unpaired is not usable
@@ -293,27 +295,27 @@ public class WalletAppletTest {
     // Additionally, support for public key derivation is hw dependent.
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
-    byte[] data = secureChannel.decryptAPDU(response.getData());
+    byte[] data = response.getData();
     assertTrue(Hex.toHexString(data).matches("a309c00103c10105c2010[0-1]c3010[0-1]"));
 
     response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C2, response.getSW());
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
-    data = secureChannel.decryptAPDU(response.getData());
+    data = response.getData();
     assertTrue(Hex.toHexString(data).matches("a309c00102c10105c2010[0-1]c3010[0-1]"));
 
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
-    data = secureChannel.decryptAPDU(response.getData());
+    data = response.getData();
     assertTrue(Hex.toHexString(data).matches("a309c00103c10105c2010[0-1]c3010[0-1]"));
 
     // Check that key path is empty
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);
     assertEquals(0x9000, response.getSW());
-    data = secureChannel.decryptAPDU(response.getData());
+    data = response.getData();
     assertEquals(0, data.length);
   }
 
@@ -524,23 +526,23 @@ public class WalletAppletTest {
     // Good cases
     response = cmdSet.generateMnemonic(4);
     assertEquals(0x9000, response.getSW());
-    assertMnemonic(12, secureChannel.decryptAPDU(response.getData()));
+    assertMnemonic(12, response.getData());
 
     response = cmdSet.generateMnemonic(5);
     assertEquals(0x9000, response.getSW());
-    assertMnemonic(15, secureChannel.decryptAPDU(response.getData()));
+    assertMnemonic(15, response.getData());
 
     response = cmdSet.generateMnemonic(6);
     assertEquals(0x9000, response.getSW());
-    assertMnemonic(18, secureChannel.decryptAPDU(response.getData()));
+    assertMnemonic(18, response.getData());
 
     response = cmdSet.generateMnemonic(7);
     assertEquals(0x9000, response.getSW());
-    assertMnemonic(21, secureChannel.decryptAPDU(response.getData()));
+    assertMnemonic(21, response.getData());
 
     response = cmdSet.generateMnemonic(8);
     assertEquals(0x9000, response.getSW());
-    assertMnemonic(24, secureChannel.decryptAPDU(response.getData()));
+    assertMnemonic(24, response.getData());
   }
 
   @Test
@@ -621,13 +623,13 @@ public class WalletAppletTest {
     // Assisted derivation
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, true, true, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[] { 1 });
 
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, true, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[] { 1, 2 });
 
@@ -645,7 +647,7 @@ public class WalletAppletTest {
     // Try to sign and get key path before load public key, then resume loading public key
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, true, false);
     assertEquals(0x9000, response.getSW());
-    byte[] key = derivePublicKey(secureChannel.decryptAPDU(response.getData()));
+    byte[] key = derivePublicKey(response.getData());
     response = cmdSet.sign(sha256("test".getBytes()), WalletApplet.SIGN_P1_PRECOMPUTED_HASH, true, true);
     assertEquals(0x6985, response.getSW());
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);
@@ -696,7 +698,7 @@ public class WalletAppletTest {
     // Correctly sign a precomputed hash
     response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
     assertEquals(0x9000, response.getSW());
-    byte[] sig = secureChannel.decryptAPDU(response.getData());
+    byte[] sig = response.getData();
     byte[] keyData = extractPublicKeyFromSignature(sig);
     sig = extractSignature(sig);
     assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, keyData.length);
@@ -746,17 +748,17 @@ public class WalletAppletTest {
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, true, true, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, false, true, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, false, true, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
     assertEquals(0x9000, response.getSW());
@@ -772,11 +774,11 @@ public class WalletAppletTest {
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, true, true, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, false, true, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
     assertEquals(0x9000, response.getSW());
@@ -822,13 +824,13 @@ public class WalletAppletTest {
 
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, true, true, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, false, true, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(derivePublicKey(secureChannel.decryptAPDU(response.getData())), false, true, true);
+    response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
 
     // Wrong P1
@@ -840,7 +842,7 @@ public class WalletAppletTest {
     // Correct
     response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
     assertEquals(0x9000, response.getSW());
-    byte[] keyTemplate = secureChannel.decryptAPDU(response.getData());
+    byte[] keyTemplate = response.getData();
     verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 1, 1 });
 
     // Reset
@@ -881,7 +883,7 @@ public class WalletAppletTest {
     // Correctly sign 1 block (P2: 0x81)
     response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,true, true);
     assertEquals(0x9000, response.getSW());
-    byte[] sig = extractSignature(secureChannel.decryptAPDU(response.getData()));
+    byte[] sig = extractSignature(response.getData());
     signature.update(smallData);
     assertTrue(signature.verify(sig));
 
@@ -890,7 +892,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,false, true);
     assertEquals(0x9000, response.getSW());
-    sig = extractSignature(secureChannel.decryptAPDU(response.getData()));
+    sig = extractSignature(response.getData());
     signature.update(data);
     signature.update(smallData);
     assertTrue(signature.verify(sig));
@@ -902,7 +904,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,false, true);
     assertEquals(0x9000, response.getSW());
-    sig = extractSignature(secureChannel.decryptAPDU(response.getData()));
+    sig = extractSignature(response.getData());
     signature.update(data);
     signature.update(data);
     signature.update(smallData);
@@ -913,7 +915,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,true, true);
     assertEquals(0x9000, response.getSW());
-    sig = extractSignature(secureChannel.decryptAPDU(response.getData()));
+    sig = extractSignature(response.getData());
     signature.update(smallData);
     assertTrue(signature.verify(sig));
 
@@ -943,7 +945,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,false, true);
     assertEquals(0x9000, response.getSW());
-    sig = extractSignature(secureChannel.decryptAPDU(response.getData()));
+    sig = extractSignature(response.getData());
     signature.update(data);
     signature.update(smallData);
     assertTrue(signature.verify(sig));
@@ -1074,7 +1076,7 @@ public class WalletAppletTest {
     byte[] hash = Hash.sha3(new byte[8]);
     ResponseAPDU resp = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH, true, true);
     assertEquals(0x9000, resp.getSW());
-    byte[] sig = secureChannel.decryptAPDU(resp.getData());
+    byte[] sig = resp.getData();
     byte[] publicKey = extractPublicKeyFromSignature(sig);
     sig = extractSignature(sig);
 
@@ -1083,7 +1085,7 @@ public class WalletAppletTest {
 
     resp = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);
     assertEquals(0x9000, resp.getSW());
-    byte[] rawPath = secureChannel.decryptAPDU(resp.getData());
+    byte[] rawPath = resp.getData();
 
     assertEquals(path.length * 4, rawPath.length);
 
@@ -1172,7 +1174,7 @@ public class WalletAppletTest {
 
     ResponseAPDU response = cmdSet.sign(messageHash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
     assertEquals(0x9000, response.getSW());
-    byte[] respData = secureChannel.decryptAPDU(response.getData());
+    byte[] respData = response.getData();
     byte[] rawSig = extractSignature(respData);
 
     int rLen = rawSig[3];

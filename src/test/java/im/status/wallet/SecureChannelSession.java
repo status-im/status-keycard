@@ -1,5 +1,8 @@
 package im.status.wallet;
 
+import org.bouncycastle.crypto.engines.AESEngine;
+import org.bouncycastle.crypto.macs.CBCBlockCipherMac;
+import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.interfaces.ECPublicKey;
 import org.bouncycastle.jce.spec.ECParameterSpec;
@@ -25,10 +28,14 @@ public class SecureChannelSession {
   private byte[] secret;
   private byte[] publicKey;
   private byte[] pairingKey;
+  private byte[] iv;
   private byte pairingIndex;
   private Cipher sessionCipher;
-  private SecretKeySpec sessionKey;
+  private CBCBlockCipherMac sessionMac;
+  private SecretKeySpec sessionEncKey;
+  private KeyParameter sessionMacKey;
   private SecureRandom random;
+  private boolean open;
 
   /**
    * Constructs a SecureChannel session on the client. The client should generate a fresh key pair for each session.
@@ -55,6 +62,7 @@ public class SecureChannelSession {
       keyAgreement.doPhase(cardKey, true);
       secret = keyAgreement.generateSecret();
 
+      open = false;
     } catch(Exception e) {
       throw new RuntimeException("Is BouncyCastle in the classpath?", e);
     }
@@ -78,10 +86,7 @@ public class SecureChannelSession {
 
   /**
    * Establishes a Secure Channel with the card. The command parameters are the public key generated in the first step.
-   * The card returns a secret value which must be appended to the secret previously generated through the EC-DH
-   * algorithm. This entire value must be hashed using SHA-256. The hash will be used as the key for an AES CBC cipher
-   * using ISO9797-1 Method 2 padding. From this point all further APDU must be sent encrypted and all responses from
-   * the card must be decrypted using this secure channel.
+   * Follows the specifications from the SECURE_CHANNEL.md document.
    *
    * @param apduChannel the apdu channel
    * @return the card response
@@ -108,17 +113,24 @@ public class SecureChannelSession {
   }
 
   /**
-   * Processes the response from OPEN SECURE CHANNEL. This initialize the session key and cipher internally.
+   * Processes the response from OPEN SECURE CHANNEL. This initialize the session keys, Cipher and MAC internally.
    *
    * @param response the card response
    */
   public void processOpenSecureChannelResponse(ResponseAPDU response) {
     try {
-      MessageDigest md = MessageDigest.getInstance("SHA256", "BC");
+      MessageDigest md = MessageDigest.getInstance("SHA512", "BC");
       md.update(secret);
       md.update(pairingKey);
-      sessionKey = new SecretKeySpec(md.digest(response.getData()), "AES");
+      byte[] data = response.getData();
+      byte[] keyData = md.digest(Arrays.copyOf(data, SecureChannel.SC_SECRET_LENGTH));
+      iv = Arrays.copyOfRange(data, SecureChannel.SC_SECRET_LENGTH, data.length);
+
+      sessionEncKey = new SecretKeySpec(Arrays.copyOf(keyData, SecureChannel.SC_SECRET_LENGTH), "AES");
+      sessionMacKey = new KeyParameter(keyData, SecureChannel.SC_SECRET_LENGTH, SecureChannel.SC_SECRET_LENGTH);
       sessionCipher = Cipher.getInstance("AES/CBC/ISO7816-4Padding", "BC");
+      sessionMac = new CBCBlockCipherMac(new AESEngine(), 128, null);
+      open = true;
     } catch(Exception e) {
       throw new RuntimeException("Is BouncyCastle in the classpath?", e);
     }
@@ -131,20 +143,7 @@ public class SecureChannelSession {
    * @return true if response is correct, false otherwise
    */
   public boolean verifyMutuallyAuthenticateResponse(ResponseAPDU response) {
-    MessageDigest md;
-
-    try {
-      md = MessageDigest.getInstance("SHA256", "BC");
-    } catch (Exception e) {
-      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
-    }
-
-    byte[] data = decryptAPDU(response.getData());
-    md.update(data, 0, SecureChannel.SC_SECRET_LENGTH);
-    byte[] digest = md.digest();
-    data = Arrays.copyOfRange(data, SecureChannel.SC_SECRET_LENGTH, data.length);
-
-    return Arrays.equals(data, digest);
+    return response.getNr() == SecureChannel.SC_SECRET_LENGTH;
   }
 
   /**
@@ -204,7 +203,7 @@ public class SecureChannelSession {
    * @throws CardException communication error
    */
   public void autoUnpair(CardChannel apduChannel) throws CardException {
-    ResponseAPDU resp = unpair(apduChannel, pairingIndex, new byte[] { pairingIndex });
+    ResponseAPDU resp = unpair(apduChannel, pairingIndex);
 
     if (resp.getSW() != 0x9000) {
       throw new CardException("Unpairing failed");
@@ -221,6 +220,7 @@ public class SecureChannelSession {
    * @throws CardException communication error
    */
   public ResponseAPDU openSecureChannel(CardChannel apduChannel, byte index, byte[] data) throws CardException {
+    open = false;
     CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_OPEN_SECURE_CHANNEL, index, 0, data);
     return apduChannel.transmit(openSecureChannel);
   }
@@ -233,19 +233,8 @@ public class SecureChannelSession {
    * @throws CardException communication error
    */
   public ResponseAPDU mutuallyAuthenticate(CardChannel apduChannel) throws CardException {
-    MessageDigest md;
-
-    try {
-      md = MessageDigest.getInstance("SHA256", "BC");
-    } catch (Exception e) {
-      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
-    }
-
     byte[] data = new byte[SecureChannel.SC_SECRET_LENGTH];
     random.nextBytes(data);
-    byte[] digest = md.digest(data);
-    data = Arrays.copyOf(data, SecureChannel.SC_SECRET_LENGTH * 2);
-    System.arraycopy(digest, 0, data, SecureChannel.SC_SECRET_LENGTH, SecureChannel.SC_SECRET_LENGTH);
 
     return mutuallyAuthenticate(apduChannel, data);
   }
@@ -259,8 +248,8 @@ public class SecureChannelSession {
    * @throws CardException communication error
    */
   public ResponseAPDU mutuallyAuthenticate(CardChannel apduChannel, byte[] data) throws CardException {
-    CommandAPDU mutuallyAuthenticate = new CommandAPDU(0x80, SecureChannel.INS_MUTUALLY_AUTHENTICATE, 0, 0, encryptAPDU(data));
-    return apduChannel.transmit(mutuallyAuthenticate);
+    CommandAPDU mutuallyAuthenticate = protectedCommand(0x80, SecureChannel.INS_MUTUALLY_AUTHENTICATE, 0, 0, data);
+    return transmit(apduChannel, mutuallyAuthenticate);
   }
 
   /**
@@ -274,7 +263,7 @@ public class SecureChannelSession {
    */
   public ResponseAPDU pair(CardChannel apduChannel, byte p1, byte[] data) throws CardException {
     CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_PAIR, p1, 0, data);
-    return apduChannel.transmit(openSecureChannel);
+    return transmit(apduChannel, openSecureChannel);
   }
 
   /**
@@ -282,13 +271,12 @@ public class SecureChannelSession {
    *
    * @param apduChannel the apdu channel
    * @param p1 the P1 parameter
-   * @param data the data
    * @return the raw card response
    * @throws CardException communication error
    */
-  public ResponseAPDU unpair(CardChannel apduChannel, byte p1, byte[] data) throws CardException {
-    CommandAPDU openSecureChannel = new CommandAPDU(0x80, SecureChannel.INS_UNPAIR, p1, 0, encryptAPDU(data));
-    return apduChannel.transmit(openSecureChannel);
+  public ResponseAPDU unpair(CardChannel apduChannel, byte p1) throws CardException {
+    CommandAPDU openSecureChannel = protectedCommand(0x80, SecureChannel.INS_UNPAIR, p1, 0, new byte[0]);
+    return transmit(apduChannel, openSecureChannel);
   }
 
   /**
@@ -299,27 +287,14 @@ public class SecureChannelSession {
    * @param data the plaintext data
    * @return the encrypted data
    */
-  public byte[] encryptAPDU(byte[] data) {
+  private byte[] encryptAPDU(byte[] data) {
     assert data.length <= PAYLOAD_MAX_SIZE;
 
-    if (sessionKey == null) {
-      return data;
-    }
-
     try {
-      int ivSize = sessionCipher.getBlockSize();
-      byte[] iv = new byte[ivSize];
-      random.nextBytes(iv);
       IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
 
-      sessionCipher.init(Cipher.ENCRYPT_MODE, sessionKey, ivParameterSpec);
-      byte[] encrypted = sessionCipher.doFinal(data);
-
-      byte[] result = new byte[ivSize + encrypted.length];
-      System.arraycopy(iv, 0, result, 0, ivSize);
-      System.arraycopy(encrypted, 0, result, ivSize, encrypted.length);
-
-      return result;
+      sessionCipher.init(Cipher.ENCRYPT_MODE, sessionEncKey, ivParameterSpec);
+      return sessionCipher.doFinal(data);
     } catch(Exception e) {
       throw new RuntimeException("Is BouncyCastle in the classpath?", e);
     }
@@ -332,18 +307,75 @@ public class SecureChannelSession {
    * @param data the ciphetext
    * @return the plaintext
    */
-  public byte[] decryptAPDU(byte[] data) {
-    if (sessionKey == null) {
-      return data;
+  private byte[] decryptAPDU(byte[] data) {
+    try {
+      IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
+      sessionCipher.init(Cipher.DECRYPT_MODE, sessionEncKey, ivParameterSpec);
+      return sessionCipher.doFinal(data);
+    } catch(Exception e) {
+      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
+    }
+  }
+
+  public CommandAPDU protectedCommand(int cla, int ins, int p1, int p2, byte[] data) {
+    byte[] finalData;
+
+    if (open) {
+      data = encryptAPDU(data);
+      byte[] meta = new byte[]{(byte) cla, (byte) ins, (byte) p1, (byte) p2, (byte) (data.length + SecureChannel.SC_BLOCK_SIZE), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+      updateIV(meta, data);
+
+      finalData = Arrays.copyOf(iv, iv.length + data.length);
+      System.arraycopy(data, 0, finalData, iv.length, data.length);
+    } else {
+      finalData = data;
     }
 
+    return new CommandAPDU(cla, ins, p1, p2, finalData);
+  }
+
+  public ResponseAPDU transmit(CardChannel apduChannel, CommandAPDU apdu) throws CardException {
+    ResponseAPDU resp = apduChannel.transmit(apdu);
+
+    if (resp.getSW() == 0x6982) {
+      open = false;
+    }
+
+    if (open) {
+      byte[] data = resp.getData();
+      byte[] meta = new byte[]{(byte) data.length, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+      byte[] mac = Arrays.copyOf(data, iv.length);
+      data = Arrays.copyOfRange(data, iv.length, data.length);
+
+      byte[] plainData = decryptAPDU(data);
+
+      updateIV(meta, data);
+
+      if (!Arrays.equals(iv, mac)) {
+        throw new CardException("Invalid MAC");
+      }
+
+      return new ResponseAPDU(plainData);
+    } else {
+      return resp;
+    }
+  }
+
+  public void reset() {
+    open = false;
+  }
+
+  void setOpen() {
+    open = true;
+  }
+
+  private void updateIV(byte[] meta, byte[] data) {
     try {
-      int ivSize = sessionCipher.getBlockSize();
-      IvParameterSpec ivParameterSpec = new IvParameterSpec(data, 0, ivSize);
-      sessionCipher.init(Cipher.DECRYPT_MODE, sessionKey, ivParameterSpec);
-      return sessionCipher.doFinal(data, ivSize, data.length - ivSize);
-    } catch(Exception e) {
-      e.printStackTrace();
+      sessionMac.init(sessionMacKey);
+      sessionMac.update(meta, 0, meta.length);
+      sessionMac.update(data, 0, data.length);
+      sessionMac.doFinal(iv, 0);
+    } catch (Exception e) {
       throw new RuntimeException("Is BouncyCastle in the classpath?", e);
     }
   }

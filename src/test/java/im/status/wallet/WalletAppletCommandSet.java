@@ -41,6 +41,10 @@ public class WalletAppletCommandSet {
    * @throws CardException communication error
    */
   public ResponseAPDU select() throws CardException {
+    if (secureChannel != null) {
+      secureChannel.reset();
+    }
+
     CommandAPDU selectApplet = new CommandAPDU(ISO7816.CLA_ISO7816, ISO7816.INS_SELECT, 4, 0, APPLET_AID_BYTES);
     return apduChannel.transmit(selectApplet);
   }
@@ -104,8 +108,8 @@ public class WalletAppletCommandSet {
   /**
    * Sends a UNPAIR APDU. Calls the corresponding method of the SecureChannel class.
    */
-  public ResponseAPDU unpair(byte p1, byte[] data) throws CardException {
-    return secureChannel.unpair(apduChannel, p1, data);
+  public ResponseAPDU unpair(byte p1) throws CardException {
+    return secureChannel.unpair(apduChannel, p1);
   }
 
   /**
@@ -117,8 +121,8 @@ public class WalletAppletCommandSet {
    * @throws CardException communication error
    */
   public ResponseAPDU getStatus(byte info) throws CardException {
-    CommandAPDU getStatus = new CommandAPDU(0x80, WalletApplet.INS_GET_STATUS, info, 0, 256);
-    return apduChannel.transmit(getStatus);
+    CommandAPDU getStatus = secureChannel.protectedCommand(0x80, WalletApplet.INS_GET_STATUS, info, 0, new byte[0]);
+    return secureChannel.transmit(apduChannel, getStatus);
   }
 
   /**
@@ -130,7 +134,7 @@ public class WalletAppletCommandSet {
    */
   public boolean getPublicKeyDerivationSupport() throws CardException {
     ResponseAPDU resp = getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
-    byte[] data = secureChannel.decryptAPDU(resp.getData());
+    byte[] data = resp.getData();
     return data[data.length - 1] == 1;
   }
 
@@ -143,8 +147,8 @@ public class WalletAppletCommandSet {
    * @throws CardException communication error
    */
   public ResponseAPDU verifyPIN(String pin) throws CardException {
-    CommandAPDU verifyPIN = new CommandAPDU(0x80, WalletApplet.INS_VERIFY_PIN, 0, 0, secureChannel.encryptAPDU(pin.getBytes()));
-    return apduChannel.transmit(verifyPIN);
+    CommandAPDU verifyPIN = secureChannel.protectedCommand(0x80, WalletApplet.INS_VERIFY_PIN, 0, 0, pin.getBytes());
+    return secureChannel.transmit(apduChannel, verifyPIN);
   }
 
   /**
@@ -156,8 +160,8 @@ public class WalletAppletCommandSet {
    * @throws CardException communication error
    */
   public ResponseAPDU changePIN(String pin) throws CardException {
-    CommandAPDU changePIN = new CommandAPDU(0x80, WalletApplet.INS_CHANGE_PIN, 0, 0, secureChannel.encryptAPDU(pin.getBytes()));
-    return apduChannel.transmit(changePIN);
+    CommandAPDU changePIN = secureChannel.protectedCommand(0x80, WalletApplet.INS_CHANGE_PIN, 0, 0, pin.getBytes());
+    return secureChannel.transmit(apduChannel, changePIN);
   }
 
   /**
@@ -168,8 +172,8 @@ public class WalletAppletCommandSet {
    * @throws CardException communication error
    */
   public ResponseAPDU unblockPIN(String puk, String newPin) throws CardException {
-    CommandAPDU unblockPIN = new CommandAPDU(0x80, WalletApplet.INS_UNBLOCK_PIN, 0, 0, secureChannel.encryptAPDU((puk + newPin).getBytes()));
-    return apduChannel.transmit(unblockPIN);
+    CommandAPDU unblockPIN = secureChannel.protectedCommand(0x80, WalletApplet.INS_UNBLOCK_PIN, 0, 0, (puk + newPin).getBytes());
+    return secureChannel.transmit(apduChannel, unblockPIN);
   }
 
   /**
@@ -335,8 +339,8 @@ public class WalletAppletCommandSet {
    * @throws CardException communication error
    */
   public ResponseAPDU loadKey(byte[] data, byte keyType) throws CardException {
-    CommandAPDU loadKey = new CommandAPDU(0x80, WalletApplet.INS_LOAD_KEY, keyType, 0, secureChannel.encryptAPDU(data));
-    return apduChannel.transmit(loadKey);
+    CommandAPDU loadKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_LOAD_KEY, keyType, 0, data);
+    return secureChannel.transmit(apduChannel, loadKey);
   }
 
   /**
@@ -347,8 +351,8 @@ public class WalletAppletCommandSet {
    * @throws CardException communication error
    */
   public ResponseAPDU generateMnemonic(int cs) throws CardException {
-    CommandAPDU generateMnemonic = new CommandAPDU(0x80, WalletApplet.INS_GENERATE_MNEMONIC, cs, 0, 256);
-    return apduChannel.transmit(generateMnemonic);
+    CommandAPDU generateMnemonic = secureChannel.protectedCommand(0x80, WalletApplet.INS_GENERATE_MNEMONIC, cs, 0, new byte[0]);
+    return secureChannel.transmit(apduChannel, generateMnemonic);
   }
 
   /**
@@ -366,8 +370,8 @@ public class WalletAppletCommandSet {
    */
   public ResponseAPDU sign(byte[] data, byte dataType, boolean isFirst, boolean isLast) throws CardException {
     byte p2 = (byte) ((isFirst ? 0x01 : 0x00) | (isLast ? 0x80 : 0x00));
-    CommandAPDU sign = new CommandAPDU(0x80, WalletApplet.INS_SIGN, dataType, p2, secureChannel.encryptAPDU(data));
-    return apduChannel.transmit(sign);
+    CommandAPDU sign = secureChannel.protectedCommand(0x80, WalletApplet.INS_SIGN, dataType, p2, data);
+    return secureChannel.transmit(apduChannel, sign);
   }
 
   /**
@@ -398,8 +402,8 @@ public class WalletAppletCommandSet {
     p1 |= reset ? 0 : WalletApplet.DERIVE_P1_APPEND_MASK;
     byte p2 = isPublicKey ? WalletApplet.DERIVE_P2_PUBLIC_KEY : WalletApplet.DERIVE_P2_KEY_PATH;
 
-    CommandAPDU deriveKey = new CommandAPDU(0x80, WalletApplet.INS_DERIVE_KEY, p1, p2, secureChannel.encryptAPDU(data));
-    return apduChannel.transmit(deriveKey);
+    CommandAPDU deriveKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_DERIVE_KEY, p1, p2, data);
+    return secureChannel.transmit(apduChannel, deriveKey);
   }
 
   /**
@@ -410,8 +414,8 @@ public class WalletAppletCommandSet {
    * @throws CardException communication error
    */
   public ResponseAPDU setPinlessPath(byte [] data) throws CardException {
-    CommandAPDU setPinlessPath = new CommandAPDU(0x80, WalletApplet.INS_SET_PINLESS_PATH, 0x00, 0x00, secureChannel.encryptAPDU(data));
-    return apduChannel.transmit(setPinlessPath);
+    CommandAPDU setPinlessPath = secureChannel.protectedCommand(0x80, WalletApplet.INS_SET_PINLESS_PATH, 0x00, 0x00, data);
+    return secureChannel.transmit(apduChannel, setPinlessPath);
   }
 
   /**
@@ -422,7 +426,7 @@ public class WalletAppletCommandSet {
    * @throws CardException communication error
    */
   public ResponseAPDU exportKey(byte keyPathIndex) throws CardException {
-    CommandAPDU exportKey = new CommandAPDU(0x80, WalletApplet.INS_EXPORT_KEY, keyPathIndex, 0x00, 256);
-    return apduChannel.transmit(exportKey);
+    CommandAPDU exportKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_EXPORT_KEY, keyPathIndex, 0x00, new byte[0]);
+    return secureChannel.transmit(apduChannel, exportKey);
   }
 }
