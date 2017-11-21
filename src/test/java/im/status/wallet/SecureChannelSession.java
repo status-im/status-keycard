@@ -317,6 +317,16 @@ public class SecureChannelSession {
     }
   }
 
+  /**
+   * Returns a command APDU with MAC and encrypted data.
+   *
+   * @param cla the CLA byte
+   * @param ins the INS byte
+   * @param p1 the P1 byte
+   * @param p2 the P2 byte
+   * @param data the data, can be an empty array but not null
+   * @return the command APDU
+   */
   public CommandAPDU protectedCommand(int cla, int ins, int p1, int p2, byte[] data) {
     byte[] finalData;
 
@@ -334,6 +344,15 @@ public class SecureChannelSession {
     return new CommandAPDU(cla, ins, p1, p2, finalData);
   }
 
+  /**
+   * Transmits a protected command APDU and unwraps the response data. The MAC is verified, the data decrypted and the
+   * SW read from the payload.
+   *
+   * @param apduChannel the APDU channel
+   * @param apdu the APDU to send
+   * @return the unwrapped response APDU
+   * @throws CardException transmission error
+   */
   public ResponseAPDU transmit(CardChannel apduChannel, CommandAPDU apdu) throws CardException {
     ResponseAPDU resp = apduChannel.transmit(apdu);
 
@@ -361,14 +380,28 @@ public class SecureChannelSession {
     }
   }
 
+  /**
+   * Marks the SecureChannel as closed
+   */
   public void reset() {
     open = false;
   }
 
+  /**
+   * Marks the SecureChannel as open. Only to be used when writing tests for the SecureChannel, in normal operation this
+   * would only make things wrong.
+   *
+   */
   void setOpen() {
     open = true;
   }
 
+  /**
+   * Calculates a CMAC from the metadata and data provided and sets it as the IV for the next message.
+   *
+   * @param meta metadata
+   * @param data data
+   */
   private void updateIV(byte[] meta, byte[] data) {
     try {
       sessionMac.init(sessionMacKey);

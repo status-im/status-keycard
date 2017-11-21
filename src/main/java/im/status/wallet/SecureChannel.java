@@ -269,7 +269,14 @@ public class SecureChannel {
     return len;
   }
 
-  public boolean verifyAESMAC(byte[] apduBuffer, short apduLen) {
+  /**
+   * Verifies the AES CBC-MAC, either natively or with a software implementation. Can only be called from the
+   * preprocessAPDU method since it expects the input buffer to be formatted in a particular way.
+   *
+   * @param apduBuffer the APDU buffer
+   * @param apduLen the data len
+   */
+  private boolean verifyAESMAC(byte[] apduBuffer, short apduLen) {
     if (scMac == null) {
       scMacCipher.init(scMacKey, Cipher.MODE_ENCRYPT);
       short encLen = scMacCipher.update(apduBuffer, (short) 0, ISO7816.OFFSET_CDATA, macCipherBuf, (short) 0);
@@ -312,7 +319,14 @@ public class SecureChannel {
     apdu.setOutgoingAndSend(ISO7816.OFFSET_CDATA, len);
   }
 
-  public void computeAESMAC(short len, byte[] apduBuffer) {
+  /**
+   * Computes the AES CBC-MAC, either natively or with a software implementation. Can only be called from the respond
+   * method since it expects the input buffer to be formatted in a particular way.
+   *
+   * @param len the data len
+   * @param apduBuffer the APDU buffer
+   */
+  private void computeAESMAC(short len, byte[] apduBuffer) {
     if (scMac == null) {
       scMacCipher.init(scMacKey, Cipher.MODE_ENCRYPT);
       short encLen = scMacCipher.update(apduBuffer, (short) 0, (short) 1, macCipherBuf, (short) 0);
