@@ -22,9 +22,13 @@ public class SecureChannel {
   public static final byte PAIR_P1_FIRST_STEP = 0x00;
   public static final byte PAIR_P1_LAST_STEP = 0x01;
 
+  public static final short MAX_MAC_APDU_SIZE = (short) 256;
+
   private AESKey scEncKey;
   private AESKey scMacKey;
   private Cipher scCipher;
+  private Cipher scMacCipher;
+  private byte[] macCipherBuf;
   private Signature scMac;
   private KeyPair scKeypair;
   private byte[] secret;
@@ -46,7 +50,12 @@ public class SecureChannel {
   public SecureChannel(byte pairingLimit, byte[] aPairingSecret, short off) {
     scCipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
 
-    scMac = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
+    try {
+      scMac = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
+    } catch (CryptoException e) {
+      scMacCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_CBC_NOPAD, false);
+      macCipherBuf = JCSystem.makeTransientByteArray(MAX_MAC_APDU_SIZE, JCSystem.CLEAR_ON_DESELECT);
+    }
 
     scEncKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
     scMacKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
@@ -56,7 +65,7 @@ public class SecureChannel {
     SECP256k1.setCurveParameters((ECKey) scKeypair.getPublic());
     scKeypair.genKeyPair();
 
-    secret = JCSystem.makeTransientByteArray((byte)(SC_SECRET_LENGTH * 2), JCSystem.CLEAR_ON_DESELECT);
+    secret = JCSystem.makeTransientByteArray((short)(SC_SECRET_LENGTH * 2), JCSystem.CLEAR_ON_DESELECT);
     pairingSecret = new byte[SC_SECRET_LENGTH];
     pairingKeys = new byte[(short)(PAIRING_KEY_LENGTH * pairingLimit)];
 
@@ -261,11 +270,19 @@ public class SecureChannel {
   }
 
   public boolean verifyAESMAC(byte[] apduBuffer, short apduLen) {
-    scMac.init(scMacKey, Signature.MODE_VERIFY);
-    scMac.update(apduBuffer, (short) 0, ISO7816.OFFSET_CDATA);
-    scMac.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - ISO7816.OFFSET_CDATA));
+    if (scMac == null) {
+      scMacCipher.init(scMacKey, Cipher.MODE_ENCRYPT);
+      short encLen = scMacCipher.update(apduBuffer, (short) 0, ISO7816.OFFSET_CDATA, macCipherBuf, (short) 0);
+      encLen += scMacCipher.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - ISO7816.OFFSET_CDATA), macCipherBuf, encLen);
+      encLen += scMacCipher.doFinal(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), macCipherBuf, encLen);
+      return Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, macCipherBuf, (short)(encLen - SC_BLOCK_SIZE), SC_BLOCK_SIZE) == 0;
+    } else {
+      scMac.init(scMacKey, Signature.MODE_VERIFY);
+      scMac.update(apduBuffer, (short) 0, ISO7816.OFFSET_CDATA);
+      scMac.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - ISO7816.OFFSET_CDATA));
 
-    return scMac.verify(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
+      return scMac.verify(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
+    }
   }
 
   /**
@@ -296,10 +313,18 @@ public class SecureChannel {
   }
 
   public void computeAESMAC(short len, byte[] apduBuffer) {
-    scMac.init(scMacKey, Signature.MODE_SIGN);
-    scMac.update(apduBuffer, (short) 0, (short) 1);
-    scMac.update(secret, SC_BLOCK_SIZE, (short)(SC_BLOCK_SIZE - 1));
-    scMac.sign(apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), len, apduBuffer, ISO7816.OFFSET_CDATA);
+    if (scMac == null) {
+      scMacCipher.init(scMacKey, Cipher.MODE_ENCRYPT);
+      short encLen = scMacCipher.update(apduBuffer, (short) 0, (short) 1, macCipherBuf, (short) 0);
+      encLen += scMacCipher.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - 1), macCipherBuf, encLen);
+      encLen += scMacCipher.doFinal(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), len, macCipherBuf, encLen);
+      Util.arrayCopyNonAtomic(macCipherBuf, (short)(encLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
+    } else {
+      scMac.init(scMacKey, Signature.MODE_SIGN);
+      scMac.update(apduBuffer, (short) 0, (short) 1);
+      scMac.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - 1));
+      scMac.sign(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), len, apduBuffer, ISO7816.OFFSET_CDATA);
+    }
   }
 
   /**
