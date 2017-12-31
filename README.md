@@ -52,6 +52,7 @@ im.status.gradle.gpshell.mac_key=404142434445464748494a4b4c4d4e4f
 im.status.gradle.gpshell.enc_key=404142434445464748494a4b4c4d4e4f
 im.status.gradle.gpshell.kek_key=404142434445464748494a4b4c4d4e4f
 im.status.gradle.gpshell.kvn=0
+im.status.wallet.test.simulated=false
 ```
 
 ## Implementation notes
