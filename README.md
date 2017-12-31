@@ -15,12 +15,13 @@ installed on the system. The gradle.properties file must contain the following p
 * im.status.gradle.gpshell.enc_key = the ENC key for the ISD
 * im.status.gradle.gpshell.kek_key = the KEK key for the ISD
 * im.status.gradle.gpshell.kvn = the Key Version Number for the ISD
+* im.status.wallet.test.simulated = true if the test should run on the simulator, false (or anything else) otherwise
 
 Testing is done with JUnit and performed either on a real card or on [jCardSim](https://github.com/status-im/jcardsim). 
 Although the tests are comprehensive, debugging on the real card is not easy because raw APDUs are not shown in the test 
 log and there is no way to set breakpoints in the applet. 
 
-In order to test with the simulator, you need to pass these additional parameters to the JVM
+In order to test with the simulator with an IDE, you need to pass these additional parameters to the JVM
 
 ```-noverify -Dim.status.wallet.test.simulated=true```
 

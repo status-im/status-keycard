@@ -73,10 +73,19 @@ task install(type: Exec) {
   standardInput new ByteArrayInputStream(gpShellScript.getBytes("UTF-8"))
 }
 
-tasks.install.dependsOn(convertJavacard)
-tasks.test.dependsOn(install)
+if (project.properties['im.status.wallet.test.simulated'] != 'true') {
+  tasks.install.dependsOn(convertJavacard)
+  tasks.test.dependsOn(install)
+}
 
 compileTestJava {
   sourceCompatibility = 1.8
   targetCompatibility = 1.8
+}
+
+afterEvaluate {
+  if (project.properties['im.status.wallet.test.simulated'] == 'true') {
+    def junitPlatformTestTask = tasks.getByName('junitPlatformTest')
+    junitPlatformTestTask.jvmArgs(['-noverify', '-Dim.status.wallet.test.simulated=true'])
+  }
 }
