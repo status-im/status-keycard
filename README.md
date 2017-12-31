@@ -37,7 +37,9 @@ In order to test with the simulator, you need to pass these additional parameter
 
 ## Testing
 1. Follow all steps from the Installation phase (except the last one)
-2. Run `./gradlew test`
+2. Make sure your JRE has the [JCE Unlimited Strength Jurisdiction Policy Files](http://www.oracle.com/technetwork/java/javase/downloads/jce8-download-2133166.html)
+   installed. For more information check [here](https://stackoverflow.com/questions/41580489/how-to-install-unlimited-strength-jurisdiction-policy-files).
+3. Run `./gradlew test`
 
 ## Example gradle.properties file
 
