@@ -52,7 +52,7 @@ SW 0x6985 is returned. All tagged data structures are encoded in the [BER-TLV fo
 
 Response Data format:
 - Tag 0xA4 = Application Info Template
- - Tag 0xC0 = Instance UID (16 bytes)
+ - Tag 0x4F = Instance UID (16 bytes)
  - Tag 0x80 = ECC public Key
 
 The SELECT command is documented in the ISO 7816-4 specifications and is used to select the application on the card,
@@ -92,10 +92,10 @@ derivation session
 Response Data format:
 if P1 = 0x00:
 - Tag 0xA3 = Application Status Template
-  - Tag 0xC0 = PIN retry count (1 byte)
-  - Tag 0xC1 = PUK retry count (1 byte)
-  - Tag 0xC2 = 0 if key is not initialized, 1 otherwise
-  - Tag 0xC3 = 1 if public key derivation is supported, 0 otherwise
+  - Tag 0x80 = PIN retry count (1 byte)
+  - Tag 0x81 = PUK retry count (1 byte)
+  - Tag 0x82 = 0 if key is not initialized, 1 otherwise
+  - Tag 0x83 = 1 if public key derivation is supported, 0 otherwise
 
 if P1 = 0x01
 - a sequence of 32-bit numbers indicating the current key path. Empty if master key is selected.
