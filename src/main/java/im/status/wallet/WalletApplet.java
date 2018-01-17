@@ -331,10 +331,10 @@ public class WalletApplet extends Applet {
     apduBuffer[off++] = puk.getTriesRemaining();
     apduBuffer[off++] = TLV_BOOL;
     apduBuffer[off++] = 1;
-    apduBuffer[off++] = privateKey.isInitialized() ? (byte) 0x01 : (byte) 0x00;
+    apduBuffer[off++] = privateKey.isInitialized() ? (byte) 0xFF : (byte) 0x00;
     apduBuffer[off++] = TLV_BOOL;
     apduBuffer[off++] = 1;
-    apduBuffer[off++] = SECP256k1.hasECPointMultiplication() ? (byte) 0x01 : (byte) 0x00;
+    apduBuffer[off++] = SECP256k1.hasECPointMultiplication() ? (byte) 0xFF : (byte) 0x00;
 
     return (short) (off - SecureChannel.SC_OUT_OFFSET);
   }
