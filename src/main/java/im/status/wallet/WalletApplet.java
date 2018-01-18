@@ -324,7 +324,7 @@ public class WalletApplet extends Applet {
    */
   private short getApplicationStatus(byte[] apduBuffer, short off) {
     apduBuffer[off++] = TLV_APPLICATION_STATUS_TEMPLATE;
-    apduBuffer[off++] = 9;
+    apduBuffer[off++] = 12;
     apduBuffer[off++] = TLV_PIN_RETRY_COUNT;
     apduBuffer[off++] = 1;
     apduBuffer[off++] = pin.getTriesRemaining();
