@@ -296,21 +296,21 @@ public class WalletAppletTest {
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
     byte[] data = response.getData();
-    assertTrue(Hex.toHexString(data).matches("a30c80010381010582010[0-1]83010[0-1]"));
+    assertTrue(Hex.toHexString(data).matches("a30c0201030201050101[0f][0f]0101[0f][0f]"));
 
     response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C2, response.getSW());
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
     data = response.getData();
-    assertTrue(Hex.toHexString(data).matches("a30c80010281010582010[0-1]83010[0-1]"));
+    assertTrue(Hex.toHexString(data).matches("a30c0201020201050101[0f][0f]0101[0f][0f]"));
 
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
     data = response.getData();
-    assertTrue(Hex.toHexString(data).matches("a30c80010381010582010[0-1]83010[0-1]"));
+    assertTrue(Hex.toHexString(data).matches("a30c0201030201050101[0f][0f]0101[0f][0f]"));
 
     // Check that key path is empty
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);

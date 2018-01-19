@@ -135,7 +135,7 @@ public class WalletAppletCommandSet {
   public boolean getPublicKeyDerivationSupport() throws CardException {
     ResponseAPDU resp = getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     byte[] data = resp.getData();
-    return data[data.length - 1] == 1;
+    return data[data.length - 1] != 0x00;
   }
 
   /**
