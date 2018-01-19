@@ -66,10 +66,8 @@ public class WalletApplet extends Applet {
   static final byte TLV_PUB_X = (byte) 0x83;
 
   static final byte TLV_APPLICATION_STATUS_TEMPLATE = (byte) 0xA3;
-  static final byte TLV_PIN_RETRY_COUNT = (byte) 0x80;
-  static final byte TLV_PUK_RETRY_COUNT = (byte) 0x81;
-  static final byte TLV_KEY_INITIALIZATION_STATUS = (byte) 0x82;
-  static final byte TLV_PUBLIC_KEY_DERIVATION = (byte) 0x83;
+  static final byte TLV_INT = (byte) 0x02;
+  static final byte TLV_BOOL = (byte) 0x01;
 
   static final byte TLV_APPLICATION_INFO_TEMPLATE = (byte) 0xA4;
   static final byte TLV_UID = (byte) 0x8F;
@@ -325,18 +323,18 @@ public class WalletApplet extends Applet {
   private short getApplicationStatus(byte[] apduBuffer, short off) {
     apduBuffer[off++] = TLV_APPLICATION_STATUS_TEMPLATE;
     apduBuffer[off++] = 12;
-    apduBuffer[off++] = TLV_PIN_RETRY_COUNT;
+    apduBuffer[off++] = TLV_INT;
     apduBuffer[off++] = 1;
     apduBuffer[off++] = pin.getTriesRemaining();
-    apduBuffer[off++] = TLV_PUK_RETRY_COUNT;
+    apduBuffer[off++] = TLV_INT;
     apduBuffer[off++] = 1;
     apduBuffer[off++] = puk.getTriesRemaining();
-    apduBuffer[off++] = TLV_KEY_INITIALIZATION_STATUS;
+    apduBuffer[off++] = TLV_BOOL;
     apduBuffer[off++] = 1;
-    apduBuffer[off++] = privateKey.isInitialized() ? (byte) 0x01 : (byte) 0x00;
-    apduBuffer[off++] = TLV_PUBLIC_KEY_DERIVATION;
+    apduBuffer[off++] = privateKey.isInitialized() ? (byte) 0xFF : (byte) 0x00;
+    apduBuffer[off++] = TLV_BOOL;
     apduBuffer[off++] = 1;
-    apduBuffer[off++] = SECP256k1.hasECPointMultiplication() ? (byte) 0x01 : (byte) 0x00;
+    apduBuffer[off++] = SECP256k1.hasECPointMultiplication() ? (byte) 0xFF : (byte) 0x00;
 
     return (short) (off - SecureChannel.SC_OUT_OFFSET);
   }
