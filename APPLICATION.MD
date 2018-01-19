@@ -92,10 +92,10 @@ derivation session
 Response Data format:
 if P1 = 0x00:
 - Tag 0xA3 = Application Status Template
-  - Tag 0x80 = PIN retry count (1 byte)
-  - Tag 0x81 = PUK retry count (1 byte)
-  - Tag 0x82 = 0 if key is not initialized, 1 otherwise
-  - Tag 0x83 = 1 if public key derivation is supported, 0 otherwise
+  - Tag 0x02 = PIN retry count (1 byte)
+  - Tag 0x02 = PUK retry count (1 byte)
+  - Tag 0x01 = 0 if key is not initialized, 1 otherwise
+  - Tag 0x01 = 1 if public key derivation is supported, 0 otherwise
 
 if P1 = 0x01
 - a sequence of 32-bit numbers indicating the current key path. Empty if master key is selected.
