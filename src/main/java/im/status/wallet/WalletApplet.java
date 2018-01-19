@@ -53,7 +53,11 @@ public class WalletApplet extends Applet {
   static final byte GENERATE_MNEMONIC_P1_CS_MAX = 8;
   static final byte GENERATE_MNEMONIC_TMP_OFF = SecureChannel.SC_OUT_OFFSET + ((((GENERATE_MNEMONIC_P1_CS_MAX * 32) + GENERATE_MNEMONIC_P1_CS_MAX) / 11) * 2);
 
+  static final byte EXPORT_KEY_P1_ANY = 0x00;
   static final byte EXPORT_KEY_P1_WHISPER = 0x01;
+
+  static final byte EXPORT_KEY_P2_PRIVATE_AND_PUBLIC = 0x00;
+  static final byte EXPORT_KEY_P2_PUBLIC_ONLY = 0x01;
 
   static final byte TLV_SIGNATURE_TEMPLATE = (byte) 0xA0;
 
@@ -863,8 +867,28 @@ public class WalletApplet extends Applet {
     }
 
     byte[] toExport;
+    boolean publicOnly;
+
+    switch (apduBuffer[ISO7816.OFFSET_P2]) {
+      case EXPORT_KEY_P2_PRIVATE_AND_PUBLIC:
+        publicOnly = false;
+        break;
+      case EXPORT_KEY_P2_PUBLIC_ONLY:
+        publicOnly = true;
+        break;
+      default:
+        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        return;
+    }
 
     switch (apduBuffer[ISO7816.OFFSET_P1]) {
+      case EXPORT_KEY_P1_ANY:
+        if (!publicOnly) {
+          ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+        }
+
+        toExport = null;
+        break;
       case EXPORT_KEY_P1_WHISPER:
         toExport = WHISPER_KEY_PATH;
         break;
@@ -873,7 +897,7 @@ public class WalletApplet extends Applet {
         return;
     }
 
-    if (!((keyPathLen == toExport.length) && (Util.arrayCompare(keyPath, (short) 0, toExport, (short) 0, keyPathLen) == 0))) {
+    if (!((toExport == null) || ((keyPathLen == toExport.length) && (Util.arrayCompare(keyPath, (short) 0, toExport, (short) 0, keyPathLen) == 0)))) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
@@ -886,11 +910,16 @@ public class WalletApplet extends Applet {
     short len = publicKey.getW(apduBuffer, off);
     apduBuffer[(short)(off - 1)] = (byte) len;
     off += len;
-    apduBuffer[off++] = TLV_PRIV_KEY;
-    off++;
-    len = privateKey.getS(apduBuffer, off);
-    apduBuffer[(short)(off - 1)] = (byte) len;
-    len += (off - SecureChannel.SC_OUT_OFFSET);
+
+    if (!publicOnly) {
+      apduBuffer[off++] = TLV_PRIV_KEY;
+      off++;
+      len = privateKey.getS(apduBuffer, off);
+      apduBuffer[(short) (off - 1)] = (byte) len;
+      off += len;
+    }
+
+    len = (short) (off - SecureChannel.SC_OUT_OFFSET);
     apduBuffer[(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) (len - 2);
 
     secureChannel.respond(apdu, (short) len, ISO7816.SW_NO_ERROR);

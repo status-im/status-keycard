@@ -804,13 +804,13 @@ public class WalletAppletTest {
     new Random().nextBytes(chainCode);
 
     // Security condition violation: SecureChannel not open
-    ResponseAPDU response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    ResponseAPDU response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
     assertEquals(0x6985, response.getSW());
 
     cmdSet.autoOpenSecureChannel();
 
     // Security condition violation: PIN not verified
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
     assertEquals(0x6985, response.getSW());
 
     response = cmdSet.verifyPIN("000000");
@@ -819,36 +819,51 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     // Security condition violation: current key is not Whisper key
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
     assertEquals(0x6985, response.getSW());
 
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, true, true, false);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
     assertEquals(0x6985, response.getSW());
+
+    // Export current public key (wrong P2)
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_ANY, false);
+    assertEquals(0x6985, response.getSW());
+
+    // Export current public key
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_ANY, true);
+    assertEquals(0x9000, response.getSW());
+    byte[] keyTemplate = response.getData();
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 1 }, true);
+
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, false, true, false);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.deriveKey(derivePublicKey(response.getData()), false, true, true);
     assertEquals(0x9000, response.getSW());
 
     // Wrong P1
-    response = cmdSet.exportKey((byte) 0);
-    assertEquals(0x6a86, response.getSW());
-    response = cmdSet.exportKey((byte) 2);
+    response = cmdSet.exportKey((byte) 2, false);
     assertEquals(0x6a86, response.getSW());
 
     // Correct
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
     assertEquals(0x9000, response.getSW());
-    byte[] keyTemplate = response.getData();
-    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 1, 1 });
+    keyTemplate = response.getData();
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 1, 1 }, false);
+
+    // Correct public only
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, true);
+    assertEquals(0x9000, response.getSW());
+    keyTemplate = response.getData();
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 1, 1 }, true);
 
     // Reset
     response = cmdSet.deriveKey(new byte[] {}, true, false, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
     assertEquals(0x6985, response.getSW());
   }
 
@@ -1096,22 +1111,28 @@ public class WalletAppletTest {
     }
   }
 
-  private void verifyExportedKey(byte[] keyTemplate, KeyPair keyPair, byte[] chainCode, int[] path) {
+  private void verifyExportedKey(byte[] keyTemplate, KeyPair keyPair, byte[] chainCode, int[] path, boolean publicOnly) {
     ECKey key = deriveKey(keyPair, chainCode, path).decompress();
     assertEquals(WalletApplet.TLV_KEY_TEMPLATE, keyTemplate[0]);
     assertEquals(WalletApplet.TLV_PUB_KEY, keyTemplate[2]);
     byte[] pubKey = Arrays.copyOfRange(keyTemplate, 4, 4 + keyTemplate[3]);
-    assertEquals(WalletApplet.TLV_PRIV_KEY, keyTemplate[4 + pubKey.length]);
-    byte[] privateKey = Arrays.copyOfRange(keyTemplate, 6 + pubKey.length, 6 + pubKey.length + keyTemplate[5 + pubKey.length]);
-
-    byte[] tPrivKey = key.getPrivKey().toByteArray();
-
-    if (tPrivKey[0] == 0x00) {
-      tPrivKey = Arrays.copyOfRange(tPrivKey, 1, tPrivKey.length);
-    }
-
     assertArrayEquals(key.getPubKey(), pubKey);
-    assertArrayEquals(tPrivKey, privateKey);
+
+    if (publicOnly) {
+      assertEquals(pubKey.length + 2, keyTemplate[1]);
+      assertEquals(pubKey.length + 4, keyTemplate.length);
+    } else {
+      assertEquals(WalletApplet.TLV_PRIV_KEY, keyTemplate[4 + pubKey.length]);
+      byte[] privateKey = Arrays.copyOfRange(keyTemplate, 6 + pubKey.length, 6 + pubKey.length + keyTemplate[5 + pubKey.length]);
+
+      byte[] tPrivKey = key.getPrivKey().toByteArray();
+
+      if (tPrivKey[0] == 0x00) {
+        tPrivKey = Arrays.copyOfRange(tPrivKey, 1, tPrivKey.length);
+      }
+
+      assertArrayEquals(tPrivKey, privateKey);
+    }
   }
 
   private DeterministicKey deriveKey(KeyPair keyPair, byte[] chainCode, int[] path) {

@@ -422,11 +422,13 @@ public class WalletAppletCommandSet {
    * Sends an EXPORT KEY APDU. The keyPathIndex is used as P1. Valid values are defined in the applet itself
    *
    * @param keyPathIndex the P1 parameter
+   * @param publicOnly the P2 parameter
    * @return the raw card response
    * @throws CardException communication error
    */
-  public ResponseAPDU exportKey(byte keyPathIndex) throws CardException {
-    CommandAPDU exportKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_EXPORT_KEY, keyPathIndex, 0x00, new byte[0]);
+  public ResponseAPDU exportKey(byte keyPathIndex, boolean publicOnly) throws CardException {
+    byte p2 = publicOnly ? WalletApplet.EXPORT_KEY_P2_PUBLIC_ONLY : WalletApplet.EXPORT_KEY_P2_PRIVATE_AND_PUBLIC;
+    CommandAPDU exportKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_EXPORT_KEY, keyPathIndex, p2, new byte[0]);
     return secureChannel.transmit(apduChannel, exportKey);
   }
 }
