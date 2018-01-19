@@ -803,14 +803,17 @@ public class WalletApplet extends Applet {
       short outLen = apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 4)] = (byte) publicKey.getW(apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
 
       outLen += 5;
+      short sigOff = (short) (SecureChannel.SC_OUT_OFFSET + outLen);
 
       if ((apduBuffer[ISO7816.OFFSET_P1]) == SIGN_P1_DATA) {
-        outLen += signature.sign(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + outLen));
+        outLen += signature.sign(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, sigOff);
       } else if ((apduBuffer[ISO7816.OFFSET_P1]) == SIGN_P1_PRECOMPUTED_HASH) {
-        outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + outLen));
+        outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, sigOff);
       } else {
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
       }
+
+      outLen += Crypto.fixS(apduBuffer, sigOff);
 
       apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) 0x81;
       apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 2)] = (byte) (outLen - 3);
@@ -854,7 +857,7 @@ public class WalletApplet extends Applet {
    * Processes the EXPORT KEY command. Requires an open secure channel and the PIN to be verified. The P1 parameter is
    * an index to which key must be exported from the list of exportable ones. At the moment only the Whisper key with
    * key path m/1/1 is exportable. The key is exported only if the current key path matches the key path of the key to
-   * be exported.
+   * be exported. The public key of the current path can always be exported with P1=0x00 and P2=0x01.
    *
    * @param apdu the JCRE-owned APDU object.
    */

@@ -13,10 +13,13 @@ public class Crypto {
   final static private short KEY_DERIVATION_INPUT_SIZE = 37;
   final static private short HMAC_OUT_SIZE = 64;
 
-  private static final byte HMAC_IPAD = (byte) 0x36;
-  private static final byte HMAC_OPAD = (byte) 0x5c;
-  private static final short HMAC_BLOCK_SIZE = (short) 128;
-  private static final short HMAC_BLOCK_OFFSET = (short) KEY_DERIVATION_INPUT_SIZE + HMAC_OUT_SIZE;
+  final static private byte[] MAX_S = { (byte) 0x7F, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0x5D, (byte) 0x57, (byte) 0x6E, (byte) 0x73, (byte) 0x57, (byte) 0xA4, (byte) 0x50, (byte) 0x1D, (byte) 0xDF, (byte) 0xE9, (byte) 0x2F, (byte) 0x46, (byte) 0x68, (byte) 0x1B, (byte) 0x20, (byte) 0xA0 };
+  final static private byte[] S_SUB = { (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFE, (byte) 0xBA, (byte) 0xAE, (byte) 0xDC, (byte) 0xE6, (byte) 0xAF, (byte) 0x48, (byte) 0xA0, (byte) 0x3B, (byte) 0xBF, (byte) 0xD2, (byte) 0x5E, (byte) 0x8C, (byte) 0xD0, (byte) 0x36, (byte) 0x41, (byte) 0x41 };
+
+  final static private byte HMAC_IPAD = (byte) 0x36;
+  final static private byte HMAC_OPAD = (byte) 0x5c;
+  final static private short HMAC_BLOCK_SIZE = (short) 128;
+  final static private short HMAC_BLOCK_OFFSET = (short) KEY_DERIVATION_INPUT_SIZE + HMAC_OUT_SIZE;
 
   // The below 4 objects can be accessed anywhere from the entire applet
   static RandomData random;
@@ -100,6 +103,34 @@ public class Crypto {
   }
 
   /**
+   * Fixes the S value of the signature as described in BIP-62 to avoid malleable signatures. It also fixes the all
+   * internal TLV length fields. Returns the number of bytes by which the overall signature length changed (0 or -1).
+   *
+   * @param sig the signature
+   * @param off the offset
+   * @return the number of bytes by which the signature length changed
+   */
+  static short fixS(byte[] sig, short off) {
+    short sOff = (short) (sig[(short) (off + 3)] + (short) (off + 5));
+    short ret = 0;
+
+    if (sig[sOff] == 33) {
+      Util.arrayCopyNonAtomic(sig, (short) (sOff + 2), sig, (short) (sOff + 1), (short) 32);
+      sig[sOff] = 32;
+      sig[(short)(off + 1)]--;
+      ret = -1;
+    }
+
+    sOff++;
+
+    if (ret == -1 || ucmp256(sig, sOff, MAX_S, (short) 0) > 0) {
+      sub256(S_SUB, (short) 0, sig, sOff, sig, sOff);
+    }
+
+    return ret;
+  }
+
+  /**
    * Calculates the HMAC-SHA512 with the given key and data. Uses a software implementation which only requires SHA-512
    * to be supported on cards which do not have native HMAC-SHA512.
    *
@@ -155,7 +186,7 @@ public class Crypto {
   }
 
   /**
-   * Compares two 256-bit numbers. Returns 1 if a > b, -1 if a < b and 0 if a = b.
+   * Compares two 256-bit numbers. Returns a positive number if a > b, a negative one if a < b and 0 if a = b.
    *
    * @param a the a operand
    * @param aOff the offset of the a operand

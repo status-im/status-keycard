@@ -704,6 +704,7 @@ public class WalletAppletTest {
     assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, keyData.length);
     signature.update(data);
     assertTrue(signature.verify(sig));
+    assertFalse(isMalleable(sig));
   }
 
   @Test
@@ -1143,6 +1144,17 @@ public class WalletAppletTest {
     }
 
     return key;
+  }
+
+  private boolean isMalleable(byte[] sig) {
+    int rLen = sig[3];
+    int sOff = 6 + rLen;
+    int sLen = sig.length - rLen - 6;
+
+    BigInteger s = new BigInteger(Arrays.copyOfRange(sig, sOff, sOff + sLen));
+    BigInteger limit = new BigInteger("7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0", 16);
+
+    return s.compareTo(limit) >= 1;
   }
 
   /**
