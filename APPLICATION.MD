@@ -26,7 +26,7 @@ The PIN can be changed by the user after authentication.
 
 ## Keys & Signature
 
-The application allows loading a replacing of a single EC keyset, defined on the SECP256k1 curve. The keyset can contain
+The application allows loading and replacing of a single EC keyset, defined on the SECP256k1 curve. The keyset can contain
 a 32-byte chain code to further derive keys according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) 
 specifications. This keyset is used to sign transactions. When the applet is first installed, no keyset is available so 
 signing will fail. It is necessary to first load the keyset in order for the application to be fully operational.
@@ -127,7 +127,7 @@ always returns 0x63C0, even if the PIN is inserted correctly.
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
 Used to change the user PIN. The new PIN must be composed of exactly 6 numeric digits. Should this be not the case,
-the code 0x6A80 is returned. If the conditions matches the user PIN is updated and authenticated for the rest of
+the code 0x6A80 is returned. If the conditions match, the user PIN is updated and authenticated for the rest of
 the session. The no-error SW 0x9000 is returned.
 
 ### UNBLOCK PIN
