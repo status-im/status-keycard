@@ -383,7 +383,7 @@ public class WalletAppletCommandSet {
    * @throws CardException communication error
    */
   public ResponseAPDU deriveKey(byte[] data) throws CardException {
-    return deriveKey(data, true, false, false);
+    return deriveKey(data, WalletApplet.DERIVE_P1_SOURCE_MASTER, false, false);
   }
 
   /**
@@ -391,15 +391,15 @@ public class WalletAppletCommandSet {
    * form P1. The isPublicKey parameter is used for P2.
    *
    * @param data the raw key path or a public key
-   * @param reset whether the derivation must start from the master key or not
+   * @param source the source to start derivation
    * @param assisted whether we are doing assisted derivation or not
    * @param isPublicKey whether we are sending a public key or a key path (only make sense during assisted derivation)
    * @return the raw card response
    * @throws CardException communication error
    */
-  public ResponseAPDU deriveKey(byte[] data, boolean reset, boolean assisted, boolean isPublicKey) throws CardException {
+  public ResponseAPDU deriveKey(byte[] data, int source, boolean assisted, boolean isPublicKey) throws CardException {
     byte p1 = assisted ? WalletApplet.DERIVE_P1_ASSISTED_MASK : 0;
-    p1 |= reset ? 0 : WalletApplet.DERIVE_P1_APPEND_MASK;
+    p1 |= source;
     byte p2 = isPublicKey ? WalletApplet.DERIVE_P2_PUBLIC_KEY : WalletApplet.DERIVE_P2_KEY_PATH;
 
     CommandAPDU deriveKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_DERIVE_KEY, p1, p2, data);

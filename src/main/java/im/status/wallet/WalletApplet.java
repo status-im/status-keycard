@@ -44,7 +44,10 @@ public class WalletApplet extends Applet {
   static final byte SIGN_P2_LAST_BLOCK_MASK = (byte) 0x80;
 
   static final byte DERIVE_P1_ASSISTED_MASK = 0x01;
-  static final byte DERIVE_P1_APPEND_MASK = (byte) 0x80;
+  static final byte DERIVE_P1_SOURCE_MASK = (byte) 0xC0;
+  static final byte DERIVE_P1_SOURCE_MASTER = (byte) 0x00;
+  static final byte DERIVE_P1_SOURCE_PARENT = (byte) 0x40;
+  static final byte DERIVE_P1_SOURCE_CURRENT = (byte) 0x80;
 
   static final byte DERIVE_P2_KEY_PATH = 0x00;
   static final byte DERIVE_P2_PUBLIC_KEY = 0x01;
@@ -88,6 +91,11 @@ public class WalletApplet extends Applet {
   private ECPrivateKey masterPrivate;
   private byte[] masterChainCode;
   private boolean isExtended;
+
+  private ECPublicKey parentPublicKey;
+  private ECPrivateKey parentPrivateKey;
+  private byte[] parentChainCode;
+  private boolean parentValid;
 
   private ECPublicKey publicKey;
   private ECPrivateKey privateKey;
@@ -134,16 +142,26 @@ public class WalletApplet extends Applet {
 
     masterPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
     masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
-    masterChainCode = new byte[CHAIN_CODE_SIZE];
-    chainCode = new byte[CHAIN_CODE_SIZE];
-    keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
-    pinlessPath = new byte[KEY_PATH_MAX_DEPTH * 4];
+
+    parentPublicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
+    parentPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
 
     publicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, EC_KEY_SIZE, false);
     privateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, EC_KEY_SIZE, false);
 
+    masterChainCode = new byte[CHAIN_CODE_SIZE];
+    parentChainCode = new byte[CHAIN_CODE_SIZE];
+    chainCode = new byte[CHAIN_CODE_SIZE];
+    keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
+    pinlessPath = new byte[KEY_PATH_MAX_DEPTH * 4];
+
+
     SECP256k1.setCurveParameters(masterPublic);
     SECP256k1.setCurveParameters(masterPrivate);
+
+    SECP256k1.setCurveParameters(parentPublicKey);
+    SECP256k1.setCurveParameters(parentPrivateKey);
+    parentValid = false;
 
     SECP256k1.setCurveParameters(publicKey);
     SECP256k1.setCurveParameters(privateKey);
@@ -463,10 +481,17 @@ public class WalletApplet extends Applet {
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
         break;
     }
+  }
 
+  /**
+   * Resets the status of the keys. This method must be called immediately before committing the transaction where key
+   * manipulation has happened to be sure that the state is always consistent.
+   */
+  private void resetKeyStatus(boolean toParent) {
     signInProgress = false;
     expectPublicKey = false;
-    keyPathLen = 0;
+    parentValid = false;
+    keyPathLen = toParent ? (short) (keyPathLen - 4) : 0;
   }
 
   /**
@@ -483,7 +508,7 @@ public class WalletApplet extends Applet {
     short chainOffset = (short)(privOffset + apduBuffer[(short)(privOffset + 1)] + 2);
 
     if (apduBuffer[pubOffset] != TLV_PUB_KEY) {
-      SECP256k1.assetECPointMultiplicationSupport();
+      SECP256k1.assertECPointMultiplicationSupport();
       chainOffset = privOffset;
       privOffset = pubOffset;
       pubOffset = -1;
@@ -526,6 +551,7 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
+    resetKeyStatus(false);
     JCSystem.commitTransaction();
   }
 
@@ -538,7 +564,7 @@ public class WalletApplet extends Applet {
    * @param apduBuffer the APDU buffer
    */
   private void loadSeed(byte[] apduBuffer) {
-    SECP256k1.assetECPointMultiplicationSupport();
+    SECP256k1.assertECPointMultiplicationSupport();
 
     if (apduBuffer[ISO7816.OFFSET_LC] != SEED_SIZE) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -557,6 +583,7 @@ public class WalletApplet extends Applet {
     masterPublic.setW(apduBuffer, (short) 0, pubLen);
     publicKey.setW(apduBuffer, (short) 0, pubLen);
 
+    resetKeyStatus(false);
     JCSystem.commitTransaction();
   }
 
@@ -579,8 +606,7 @@ public class WalletApplet extends Applet {
    * power loss easy.
    *
    * When the reset flag is set and the data is empty, the assisted key derivation flag is ignored, since in this case
-   * no derivation is done and the master key becomes the current key. Note that because of the secure channel, the
-   * command must still contain the IV and padding even if no actual data is sent.
+   * no derivation is done and the master key becomes the current key.
    *
    * @param apdu the JCRE-owned APDU object.
    */
@@ -594,9 +620,14 @@ public class WalletApplet extends Applet {
 
     boolean assistedDerivation = (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_ASSISTED_MASK) == DERIVE_P1_ASSISTED_MASK;
     boolean isPublicKey = apduBuffer[ISO7816.OFFSET_P2]  == DERIVE_P2_PUBLIC_KEY;
-    boolean isReset = (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_APPEND_MASK) != DERIVE_P1_APPEND_MASK;
+    boolean isReset = (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_SOURCE_MASK) == DERIVE_P1_SOURCE_MASTER;
+    boolean fromParent = (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_SOURCE_MASK) == DERIVE_P1_SOURCE_PARENT;
 
-    if ((isPublicKey != (expectPublicKey && !isReset)) || (isPublicKey && !assistedDerivation)) {
+    if (fromParent && !parentValid) {
+      ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
+    }
+
+    if ((isPublicKey != (expectPublicKey && !isReset && !fromParent)) || (isPublicKey && !assistedDerivation)) {
       ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
     }
 
@@ -605,6 +636,7 @@ public class WalletApplet extends Applet {
       publicKey.setW(apduBuffer, ISO7816.OFFSET_CDATA, len);
       expectPublicKey = false;
       keyPathLen += 4;
+      parentValid = true;
       JCSystem.commitTransaction();
       return;
     }
@@ -614,19 +646,21 @@ public class WalletApplet extends Applet {
     }
 
     if ((len != 0) && !assistedDerivation) {
-      SECP256k1.assetECPointMultiplicationSupport();
+      SECP256k1.assertECPointMultiplicationSupport();
     }
 
     short chainEnd = (short) (ISO7816.OFFSET_CDATA + len);
 
-    if (isReset) {
-      resetKeys(apduBuffer, chainEnd);
+    if (isReset || fromParent) {
+      resetKeys(fromParent, apduBuffer, chainEnd);
     }
 
     signInProgress = false;
 
     for (short i = ISO7816.OFFSET_CDATA; i < chainEnd; i += 4) {
       JCSystem.beginTransaction();
+
+      copyKeys(privateKey, publicKey, chainCode, parentPrivateKey, parentPublicKey, parentChainCode, apduBuffer, chainEnd);
 
       if (!Crypto.bip32CKDPriv(apduBuffer, i, privateKey, publicKey, chainCode, (short) 0)) {
         ISOException.throwIt(ISO7816.SW_DATA_INVALID);
@@ -641,6 +675,7 @@ public class WalletApplet extends Applet {
         short pubLen = SECP256k1.derivePublicKey(privateKey, apduBuffer, chainEnd);
         publicKey.setW(apduBuffer, chainEnd, pubLen);
         keyPathLen += 4;
+        parentValid = true;
       }
 
       JCSystem.commitTransaction();
@@ -669,23 +704,43 @@ public class WalletApplet extends Applet {
   }
 
   /**
-   * Resets the current key and key path to the master key. A transaction is used to make sure this all happens at once.
-   * This method is called internally by the deriveKey method.
+   * Resets the current key and key path to the parent or master key. A transaction is used to make sure this all
+   * happens at once. This method is called internally by the deriveKey method.
    *
+   * @param toParent resets to the parent key
    * @param buffer a buffer which can be overwritten (currently the APDU buffer)
    * @param offset the offset at which the buffer is free
    */
-  private void resetKeys(byte[] buffer, short offset) {
-    short pubOff = (short) (offset + masterPrivate.getS(buffer, offset));
-    short pubLen = masterPublic.getW(buffer, pubOff);
+  private void resetKeys(boolean toParent, byte[] buffer, short offset) {
+    ECPrivateKey srcPrivKey = toParent ? parentPrivateKey : masterPrivate;
+    ECPublicKey srcPubKey = toParent ? parentPublicKey : masterPublic;
+    byte[] srcChainCode = toParent ? parentChainCode : masterChainCode;
 
     JCSystem.beginTransaction();
-    Util.arrayCopy(masterChainCode, (short) 0, chainCode, (short) 0, CHAIN_CODE_SIZE);
-    privateKey.setS(buffer, offset, CHAIN_CODE_SIZE);
-    publicKey.setW(buffer, pubOff, pubLen);
-    expectPublicKey = false;
-    keyPathLen = 0;
+    copyKeys(srcPrivKey, srcPubKey, srcChainCode, privateKey, publicKey, chainCode, buffer, offset);
+    resetKeyStatus(toParent);
     JCSystem.commitTransaction();
+  }
+
+  /**
+   * Copys a key set to another one. Requires a transient buffer which can be overwritten.
+   *
+   * @param srcPrivate source private key
+   * @param srcPublic source public key
+   * @param srcChain source chain code
+   * @param dstPrivate destination private key
+   * @param dstPublic destination public key
+   * @param dstChain destination chain code
+   * @param buffer tmp buffer
+   * @param offset tmp buffer offset
+   */
+  private void copyKeys(ECPrivateKey srcPrivate, ECPublicKey srcPublic, byte[] srcChain, ECPrivateKey dstPrivate, ECPublicKey dstPublic, byte[] dstChain, byte[] buffer, short offset) {
+    short pubOff = (short) (offset + srcPrivate.getS(buffer, offset));
+    short pubLen = srcPublic.getW(buffer, pubOff);
+
+    Util.arrayCopy(srcChain, (short) 0, dstChain, (short) 0, CHAIN_CODE_SIZE);
+    dstPrivate.setS(buffer, offset, CHAIN_CODE_SIZE);
+    dstPublic.setW(buffer, pubOff, pubLen);
   }
 
   /**
@@ -829,9 +884,6 @@ public class WalletApplet extends Applet {
    * require keys to be loaded or the current key path to be set at a specific value. The data is formatted in the same
    * way as for DERIVE KEY. In case the sequence of integers is empty, the PIN-less path is simply unset, so the master
    * key can never become PIN-less.
-   *
-   * Note that because of the secure channel, the command must still contain the IV and padding even if no actual data
-   * is sent.
    *
    * @param apdu the JCRE-owned APDU object.
    */

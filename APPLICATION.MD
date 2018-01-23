@@ -188,7 +188,7 @@ signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command
          derivation contains a public key when P2 = 0x02.
 * Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A81 if public key derivation is not supported and
   bit 0 of P1 is set, 0x6A86 if P2 = 0x01 and bit 0 of P1 is not set, 0x6984 if one of the components in the path
-  generates an invalid key.
+  generates an invalid key, 0x6B00 if derivation from parent keys is selected but no valid parent key is cached.
 * Response Data = On assisted derivation and P2 = 0x01 the key derivation template. Empty otherwise.
 * Preconditions: Secure Channel must be opened, user PIN must be verified (if no PIN-less key is defined), an extended 
 keyset must be loaded
@@ -203,10 +203,20 @@ attempt to get deeper results in 0x6A80 being returned. The BIP32 specifications
 performed on the derived keys. If these fail, the 0x6984 is returned and the invalid key is discarded. A client should
 perform a GET STATUS command to get the actual current key path and resume derivation using a different path.
 
+The ability to start derivation from the parent keys allows to more efficiently switch between children of the same key. 
+Note however that only the immediate parent of the current key is cached so you cannot use this to go back in the 
+hierarchy. If no valid parent key is available the status code 0x6B00 will be returned.
+
+When loading the public key using assisted derivation the only valid P1/P2 combination is P1=0x81 and P2=0x01.
+
 P1:
 * bit 0 = if 0 derive autonomously (only works if public key derivation is supported), if 1 do assisted derivation
-* bit 1-6 = reserved
-* bit 7 = if 0 derive from master keys, if 1 derive from current keys
+* bit 1-5 = reserved
+* bit 7-6:
+  - 00 derive from master keys
+  - 01 derive from parent keys
+  - 10 derive from current keys
+  - 11 reserved
 
 P2:
 * 0x00 = data is a sequence of 32-bit integers

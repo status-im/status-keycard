@@ -120,7 +120,7 @@ public class SECP256k1 {
    * @return the length of the data written in the out buffer
    */
   static short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
-    assetECPointMultiplicationSupport();
+    assertECPointMultiplicationSupport();
     ecPointMultiplier.init(privateKey);
     return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
   }
@@ -138,7 +138,7 @@ public class SECP256k1 {
    * Asserts that EC point multiplication is supported. If not, the 0x6A81 status word is returned by throwing an
    * ISOException.
    */
-  static void assetECPointMultiplicationSupport() {
+  static void assertECPointMultiplicationSupport() {
     if(!hasECPointMultiplication()) {
       ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
     }
