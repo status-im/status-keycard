@@ -112,6 +112,10 @@ public class WalletAppletTest {
     assertEquals(WalletApplet.TLV_APPLICATION_INFO_TEMPLATE, data[0]);
     assertEquals(WalletApplet.TLV_UID, data[2]);
     assertEquals(WalletApplet.TLV_PUB_KEY, data[20]);
+    assertEquals(WalletApplet.TLV_INT, data[22 + data[21]]);
+    assertEquals(WalletApplet.APPLICATION_VERSION >> 8, data[24 + data[21]]);
+    assertEquals(WalletApplet.APPLICATION_VERSION & 0xFF, data[25 + data[21]]);
+    assertEquals(WalletApplet.TLV_INT, data[26 + data[21]]);
   }
 
   @Test
@@ -1054,7 +1058,7 @@ public class WalletAppletTest {
     assertEquals(WalletApplet.TLV_UID, select[2]);
     assertEquals(WalletApplet.TLV_PUB_KEY, select[20]);
 
-    return Arrays.copyOfRange(select, 22, select.length);
+    return Arrays.copyOfRange(select, 22, 22 + select[21]);
   }
 
   private void reset() {

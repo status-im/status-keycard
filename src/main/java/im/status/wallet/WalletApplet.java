@@ -7,6 +7,8 @@ import javacard.security.*;
  * The applet's main class. All incoming commands a processed by this class.
  */
 public class WalletApplet extends Applet {
+  static final short APPLICATION_VERSION = (short) 0x0101;
+
   static final byte INS_GET_STATUS = (byte) 0xF2;
   static final byte INS_VERIFY_PIN = (byte) 0x20;
   static final byte INS_CHANGE_PIN = (byte) 0x21;
@@ -305,7 +307,13 @@ public class WalletApplet extends Applet {
     apduBuffer[(short)(UID_LENGTH + 4)] = TLV_PUB_KEY;
     short keyLength = secureChannel.copyPublicKey(apduBuffer, (short) (UID_LENGTH + 6));
     apduBuffer[(short)(UID_LENGTH + 5)] = (byte) keyLength;
-    apduBuffer[1] = (byte)(keyLength + UID_LENGTH + 4);
+    apduBuffer[(short)(UID_LENGTH + keyLength + 6)] = TLV_INT;
+    apduBuffer[(short)(UID_LENGTH + keyLength + 7)] = 2;
+    Util.setShort(apduBuffer, (short)(UID_LENGTH + keyLength + 8), APPLICATION_VERSION);
+    apduBuffer[(short)(UID_LENGTH + keyLength + 10)] = TLV_INT;
+    apduBuffer[(short)(UID_LENGTH + keyLength + 11)] = 1;
+    apduBuffer[(short)(UID_LENGTH + keyLength + 12)] = puk.getTriesRemaining();
+    apduBuffer[1] = (byte)(keyLength + UID_LENGTH + 11);
     apdu.setOutgoingAndSend((short) 0, (short)(apduBuffer[1] + 2));
   }
 

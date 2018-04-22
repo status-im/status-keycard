@@ -52,13 +52,17 @@ SW 0x6985 is returned. All tagged data structures are encoded in the [BER-TLV fo
 
 Response Data format:
 - Tag 0xA4 = Application Info Template
- - Tag 0x4F = Instance UID (16 bytes)
+ - Tag 0x8F = Instance UID (16 bytes)
  - Tag 0x80 = ECC public Key
+ - Tag 0x02 = Application Version (2 bytes)
+ - Tag 0x02 = PUK retry count (1 byte)
 
 The SELECT command is documented in the ISO 7816-4 specifications and is used to select the application on the card,
 making it the active one. The data field is the AID of the application. The response is the Application Info template
 which contains the instance UID (which can be used by the client to keep track of multiple cards) and the public key 
-which must be used by the client to establish the Secure Channel.
+which must be used by the client to establish the Secure Channel. Additionally it contains the version number of the
+application, formatted on two bytes. The first byte is the major version and the second is the minor version 
+(e.g: version 1.1 is formatted as 0x0101). The PUK retry count is also included in the response.
 
 ### OPEN SECURE CHANNEL
 
