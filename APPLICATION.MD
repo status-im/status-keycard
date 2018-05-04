@@ -17,7 +17,7 @@ During installation the user's PIN is set to 000000 (six times zero). The PIN le
 failed authentication attempts the PIN is blocked and authentication is not possible anymore. A blocked PIN can be 
 replaced and unblocked using a PUK. The PUK is a 12-digit number, unique for each installation and is generated off-card 
 and passed as an installation parameter to the applet according to the JavaCard specifications. After 5 failed attempts 
-to unblock the applet using the PUK, the PUK is blocked, meaning the the wallet is lost.
+to unblock the applet using the PUK, the PUK is blocked, meaning the wallet is lost.
 
 After authentication, the user remains authenticated until the application is either deselected or the card is reset.
 Authentication with PIN is a requirement for most commands to succeed.

@@ -172,7 +172,7 @@ public class SecureChannel {
   }
 
   /**
-   * Performs the first step of pairing. In this step the card solves the challenge sent by the card, thus authenticating
+   * Performs the first step of pairing. In this step the card solves the challenge sent by the client, thus authenticating
    * itself to the client. At the same time, it creates a challenge for the client. This can only fail if the card has
    * already paired with the maximum allowed amount of clients.
    *
