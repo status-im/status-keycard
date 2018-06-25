@@ -30,7 +30,7 @@ public class WalletApplet extends Applet {
 
   static final short EC_KEY_SIZE = 256;
   static final short CHAIN_CODE_SIZE = 32;
-  static final short SEED_SIZE = CHAIN_CODE_SIZE * 2;
+  static final short BIP39_SEED_SIZE = CHAIN_CODE_SIZE * 2;
 
   static final byte GET_STATUS_P1_APPLICATION = 0x00;
   static final byte GET_STATUS_P1_KEY_PATH = 0x01;
@@ -157,7 +157,6 @@ public class WalletApplet extends Applet {
     keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
     pinlessPath = new byte[KEY_PATH_MAX_DEPTH * 4];
 
-
     SECP256k1.setCurveParameters(masterPublic);
     SECP256k1.setCurveParameters(masterPrivate);
 
@@ -173,9 +172,7 @@ public class WalletApplet extends Applet {
     short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
     c9Off += (short)(bArray[c9Off] + 2); // Skip Privileges and parameter length
 
-    Crypto.sha256.doFinal(bArray, c9Off, PUK_LENGTH, chainCode, (short) 0);
-    secureChannel = new SecureChannel(PAIRING_MAX_CLIENT_COUNT, chainCode, (short) 0);
-    Util.arrayFillNonAtomic(chainCode, (short) 0, CHAIN_CODE_SIZE, (byte) 0);
+    secureChannel = new SecureChannel(PAIRING_MAX_CLIENT_COUNT, bArray, (short) (c9Off + PUK_LENGTH));
 
     puk = new OwnerPIN(PUK_MAX_RETRIES, PUK_LENGTH);
     puk.update(bArray, c9Off, PUK_LENGTH);
@@ -312,7 +309,7 @@ public class WalletApplet extends Applet {
     Util.setShort(apduBuffer, (short)(UID_LENGTH + keyLength + 8), APPLICATION_VERSION);
     apduBuffer[(short)(UID_LENGTH + keyLength + 10)] = TLV_INT;
     apduBuffer[(short)(UID_LENGTH + keyLength + 11)] = 1;
-    apduBuffer[(short)(UID_LENGTH + keyLength + 12)] = puk.getTriesRemaining();
+    apduBuffer[(short)(UID_LENGTH + keyLength + 12)] = secureChannel.getRemainingPairingSlots();
     apduBuffer[1] = (byte)(keyLength + UID_LENGTH + 11);
     apdu.setOutgoingAndSend((short) 0, (short)(apduBuffer[1] + 2));
   }
@@ -574,9 +571,11 @@ public class WalletApplet extends Applet {
   private void loadSeed(byte[] apduBuffer) {
     SECP256k1.assertECPointMultiplicationSupport();
 
-    if (apduBuffer[ISO7816.OFFSET_LC] != SEED_SIZE) {
+    if (apduBuffer[ISO7816.OFFSET_LC] != BIP39_SEED_SIZE) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
+
+    Crypto.bip32MasterFromSeed(apduBuffer, (short) ISO7816.OFFSET_CDATA, BIP39_SEED_SIZE, apduBuffer, (short) ISO7816.OFFSET_CDATA);
 
     JCSystem.beginTransaction();
     isExtended = true;

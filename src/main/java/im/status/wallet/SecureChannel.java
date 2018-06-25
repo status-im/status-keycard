@@ -41,6 +41,7 @@ public class SecureChannel {
   private byte[] pairingKeys;
 
   private short preassignedPairingOffset = -1;
+  private byte remainingSlots;
   private boolean mutuallyAuthenticated = false;
 
   /**
@@ -68,6 +69,7 @@ public class SecureChannel {
     secret = JCSystem.makeTransientByteArray((short)(SC_SECRET_LENGTH * 2), JCSystem.CLEAR_ON_DESELECT);
     pairingSecret = new byte[SC_SECRET_LENGTH];
     pairingKeys = new byte[(short)(PAIRING_KEY_LENGTH * pairingLimit)];
+    remainingSlots = pairingLimit;
 
     Util.arrayCopyNonAtomic(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
   }
@@ -222,6 +224,7 @@ public class SecureChannel {
     Crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
     Crypto.sha256.doFinal(apduBuffer, (short) 1, SC_SECRET_LENGTH, pairingKeys, (short) (preassignedPairingOffset + 1));
     pairingKeys[preassignedPairingOffset] = 1;
+    remainingSlots--;
     apduBuffer[0] = (byte) (preassignedPairingOffset / PAIRING_KEY_LENGTH);
 
     preassignedPairingOffset = -1;
@@ -237,7 +240,10 @@ public class SecureChannel {
    */
   public void unpair(byte[] apduBuffer) {
     short off = checkPairingIndexAndGetOffset(apduBuffer[ISO7816.OFFSET_P1]);
-    Util.arrayFillNonAtomic(pairingKeys, off, PAIRING_KEY_LENGTH, (byte) 0);
+    if (pairingKeys[off] == 1) {
+      Util.arrayFillNonAtomic(pairingKeys, off, PAIRING_KEY_LENGTH, (byte) 0);
+      remainingSlots++;
+    }
   }
 
   /**
@@ -359,6 +365,13 @@ public class SecureChannel {
    */
   public boolean isOpen() {
     return scEncKey.isInitialized() && scMacKey.isInitialized() && mutuallyAuthenticated;
+  }
+
+  /**
+   * Returns the number of still available pairing slots.
+   */
+  public byte getRemainingPairingSlots() {
+    return remainingSlots;
   }
 
   /**

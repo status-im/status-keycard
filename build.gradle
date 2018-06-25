@@ -61,7 +61,9 @@ task install(type: Exec) {
   select -AID ${project.properties['im.status.gradle.gpshell.isd']}
   open_sc -security 1 -keyind 0 -keyver ${project.properties['im.status.gradle.gpshell.kvn']} -mac_key ${project.properties['im.status.gradle.gpshell.mac_key']} -enc_key ${project.properties['im.status.gradle.gpshell.enc_key']} -kek_key ${project.properties['im.status.gradle.gpshell.kek_key']}
   send_apdu_nostop -sc 1 -APDU 80E400800E4F0C53746174757357616C6C6574
-  install -file build/javacard/im/status/wallet/javacard/wallet.cap -AID 53746174757357616C6C6574417070 -instAID 53746174757357616C6C6574417070 -instParam 313233343536373839303132
+  install_for_load -pkgAID 53746174757357616C6C6574
+  load -file build/javacard/im/status/wallet/javacard/wallet.cap
+  send_apdu -sc 1 -APDU 80E60C005F0C53746174757357616C6C65740F53746174757357616C6C65744170700F53746174757357616C6C657441707001002EC92C313233343536373839303132178381C5E8D324BED4033D14E1E1FDCAAADB74803869bee9f7a10b1b7108ed5300
   card_disconnect
   release_context
   """

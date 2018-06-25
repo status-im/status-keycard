@@ -42,7 +42,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Test the Wallet Applet")
 public class WalletAppletTest {
-  public static final byte[] SHARED_SECRET = sha256("123456789012".getBytes());
+  // Generated on https://www.browserling.com/tools/scrypt using Password abc123, Salt WVpJqW4u, Output Size 32, N 16384, r 8, p 1
+  public static final byte[] SHARED_SECRET = new byte[] { (byte) 0x17, (byte) 0x83, (byte) 0x81, (byte) 0xc5, (byte) 0xe8, (byte) 0xd3, (byte) 0x24, (byte) 0xbe, (byte) 0xd4, (byte) 0x03, (byte) 0x3d, (byte) 0x14, (byte) 0xe1, (byte) 0xe1, (byte) 0xfd, (byte) 0xca, (byte) 0xaa, (byte) 0xdb, (byte) 0x74, (byte) 0x80, (byte) 0x38, (byte) 0x69, (byte) 0xbe, (byte) 0xe9, (byte) 0xf7, (byte) 0xa1, (byte) 0x0b, (byte) 0x1b, (byte) 0x71, (byte) 0x08, (byte) 0xed, (byte) 0x53 };
   private static CardTerminal cardTerminal;
   private static CardChannel apduChannel;
   private static CardSimulator simulator;

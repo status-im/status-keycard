@@ -21,6 +21,8 @@ public class Crypto {
   final static private short HMAC_BLOCK_SIZE = (short) 128;
   final static private short HMAC_BLOCK_OFFSET = (short) KEY_DERIVATION_INPUT_SIZE + HMAC_OUT_SIZE;
 
+  final static private byte[] KEY_BITCOIN_SEED = {'B', 'i', 't', 'c', 'o', 'i', 'n', ' ', 's', 'e', 'e', 'd'};
+
   // The below 4 objects can be accessed anywhere from the entire applet
   static RandomData random;
   static KeyAgreement ecdh;
@@ -100,6 +102,19 @@ public class Crypto {
     Util.arrayCopy(tmp, (short)(off + KEY_SECRET_SIZE), chain, chainOff, (short) KEY_SECRET_SIZE);
 
     return true;
+  }
+
+  /**
+   * Applies the algorithm for master key derivation defined by BIP32 to the binary seed provided as input.
+   *
+   * @param seed the binary seed
+   * @param seedOff the offset of the binary seed
+   * @param seedSize the size of the binary seed
+   * @param masterKey the output buffer
+   * @param keyOff the offset in the output buffer
+   */
+  static void bip32MasterFromSeed(byte[] seed, short seedOff, short seedSize, byte[] masterKey, short keyOff) {
+    Crypto.hmacSHA512(KEY_BITCOIN_SEED, (short) 0, (short) KEY_BITCOIN_SEED.length, seed, seedOff, seedSize, masterKey, keyOff);
   }
 
   /**

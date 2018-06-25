@@ -55,14 +55,14 @@ Response Data format:
  - Tag 0x8F = Instance UID (16 bytes)
  - Tag 0x80 = ECC public Key
  - Tag 0x02 = Application Version (2 bytes)
- - Tag 0x02 = PUK retry count (1 byte)
+ - Tag 0x02 = Number of remaining pairing slots (1 byte)
 
 The SELECT command is documented in the ISO 7816-4 specifications and is used to select the application on the card,
 making it the active one. The data field is the AID of the application. The response is the Application Info template
 which contains the instance UID (which can be used by the client to keep track of multiple cards) and the public key 
 which must be used by the client to establish the Secure Channel. Additionally it contains the version number of the
 application, formatted on two bytes. The first byte is the major version and the second is the minor version 
-(e.g: version 1.1 is formatted as 0x0101). The PUK retry count is also included in the response.
+(e.g: version 1.1 is formatted as 0x0101). The number of remaining pairing slots is also included in the response.
 
 ### OPEN SECURE CHANNEL
 
@@ -74,8 +74,14 @@ The MUTUALLY AUTHENTICATE command is as specified in the [SECURE_CHANNEL.MD](SEC
 
 ### PAIR
 
-The PAIR command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD). The shared secret is the SHA-256 of the
-PUK.
+The PAIR command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD). The shared secret is 32 bytes long. The
+way the secret is generated is not within the scope of this document because the applet accepts the already generated
+secret as an installation parameter. However the card issuer and clients must agree on the way it is generated for
+interoperability reasons.
+
+If the code is meant to be input manually, a random, variable length alphanumeric password to be used in conjuction with
+an algorithm such as scrypt or PBKDF2 is suggested. If another input mechanism is foreseen (such as QR-code scanning),
+then the sequence should be composed of random bytes from a secure source of randomness.
 
 ### UNPAIR
 
