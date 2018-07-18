@@ -5,7 +5,7 @@ applications.
 
 ## Low-level communication
 
-The hardware wallet is a JavaCard application and as such is deployed on ISO-7814 compatible SmartCards. Communication 
+The hardware wallet is a JavaCard application and as such is deployed on ISO7816 compatible SmartCards. Communication 
 will happen exchanging APDUs using either the T=0 or preferably the T=1 protocol. Most operating systems use an 
 implementation of [this Microsoft API](https://msdn.microsoft.com/en-us/library/windows/desktop/aa374731(v=vs.85).aspx#smart_card_functions)
 like [PCSC lite](http://pcsclite.alioth.debian.org/pcsclite.html). Your language of choice might provide bindings for
