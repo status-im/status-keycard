@@ -32,7 +32,7 @@ only use the Instance UID to identify the wallet since only this value is guaran
 the card. If your application has already performed pairing with the wallet with this Instance UID, you can establish
 a Secure Channel session (described later). Otherwise you should proceed with pairing.
 
-For pairing, the client must show that it knows the SHA-256 of the wallet PUK. For this reason the user must be prompted
+For pairing, the client must show that it knows the pairing code. For this reason the user must be prompted
 to insert said code. The result of pairing is a secret value shared by both parties which is used during the session key
 generation on establishment of a Secure Channel. The client must permanently store the association of the Instance UID, 
 the secret generated during pairing and the index which the card assigned to this client. Said index must be provided 
