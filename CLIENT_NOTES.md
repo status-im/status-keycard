@@ -139,4 +139,6 @@ so that the current key path matches m/1/1 and only then will the EXPORT KEY com
 5. If you test your client against our fork of jCardSim instead of a real card, keep in mind that it supports unassisted 
    key derivation, but you shouldn't use it because, as explained above, it wouldn't work on the card.
 6. If using jCardSim, only use our fork, since some of the needed algorithms are unsupported in the upstream version.
+7. The pairing code is a randomly generated password (using whatever password generation algorithm is desired). This
+password must be converted to a 256-bit key using PBKDF2 with the salt "Status Hardware Wallet Lite" and 50000 iterations.
 
