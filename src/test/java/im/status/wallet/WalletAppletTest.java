@@ -1171,8 +1171,8 @@ public class WalletAppletTest {
     System.out.println("***********************************************" );
 
     System.out.println("Estimated time to derive m/44'/60'/0'/0/0: " + (deriveMasterHardened + (deriveCurrentHardened * 2) + (deriveCurrent  * 2) + (pubKey * 5)));
-    System.out.println("Estimated time to switch m/44'/60'/0'/0/0': " + deriveParentHardened);
-    System.out.println("Estimated time to switch back to m/44'/60'/0'/0/0: " + deriveParent);
+    System.out.println("Estimated time to switch m/44'/60'/0'/0/0': " + (deriveParentHardened + pubKey));
+    System.out.println("Estimated time to switch back to m/44'/60'/0'/0/0: " + (deriveParent + pubKey));
   }
 
     private KeyPairGenerator keypairGenerator() throws Exception {
