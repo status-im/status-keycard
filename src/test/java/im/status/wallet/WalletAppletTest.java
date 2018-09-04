@@ -1033,7 +1033,149 @@ public class WalletAppletTest {
     assertFalse(ethSendTransaction.hasError());
   }
 
-  private KeyPairGenerator keypairGenerator() throws Exception {
+  @Test
+  @DisplayName("Performance Test")
+  @Tag("manual")
+  void performanceTest() throws Exception {
+    long time, overhead = 0, deriveMaster = 0, deriveMasterHardened = 0, deriveCurrentHardened = 0, deriveCurrent = 0, deriveParent = 0, deriveParentHardened = 0, pubKey = 0;
+    final long SAMPLE_COUNT = 10;
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      time = System.currentTimeMillis();
+      ResponseAPDU response = apduChannel.transmit(new CommandAPDU(0x00, 0xAA, 0, 0, 0));
+      overhead += System.currentTimeMillis() - time;
+      assertEquals(0x6D00, response.getSW());
+    }
+
+    overhead /= SAMPLE_COUNT;
+
+    System.out.println("Measuring key derivation performance. All times are expressed in milliseconds");
+    System.out.println("***********************************************" );
+    System.out.println("Java SmartCard I/O overhead: " + overhead);
+    System.out.println("***********************************************" );
+
+    // Prepare the card
+    cmdSet.autoOpenSecureChannel();
+    ResponseAPDU response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    KeyPairGenerator g = keypairGenerator();
+    KeyPair keyPair = g.generateKeyPair();
+    byte[] chainCode = new byte[32];
+    new Random().nextBytes(chainCode);
+
+    response = cmdSet.loadKey(keyPair, false, chainCode);
+    assertEquals(0x9000, response.getSW());
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      time = System.currentTimeMillis();
+      response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_MASTER, true, false);
+      deriveMaster += System.currentTimeMillis() - time;
+      assertEquals(0x9000, response.getSW());
+      byte[] pub = derivePublicKey(response.getData());
+      time = System.currentTimeMillis();
+      response = cmdSet.deriveKey(pub, WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
+      pubKey += System.currentTimeMillis() - time;
+      assertEquals(0x9000, response.getSW());
+    }
+
+    deriveMaster /= SAMPLE_COUNT;
+    pubKey /= SAMPLE_COUNT;
+
+    System.out.println("Public key upload: " + pubKey + ". Without overhead: " + (pubKey - overhead));
+    System.out.println("***********************************************" );
+    System.out.println("Derivation time (1 level, non-hardened, from master): " + deriveMaster + ". Without overhead: " + (deriveMaster - overhead));
+    System.out.println("Derivation + pubkey: " + (deriveMaster + pubKey) + ". Without overhead: " + (deriveMaster + pubKey - (overhead * 2)));
+    System.out.println("***********************************************" );
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      time = System.currentTimeMillis();
+      response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_MASTER, true, false);
+      deriveMasterHardened += System.currentTimeMillis() - time;
+      assertEquals(0x9000, response.getSW());
+      response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
+      assertEquals(0x9000, response.getSW());
+    }
+
+    deriveMasterHardened /= SAMPLE_COUNT;
+
+    System.out.println("Derivation time (1 level, hardened, from master): " + deriveMasterHardened + ". Without overhead: " + (deriveMasterHardened - overhead));
+    System.out.println("Derivation + pubkey: " + (deriveMasterHardened + pubKey) + ". Without overhead: " + (deriveMasterHardened + pubKey - (overhead * 2)));
+    System.out.println("***********************************************" );
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_MASTER, true, false);
+      assertEquals(0x9000, response.getSW());
+      response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
+      assertEquals(0x9000, response.getSW());
+      time = System.currentTimeMillis();
+      response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, false);
+      deriveCurrent += System.currentTimeMillis() - time;
+      assertEquals(0x9000, response.getSW());
+      response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
+      assertEquals(0x9000, response.getSW());
+    }
+
+    deriveCurrent /= SAMPLE_COUNT;
+
+    System.out.println("Derivation time (1 level, non-hardened, from current): " + deriveCurrent + ". Without overhead: " + (deriveCurrent - overhead));
+    System.out.println("Derivation + pubkey: " + (deriveCurrent + pubKey) + ". Without overhead: " + (deriveCurrent + pubKey - (overhead * 2)));
+    System.out.println("***********************************************" );
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_MASTER, true, false);
+      assertEquals(0x9000, response.getSW());
+      response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
+      assertEquals(0x9000, response.getSW());
+      time = System.currentTimeMillis();
+      response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, false);
+      deriveCurrentHardened += System.currentTimeMillis() - time;
+      assertEquals(0x9000, response.getSW());
+      response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
+      assertEquals(0x9000, response.getSW());
+    }
+
+    deriveCurrentHardened /= SAMPLE_COUNT;
+
+    System.out.println("Derivation time (1 level, hardened, from current): " + deriveCurrentHardened + ". Without overhead: " + (deriveCurrentHardened - overhead));
+    System.out.println("Derivation + pubkey: " + (deriveCurrentHardened + pubKey) + ". Without overhead: " + (deriveCurrentHardened + pubKey - (overhead * 2)));
+    System.out.println("***********************************************" );
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      time = System.currentTimeMillis();
+      response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, (byte) i}, WalletApplet.DERIVE_P1_SOURCE_PARENT, true, false);
+      deriveParent += System.currentTimeMillis() - time;
+      assertEquals(0x9000, response.getSW());
+      response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
+      assertEquals(0x9000, response.getSW());
+    }
+
+    deriveParent /= SAMPLE_COUNT;
+
+    System.out.println("Derivation time (1 level, non-hardened, from parent): " + deriveParent + ". Without overhead: " + (deriveParent - overhead));
+    System.out.println("Derivation + pubkey: " + (deriveParent + pubKey) + ". Without overhead: " + (deriveParent + pubKey - (overhead * 2)));
+    System.out.println("***********************************************" );
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      time = System.currentTimeMillis();
+      response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, (byte) i}, WalletApplet.DERIVE_P1_SOURCE_PARENT, true, false);
+      deriveParentHardened += System.currentTimeMillis() - time;
+      assertEquals(0x9000, response.getSW());
+      response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
+      assertEquals(0x9000, response.getSW());
+    }
+
+    deriveParentHardened /= SAMPLE_COUNT;
+
+    System.out.println("Derivation time (1 level, hardened, from parent): " + deriveParentHardened + ". Without overhead: " + (deriveParentHardened - overhead));
+    System.out.println("Derivation + pubkey: " + (deriveParentHardened + pubKey) + ". Without overhead: " + (deriveParentHardened + pubKey - (overhead * 2)));
+    System.out.println("***********************************************" );
+
+    System.out.println("Estimated time to derive m/44'/60'/0'/0/0: " + (deriveMasterHardened + (deriveCurrentHardened * 2) + (deriveCurrent  * 2) + (pubKey * 5)));
+    System.out.println("Estimated time to switch m/44'/60'/0'/0/0': " + deriveParentHardened);
+    System.out.println("Estimated time to switch back to m/44'/60'/0'/0/0: " + deriveParent);
+  }
+
+    private KeyPairGenerator keypairGenerator() throws Exception {
     ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
     KeyPairGenerator g = KeyPairGenerator.getInstance("ECDH", "BC");
     g.initialize(ecSpec);
