@@ -60,6 +60,7 @@ public class WalletApplet extends Applet {
 
   static final byte EXPORT_KEY_P1_ANY = 0x00;
   static final byte EXPORT_KEY_P1_WHISPER = 0x01;
+  static final byte EXPORT_KEY_P1_DATABASE = 0x02;
 
   static final byte EXPORT_KEY_P2_PRIVATE_AND_PUBLIC = 0x00;
   static final byte EXPORT_KEY_P2_PUBLIC_ONLY = 0x01;
@@ -82,7 +83,8 @@ public class WalletApplet extends Applet {
   static final byte TLV_UID = (byte) 0x8F;
 
   private static final byte[] ASSISTED_DERIVATION_HASH = {(byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
-  private static final byte[] WHISPER_KEY_PATH = {0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01};
+  private static final byte[] WHISPER_KEY_PATH = {(byte) 0x80, 0x00, 0x00, 0x2c, (byte) 0x80, 0x00, 0x00, 0x3c, (byte) 0x80, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0xC0, 0x00, 0x00, 0x00};
+  private static final byte[] DATABASE_KEY_PATH = {(byte) 0x80, 0x00, 0x00, 0x2c, (byte) 0x80, 0x00, 0x00, 0x3c, (byte) 0x80, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0xC0, 0x00, 0x00, 0x01};
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -953,6 +955,9 @@ public class WalletApplet extends Applet {
         break;
       case EXPORT_KEY_P1_WHISPER:
         toExport = WHISPER_KEY_PATH;
+        break;
+      case EXPORT_KEY_P1_DATABASE:
+        toExport = DATABASE_KEY_PATH;
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
