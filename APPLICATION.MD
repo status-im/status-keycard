@@ -330,7 +330,7 @@ will work even if no PIN authentication has been performed. An empty sequence me
   
 P1:
 0x00 = Any key
-0x01 = Whisper key (m/1/1)
+0x01 = Non-wallet key
 
 P2:
 0x00 = private and public key
@@ -341,11 +341,10 @@ Response Data format:
   - Tag 0x80 = ECC public key component
   - Tag 0x81 = ECC private key component (if P2=0x00)
   
-This command exports the current public and private key if and only if the current key path matches the one of the key
-selected by P1. P1 is only an index, the actual key path is stored immutably in the applet itself. At the moment only
-the Whisper key (P1=0x01) can be exported and its key path is m/1/1. Other key paths could be added in the future, but
-the last should remain as short as possible because of the security implications of revealing private keys to a possibly
-compromised device. The current chain code is never exported to make it impossible to further derive keys off-card.
+This command exports the current public and private key if and only if the current key path matches the conditions
+dictated by the given P1 parameter. This currently allows exporting any key whose last path component has a key index
+with the two most significant bits set (that is, matches the 0xc0000000 mask). No key in this range should be used for
+wallet accounts, even as intermediate path component. These keys are meant for client-specific use such as the Whisper key.
 
 The special index 0x00 indicates any path, which means the current key will always be exported regardless of its actual
 path. This works however only in combination with P2=0x01, so only the public key will be exported.

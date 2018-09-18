@@ -825,13 +825,13 @@ public class WalletAppletTest {
     new Random().nextBytes(chainCode);
 
     // Security condition violation: SecureChannel not open
-    ResponseAPDU response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
+    ResponseAPDU response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, false);
     assertEquals(0x6985, response.getSW());
 
     cmdSet.autoOpenSecureChannel();
 
     // Security condition violation: PIN not verified
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, false);
     assertEquals(0x6985, response.getSW());
 
     response = cmdSet.verifyPIN("000000");
@@ -839,33 +839,33 @@ public class WalletAppletTest {
     response = cmdSet.loadKey(keyPair, false, chainCode);
     assertEquals(0x9000, response.getSW());
 
-    // Security condition violation: current key is not Whisper key
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
+    // Security condition violation: current key is not exportable
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, false);
     assertEquals(0x6985, response.getSW());
 
     response = cmdSet.deriveKey(new byte[] { (byte) 0x80, 0x00, 0x00, 0x2c}, WalletApplet.DERIVE_P1_SOURCE_MASTER, true, false);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, false);
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] { (byte) 0x80, 0x00, 0x00, 0x3c}, WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, false);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, false);
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] { (byte) 0x80, 0x00, 0x00, 0x00}, WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, false);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, false);
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] { (byte) 0x00, 0x00, 0x00, 0x00}, WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, false);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, false);
     assertEquals(0x6985, response.getSW());
 
 
@@ -879,7 +879,7 @@ public class WalletAppletTest {
     byte[] keyTemplate = response.getData();
     verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002c, 0x8000003c, 0x80000000, 0x00000000 }, true);
 
-    response = cmdSet.deriveKey(new byte[] {(byte) 0xC0, 0x00, 0x00, 0x00}, WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, false);
+    response = cmdSet.deriveKey(new byte[] {(byte) 0xC0, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, false);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.deriveKey(derivePublicKey(response.getData()), WalletApplet.DERIVE_P1_SOURCE_CURRENT, true, true);
     assertEquals(0x9000, response.getSW());
@@ -889,21 +889,21 @@ public class WalletAppletTest {
     assertEquals(0x6a86, response.getSW());
 
     // Correct
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, false);
     assertEquals(0x9000, response.getSW());
     keyTemplate = response.getData();
-    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002c, 0x8000003c, 0x80000000, 0x00000000, 0xC0000000 }, false);
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002c, 0x8000003c, 0x80000000, 0x00000000, 0xC0000001 }, false);
 
     // Correct public only
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, true);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, true);
     assertEquals(0x9000, response.getSW());
     keyTemplate = response.getData();
-    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002c, 0x8000003c, 0x80000000, 0x00000000, 0xC0000000 }, true);
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002c, 0x8000003c, 0x80000000, 0x00000000, 0xC0000001 }, true);
 
     // Reset
     response = cmdSet.deriveKey(new byte[] {}, WalletApplet.DERIVE_P1_SOURCE_MASTER, false, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_WHISPER, false);
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, false);
     assertEquals(0x6985, response.getSW());
   }
 
