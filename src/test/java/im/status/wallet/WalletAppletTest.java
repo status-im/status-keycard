@@ -1053,9 +1053,9 @@ public class WalletAppletTest {
   }
 
   @Test
-  @DisplayName("Performance Test")
+  @DisplayName("Performance Test with assisted key derivation")
   @Tag("manual")
-  void performanceTest() throws Exception {
+  void performanceAssistedDerivationTest() throws Exception {
     long time, overhead = 0, deriveMaster = 0, deriveMasterHardened = 0, deriveCurrentHardened = 0, deriveCurrent = 0, deriveParent = 0, deriveParentHardened = 0, pubKey = 0;
     final long SAMPLE_COUNT = 10;
 
@@ -1194,7 +1194,61 @@ public class WalletAppletTest {
     System.out.println("Estimated time to switch back to m/44'/60'/0'/0/0: " + (deriveParent + pubKey));
   }
 
-    private KeyPairGenerator keypairGenerator() throws Exception {
+  @Test
+  @DisplayName("Performance Test with unassisted key derivation")
+  @Tag("manual")
+  void performanceUnassistedDerivationTest() throws Exception {
+    long time, deriveAccount = 0, deriveParent = 0, deriveParentHardened = 0;
+    final long SAMPLE_COUNT = 10;
+
+    System.out.println("Measuring key derivation performance. All times are expressed in milliseconds");
+    System.out.println("***********************************************" );
+
+    // Prepare the card
+    cmdSet.autoOpenSecureChannel();
+    ResponseAPDU response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    KeyPairGenerator g = keypairGenerator();
+    KeyPair keyPair = g.generateKeyPair();
+    byte[] chainCode = new byte[32];
+    new Random().nextBytes(chainCode);
+
+    response = cmdSet.loadKey(keyPair, false, chainCode);
+    assertEquals(0x9000, response.getSW());
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      time = System.currentTimeMillis();
+      response = cmdSet.deriveKey(new byte[] { (byte) 0x80, 0x00, 0x00, 0x2C, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, WalletApplet.DERIVE_P1_SOURCE_MASTER, false, false);
+      deriveAccount += System.currentTimeMillis() - time;
+      assertEquals(0x9000, response.getSW());
+    }
+
+    deriveAccount /= SAMPLE_COUNT;
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      time = System.currentTimeMillis();
+      response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, (byte) i}, WalletApplet.DERIVE_P1_SOURCE_PARENT, false, false);
+      deriveParent += System.currentTimeMillis() - time;
+      assertEquals(0x9000, response.getSW());
+    }
+
+    deriveParent /= SAMPLE_COUNT;
+
+    for (int i = 0; i < SAMPLE_COUNT; i++) {
+      time = System.currentTimeMillis();
+      response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, (byte) i}, WalletApplet.DERIVE_P1_SOURCE_PARENT, false, false);
+      deriveParentHardened += System.currentTimeMillis() - time;
+      assertEquals(0x9000, response.getSW());
+    }
+
+    deriveParentHardened /= SAMPLE_COUNT;
+
+    System.out.println("Time to derive m/44'/60'/0'/0/0: " + deriveAccount);
+    System.out.println("Time to switch m/44'/60'/0'/0/0': " + deriveParentHardened);
+    System.out.println("Time to switch back to m/44'/60'/0'/0/0: " + deriveParent);
+  }
+
+  private KeyPairGenerator keypairGenerator() throws Exception {
     ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
     KeyPairGenerator g = KeyPairGenerator.getInstance("ECDH", "BC");
     g.initialize(ecSpec);
