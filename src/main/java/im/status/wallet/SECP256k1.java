@@ -52,12 +52,15 @@ public class SECP256k1 {
 
   private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6; // constant from JavaCard 3.0.5
 
-  private static KeyAgreement ecPointMultiplier;
+  private KeyAgreement ecPointMultiplier;
+  private Crypto crypto;
 
   /**
    * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
    */
-  static void init() {
+  SECP256k1(Crypto crypto) {
+    this.crypto = crypto;
+
     try {
       ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
     } catch(CryptoException e) {
@@ -70,7 +73,7 @@ public class SECP256k1 {
    *
    * @param key the key where the curve parameters must be set
    */
-  static void setCurveParameters(ECKey key) {
+  void setCurveParameters(ECKey key) {
     key.setA(SECP256K1_A, (short) 0x00, (short) SECP256K1_A.length);
     key.setB(SECP256K1_B, (short) 0x00, (short) SECP256K1_B.length);
     key.setFieldFP(SECP256K1_FP, (short) 0x00, (short) SECP256K1_FP.length);
@@ -88,7 +91,7 @@ public class SECP256k1 {
    * @param pubOff the offset in pubOut
    * @return the length of the public key
    */
-  static short derivePublicKey(ECPrivateKey privateKey, byte[] pubOut, short pubOff) {
+  short derivePublicKey(ECPrivateKey privateKey, byte[] pubOut, short pubOff) {
     return multiplyPoint(privateKey, SECP256K1_G, (short) 0, (short) SECP256K1_G.length, pubOut, pubOff);
   }
 
@@ -102,9 +105,9 @@ public class SECP256k1 {
    * @param xOff the offset in xOut
    * @return the length of X
    */
-  static short derivePublicX(ECPrivateKey privateKey, byte[] xOut, short xOff) {
-    Crypto.ecdh.init(privateKey);
-    return Crypto.ecdh.generateSecret(SECP256K1_G, (short) 0, (short) SECP256K1_G.length, xOut, xOff);
+  short derivePublicX(ECPrivateKey privateKey, byte[] xOut, short xOff) {
+    crypto.ecdh.init(privateKey);
+    return crypto.ecdh.generateSecret(SECP256K1_G, (short) 0, (short) SECP256K1_G.length, xOut, xOff);
   }
 
   /**
@@ -119,7 +122,7 @@ public class SECP256k1 {
    * @param outOff the offset in the output buffer
    * @return the length of the data written in the out buffer
    */
-  static short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
+  short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
     assertECPointMultiplicationSupport();
     ecPointMultiplier.init(privateKey);
     return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
@@ -130,7 +133,7 @@ public class SECP256k1 {
    *
    * @return whether the card supports EC point multiplication or not
    */
-  static boolean hasECPointMultiplication() {
+  boolean hasECPointMultiplication() {
     return ecPointMultiplier != null;
   }
 
@@ -138,7 +141,7 @@ public class SECP256k1 {
    * Asserts that EC point multiplication is supported. If not, the 0x6A81 status word is returned by throwing an
    * ISOException.
    */
-  static void assertECPointMultiplicationSupport() {
+  void assertECPointMultiplicationSupport() {
     if(!hasECPointMultiplication()) {
       ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
     }

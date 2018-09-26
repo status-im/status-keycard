@@ -44,11 +44,17 @@ public class SecureChannel {
   private byte remainingSlots;
   private boolean mutuallyAuthenticated = false;
 
+  private Crypto crypto;
+  private SECP256k1 secp256k1;
+
   /**
    * Instantiates a Secure Channel. All memory allocations needed for the secure channel are performed here. The keypair
    * used for the EC-DH algorithm is also generated here.
    */
-  public SecureChannel(byte pairingLimit, byte[] aPairingSecret, short off) {
+  public SecureChannel(byte pairingLimit, byte[] aPairingSecret, short off, Crypto crypto, SECP256k1 secp256k1) {
+    this.crypto = crypto;
+    this.secp256k1 = secp256k1;
+
     scCipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
 
     try {
@@ -62,8 +68,8 @@ public class SecureChannel {
     scMacKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
 
     scKeypair = new KeyPair(KeyPair.ALG_EC_FP, SC_KEY_LENGTH);
-    SECP256k1.setCurveParameters((ECKey) scKeypair.getPrivate());
-    SECP256k1.setCurveParameters((ECKey) scKeypair.getPublic());
+    secp256k1.setCurveParameters((ECKey) scKeypair.getPrivate());
+    secp256k1.setCurveParameters((ECKey) scKeypair.getPublic());
     scKeypair.genKeyPair();
 
     secret = JCSystem.makeTransientByteArray((short)(SC_SECRET_LENGTH * 2), JCSystem.CLEAR_ON_DESELECT);
@@ -93,20 +99,20 @@ public class SecureChannel {
       pairingKeyOff++;
     }
 
-    Crypto.ecdh.init(scKeypair.getPrivate());
+    crypto.ecdh.init(scKeypair.getPrivate());
     short len;
 
     try {
-      len = Crypto.ecdh.generateSecret(apduBuffer, ISO7816.OFFSET_CDATA, apduBuffer[ISO7816.OFFSET_LC], secret, (short) 0);
+      len = crypto.ecdh.generateSecret(apduBuffer, ISO7816.OFFSET_CDATA, apduBuffer[ISO7816.OFFSET_LC], secret, (short) 0);
     } catch(Exception e) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
       return;
     }
 
-    Crypto.random.generateData(apduBuffer, (short) 0, (short) (SC_SECRET_LENGTH + SC_BLOCK_SIZE));
-    Crypto.sha512.update(secret, (short) 0, len);
-    Crypto.sha512.update(pairingKeys, pairingKeyOff, SC_SECRET_LENGTH);
-    Crypto.sha512.doFinal(apduBuffer, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+    crypto.random.generateData(apduBuffer, (short) 0, (short) (SC_SECRET_LENGTH + SC_BLOCK_SIZE));
+    crypto.sha512.update(secret, (short) 0, len);
+    crypto.sha512.update(pairingKeys, pairingKeyOff, SC_SECRET_LENGTH);
+    crypto.sha512.doFinal(apduBuffer, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
     scEncKey.setKey(secret, (short) 0);
     scMacKey.setKey(secret, SC_SECRET_LENGTH);
     Util.arrayCopyNonAtomic(apduBuffer, SC_SECRET_LENGTH, secret, (short) 0, SC_BLOCK_SIZE);
@@ -139,7 +145,7 @@ public class SecureChannel {
       ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
     }
 
-    Crypto.random.generateData(apduBuffer, SC_OUT_OFFSET, SC_SECRET_LENGTH);
+    crypto.random.generateData(apduBuffer, SC_OUT_OFFSET, SC_SECRET_LENGTH);
     respond(apdu, len, ISO7816.SW_NO_ERROR);
   }
 
@@ -195,9 +201,9 @@ public class SecureChannel {
       ISOException.throwIt(ISO7816.SW_FILE_FULL);
     }
 
-    Crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
-    Crypto.sha256.doFinal(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH, apduBuffer, (short) 0);
-    Crypto.random.generateData(secret, (short) 0, SC_SECRET_LENGTH);
+    crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
+    crypto.sha256.doFinal(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH, apduBuffer, (short) 0);
+    crypto.random.generateData(secret, (short) 0, SC_SECRET_LENGTH);
     Util.arrayCopyNonAtomic(secret, (short) 0, apduBuffer, SC_SECRET_LENGTH, SC_SECRET_LENGTH);
 
     return (SC_SECRET_LENGTH * 2);
@@ -212,17 +218,17 @@ public class SecureChannel {
    * @return the length of the reply
    */
   private short pairStep2(byte[] apduBuffer) {
-    Crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
-    Crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+    crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
+    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
 
     if (Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, secret, (short) 0, SC_SECRET_LENGTH) != 0) {
       preassignedPairingOffset = -1;
       ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
     }
 
-    Crypto.random.generateData(apduBuffer, (short) 1, SC_SECRET_LENGTH);
-    Crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
-    Crypto.sha256.doFinal(apduBuffer, (short) 1, SC_SECRET_LENGTH, pairingKeys, (short) (preassignedPairingOffset + 1));
+    crypto.random.generateData(apduBuffer, (short) 1, SC_SECRET_LENGTH);
+    crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
+    crypto.sha256.doFinal(apduBuffer, (short) 1, SC_SECRET_LENGTH, pairingKeys, (short) (preassignedPairingOffset + 1));
     pairingKeys[preassignedPairingOffset] = 1;
     remainingSlots--;
     apduBuffer[0] = (byte) (preassignedPairingOffset / PAIRING_KEY_LENGTH);

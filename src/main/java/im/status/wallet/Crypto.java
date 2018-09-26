@@ -24,20 +24,17 @@ public class Crypto {
   final static private byte[] KEY_BITCOIN_SEED = {'B', 'i', 't', 'c', 'o', 'i', 'n', ' ', 's', 'e', 'e', 'd'};
 
   // The below 4 objects can be accessed anywhere from the entire applet
-  static RandomData random;
-  static KeyAgreement ecdh;
-  static MessageDigest sha256;
-  static MessageDigest sha512;
+  RandomData random;
+  KeyAgreement ecdh;
+  MessageDigest sha256;
+  MessageDigest sha512;
 
-  private static Signature hmacSHA512;
-  private static HMACKey hmacKey;
+  private Signature hmacSHA512;
+  private HMACKey hmacKey;
 
-  private static byte[] tmp;
+  private byte[] tmp;
 
-  /**
-   * Initializes the objects required by this class. Must be invoked exactly 1 time during application installation.
-   */
-  static void init() {
+  Crypto() {
     random = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
     sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
     ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
@@ -70,7 +67,7 @@ public class Crypto {
    * @param chainOff the offset in the chain code buffer
    * @return true if successful, false otherwise
    */
-  static boolean bip32CKDPriv(byte[] i, short iOff, ECPrivateKey privateKey, ECPublicKey publicKey, byte[] chain, short chainOff) {
+  boolean bip32CKDPriv(byte[] i, short iOff, ECPrivateKey privateKey, ECPublicKey publicKey, byte[] chain, short chainOff) {
     short off = 0;
 
     if ((i[iOff] & (byte) 0x80) == (byte) 0x80) {
@@ -113,8 +110,8 @@ public class Crypto {
    * @param masterKey the output buffer
    * @param keyOff the offset in the output buffer
    */
-  static void bip32MasterFromSeed(byte[] seed, short seedOff, short seedSize, byte[] masterKey, short keyOff) {
-    Crypto.hmacSHA512(KEY_BITCOIN_SEED, (short) 0, (short) KEY_BITCOIN_SEED.length, seed, seedOff, seedSize, masterKey, keyOff);
+  void bip32MasterFromSeed(byte[] seed, short seedOff, short seedSize, byte[] masterKey, short keyOff) {
+    hmacSHA512(KEY_BITCOIN_SEED, (short) 0, (short) KEY_BITCOIN_SEED.length, seed, seedOff, seedSize, masterKey, keyOff);
   }
 
   /**
@@ -125,7 +122,7 @@ public class Crypto {
    * @param off the offset
    * @return the number of bytes by which the signature length changed
    */
-  static short fixS(byte[] sig, short off) {
+  short fixS(byte[] sig, short off) {
     short sOff = (short) (sig[(short) (off + 3)] + (short) (off + 5));
     short ret = 0;
 
@@ -158,7 +155,7 @@ public class Crypto {
    * @param out the output buffer
    * @param outOff the offset in the output buffer
    */
-  private static void hmacSHA512(byte[] key, short keyOff, short keyLen, byte[] in, short inOff, short inLen, byte[] out, short outOff) {
+  private void hmacSHA512(byte[] key, short keyOff, short keyLen, byte[] in, short inOff, short inLen, byte[] out, short outOff) {
     if (hmacSHA512 != null) {
       hmacKey.setKey(key, keyOff, keyLen);
       hmacSHA512.init(hmacKey, Signature.MODE_SIGN);
@@ -174,9 +171,9 @@ public class Crypto {
         sha512.update(tmp, HMAC_BLOCK_OFFSET, HMAC_BLOCK_SIZE);
 
         if (i == 0) {
-          Crypto.sha512.doFinal(in, inOff, inLen, out, outOff);
+          sha512.doFinal(in, inOff, inLen, out, outOff);
         } else {
-          Crypto.sha512.doFinal(out, outOff, HMAC_OUT_SIZE, out, outOff);
+          sha512.doFinal(out, outOff, HMAC_OUT_SIZE, out, outOff);
         }
       }
     }
@@ -194,7 +191,7 @@ public class Crypto {
    * @param out the output buffer
    * @param outOff the offset in the output buffer
    */
-  private static void addm256(byte[] a, short aOff, byte[] b, short bOff, byte[] n, short nOff, byte[] out, short outOff) {
+  private void addm256(byte[] a, short aOff, byte[] b, short bOff, byte[] n, short nOff, byte[] out, short outOff) {
     if ((add256(a, aOff, b, bOff, out, outOff) != 0) || (ucmp256(out, outOff, n, nOff) > 0)) {
       sub256(out, outOff, n, nOff, out, outOff);
     }
@@ -209,7 +206,7 @@ public class Crypto {
    * @param bOff the offset of the b operand
    * @return the comparison result
    */
-  private static short ucmp256(byte[] a, short aOff, byte[] b, short bOff) {
+  private short ucmp256(byte[] a, short aOff, byte[] b, short bOff) {
     short ai, bi;
     for (short i = 0 ; i < 32; i++) {
       ai = (short)(a[(short)(aOff + i)] & 0x00ff);
@@ -230,7 +227,7 @@ public class Crypto {
    * @param aOff the offset of the a operand
    * @return true if a is 0, false otherwise
    */
-  private static boolean isZero256(byte[] a, short aOff) {
+  private boolean isZero256(byte[] a, short aOff) {
     boolean isZero = true;
 
     for (short i = 0; i < (byte) 32; i++) {
@@ -254,7 +251,7 @@ public class Crypto {
    * @param outOff the offset in the output buffer
    * @return the carry of the addition
    */
-  private static short add256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
+  private short add256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
     short outI = 0;
     for (short i = 31 ; i >= 0 ; i--) {
       outI = (short) ((short)(a[(short)(aOff + i)] & 0xFF) + (short)(b[(short)(bOff + i)] & 0xFF) + outI);
@@ -275,7 +272,7 @@ public class Crypto {
    * @param outOff the offset in the output buffer
    * @return the carry of the subtraction
    */
-  private static short sub256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
+  private short sub256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
     short outI = 0;
 
     for (short i = 31 ; i >= 0 ; i--) {
