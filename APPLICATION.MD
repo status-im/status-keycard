@@ -104,8 +104,8 @@ if P1 = 0x00:
 - Tag 0xA3 = Application Status Template
   - Tag 0x02 = PIN retry count (1 byte)
   - Tag 0x02 = PUK retry count (1 byte)
-  - Tag 0x01 = 0 if key is not initialized, 1 otherwise
-  - Tag 0x01 = 1 if public key derivation is supported, 0 otherwise
+  - Tag 0x01 = 0xff if key is initialized, 0 otherwise
+  - Tag 0x01 = 0xff if public key derivation is supported, 0 otherwise
 
 if P1 = 0x01
 - a sequence of 32-bit numbers indicating the current key path. Empty if master key is selected.
@@ -254,6 +254,18 @@ The signature is calculated over the SHA-256 hash of the message "STATUS KEY DER
 Used to generate a mnemonic according to the algorithm specified in [BIP39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki). 
 The returned data is a list of 16-byte integers which should be used as indexes in a wordlist to generate the 
 human-readable mnemonic. Each integer can have a value from 0 to 2047.
+
+### REMOVE KEY
+
+* CLA = 0x80
+* INS = 0xD3
+* P1 = 0x00
+* P2 = 0x00
+* Response SW = 0x9000 on success.
+* Preconditions: Secure Channel must be opened, user PIN must be verified
+
+Removes the key from the card, bringing it back to an uninitialized state. No signing operation is possible after this
+command until a new LOAD KEY command is performed.
 
 ### SIGN
 

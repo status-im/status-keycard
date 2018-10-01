@@ -16,6 +16,7 @@ public class WalletApplet extends Applet {
   static final byte INS_LOAD_KEY = (byte) 0xD0;
   static final byte INS_DERIVE_KEY = (byte) 0xD1;
   static final byte INS_GENERATE_MNEMONIC = (byte) 0xD2;
+  static final byte INS_REMOVE_KEY = (byte) 0xD3;
   static final byte INS_SIGN = (byte) 0xC0;
   static final byte INS_SET_PINLESS_PATH = (byte) 0xC1;
   static final byte INS_EXPORT_KEY = (byte) 0xC2;
@@ -160,15 +161,7 @@ public class WalletApplet extends Applet {
     keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
     pinlessPath = new byte[KEY_PATH_MAX_DEPTH * 4];
 
-    secp256k1.setCurveParameters(masterPublic);
-    secp256k1.setCurveParameters(masterPrivate);
-
-    secp256k1.setCurveParameters(parentPublicKey);
-    secp256k1.setCurveParameters(parentPrivateKey);
-    parentValid = false;
-
-    secp256k1.setCurveParameters(publicKey);
-    secp256k1.setCurveParameters(privateKey);
+    resetCurveParameters();
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
@@ -238,6 +231,9 @@ public class WalletApplet extends Applet {
           break;
         case INS_GENERATE_MNEMONIC:
           generateMnemonic(apdu);
+          break;
+        case INS_REMOVE_KEY:
+          removeKey(apdu);
           break;
         case INS_SIGN:
           sign(apdu);
@@ -832,6 +828,34 @@ public class WalletApplet extends Applet {
     return (short) ((short)((short) 0x4000 >>> (short) (amount - 1)) | tmp);
   }
 
+  private void removeKey(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    secureChannel.preprocessAPDU(apduBuffer);
+
+    if (!pin.isValidated()) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    keyPathLen = 0;
+    pinlessPathLen = 0;
+    parentValid = false;
+    isExtended = false;
+    signInProgress = false;
+    expectPublicKey = false;
+    privateKey.clearKey();
+    publicKey.clearKey();
+    masterPrivate.clearKey();
+    masterPublic.clearKey();
+    parentPrivateKey.clearKey();
+    parentPublicKey.clearKey();
+    resetCurveParameters();
+    Util.arrayFillNonAtomic(chainCode, (short) 0, (short) chainCode.length, (byte) 0);
+    Util.arrayFillNonAtomic(parentChainCode, (short) 0, (short) parentChainCode.length, (byte) 0);
+    Util.arrayFillNonAtomic(masterChainCode, (short) 0, (short) masterChainCode.length, (byte) 0);
+    Util.arrayFillNonAtomic(keyPath, (short) 0, (short) keyPath.length, (byte) 0);
+    Util.arrayFillNonAtomic(pinlessPath, (short) 0, (short) pinlessPath.length, (byte) 0);
+  }
+
   /**
    * Processes the SIGN command. Requires a secure channel to open and either the PIN to be verified or the PIN-less key
    * path to be the current key path. This command supports signing data using SHA-256 with possible segmentation over
@@ -927,7 +951,7 @@ public class WalletApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     secureChannel.preprocessAPDU(apduBuffer);
 
-    if (!pin.isValidated()) {
+    if (!pin.isValidated() || !privateKey.isInitialized()) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
@@ -1013,5 +1037,19 @@ public class WalletApplet extends Applet {
    */
   private boolean isPinless() {
     return (pinlessPathLen > 0) && (pinlessPathLen == keyPathLen) && (Util.arrayCompare(keyPath, (short) 0, pinlessPath, (short) 0, keyPathLen) == 0);
+  }
+
+  /**
+   * Set curve parameters to cleared keys
+   */
+  private void resetCurveParameters() {
+    secp256k1.setCurveParameters(masterPublic);
+    secp256k1.setCurveParameters(masterPrivate);
+
+    secp256k1.setCurveParameters(parentPublicKey);
+    secp256k1.setCurveParameters(parentPrivateKey);
+
+    secp256k1.setCurveParameters(publicKey);
+    secp256k1.setCurveParameters(privateKey);
   }
 }

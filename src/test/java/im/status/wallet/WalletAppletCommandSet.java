@@ -139,6 +139,19 @@ public class WalletAppletCommandSet {
   }
 
   /**
+   * Sends a GET STATUS APDU to retrieve the APPLICATION STATUS template and reads the byte indicating key initialization
+   * status
+   *
+   * @return whether public key derivation is supported or not
+   * @throws CardException communication error
+   */
+  public boolean getKeyInitializationStatus() throws CardException {
+    ResponseAPDU resp = getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    byte[] data = resp.getData();
+    return data[data.length - 4] != 0x00;
+  }
+
+  /**
    * Sends a VERIFY PIN APDU. The raw bytes of the given string are encrypted using the secure channel and used as APDU
    * data.
    *
@@ -353,6 +366,17 @@ public class WalletAppletCommandSet {
   public ResponseAPDU generateMnemonic(int cs) throws CardException {
     CommandAPDU generateMnemonic = secureChannel.protectedCommand(0x80, WalletApplet.INS_GENERATE_MNEMONIC, cs, 0, new byte[0]);
     return secureChannel.transmit(apduChannel, generateMnemonic);
+  }
+
+  /**
+   * Sends a REMOVE KEY APDU.
+   *
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU removeKey() throws CardException {
+    CommandAPDU removeKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_REMOVE_KEY, 0, 0, new byte[0]);
+    return secureChannel.transmit(apduChannel, removeKey);
   }
 
   /**
