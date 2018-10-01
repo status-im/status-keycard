@@ -7,7 +7,7 @@ import javacard.security.*;
  * The applet's main class. All incoming commands a processed by this class.
  */
 public class WalletApplet extends Applet {
-  static final short APPLICATION_VERSION = (short) 0x0101;
+  static final short APPLICATION_VERSION = (short) 0x0102;
 
   static final byte INS_GET_STATUS = (byte) 0xF2;
   static final byte INS_VERIFY_PIN = (byte) 0x20;
@@ -31,6 +31,7 @@ public class WalletApplet extends Applet {
 
   static final short EC_KEY_SIZE = 256;
   static final short CHAIN_CODE_SIZE = 32;
+  static final short KEY_UID_LENGTH = 32;
   static final short BIP39_SEED_SIZE = CHAIN_CODE_SIZE * 2;
 
   static final byte GET_STATUS_P1_APPLICATION = 0x00;
@@ -81,6 +82,7 @@ public class WalletApplet extends Applet {
 
   static final byte TLV_APPLICATION_INFO_TEMPLATE = (byte) 0xA4;
   static final byte TLV_UID = (byte) 0x8F;
+  static final byte TLV_KEY_UID = (byte) 0x8E;
 
   private static final byte[] ASSISTED_DERIVATION_HASH = {(byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
   private static final byte EXPORT_KEY_HIGH_MASK = (byte) 0xc0;
@@ -113,6 +115,8 @@ public class WalletApplet extends Applet {
   private Signature signature;
   private boolean signInProgress;
   private boolean expectPublicKey;
+
+  private byte[] keyUID;
 
   private Crypto crypto;
   private SECP256k1 secp256k1;
@@ -160,6 +164,8 @@ public class WalletApplet extends Applet {
     chainCode = new byte[CHAIN_CODE_SIZE];
     keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
     pinlessPath = new byte[KEY_PATH_MAX_DEPTH * 4];
+
+    keyUID = new byte[KEY_UID_LENGTH];
 
     resetCurveParameters();
 
@@ -309,7 +315,17 @@ public class WalletApplet extends Applet {
     apduBuffer[(short)(UID_LENGTH + keyLength + 10)] = TLV_INT;
     apduBuffer[(short)(UID_LENGTH + keyLength + 11)] = 1;
     apduBuffer[(short)(UID_LENGTH + keyLength + 12)] = secureChannel.getRemainingPairingSlots();
-    apduBuffer[1] = (byte)(keyLength + UID_LENGTH + 11);
+    apduBuffer[(short)(UID_LENGTH + keyLength + 13)] = TLV_KEY_UID;
+
+    if (privateKey.isInitialized()) {
+      apduBuffer[(short)(UID_LENGTH + keyLength + 14)] = KEY_UID_LENGTH;
+      Util.arrayCopyNonAtomic(keyUID, (short) 0, apduBuffer, (short)(UID_LENGTH + keyLength + 15), KEY_UID_LENGTH);
+      keyLength += KEY_UID_LENGTH;
+    } else {
+      apduBuffer[(short)(UID_LENGTH + keyLength + 14)] = 0;
+    }
+
+    apduBuffer[1] = (byte)(keyLength + UID_LENGTH + 13);
     apdu.setOutgoingAndSend((short) 0, (short)(apduBuffer[1] + 2));
   }
 
@@ -485,6 +501,11 @@ public class WalletApplet extends Applet {
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
         break;
     }
+
+    short pubLen = masterPublic.getW(apduBuffer, (short) 0);
+    crypto.sha256.doFinal(apduBuffer, (short) 0, pubLen, keyUID, (short) 0);
+    Util.arrayCopyNonAtomic(keyUID, (short) 0, apduBuffer, SecureChannel.SC_OUT_OFFSET, KEY_UID_LENGTH);
+    secureChannel.respond(apdu, KEY_UID_LENGTH, ISO7816.SW_NO_ERROR);
   }
 
   /**

@@ -56,6 +56,7 @@ Response Data format:
  - Tag 0x80 = ECC public Key
  - Tag 0x02 = Application Version (2 bytes)
  - Tag 0x02 = Number of remaining pairing slots (1 byte)
+ - Tag 0x8E = Key UID (0 or 32 bytes)
 
 The SELECT command is documented in the ISO 7816-4 specifications and is used to select the application on the card,
 making it the active one. The data field is the AID of the application. The response is the Application Info template
@@ -63,6 +64,8 @@ which contains the instance UID (which can be used by the client to keep track o
 which must be used by the client to establish the Secure Channel. Additionally it contains the version number of the
 application, formatted on two bytes. The first byte is the major version and the second is the minor version 
 (e.g: version 1.1 is formatted as 0x0101). The number of remaining pairing slots is also included in the response.
+
+The Key UID can be either empty (when no key is loaded on card) or the SHA-256 hash of the master public key.
 
 ### OPEN SECURE CHANNEL
 
@@ -166,6 +169,7 @@ always returns 0x63C0, even if the PUK is inserted correctly. In this case the w
 * Data = the key data
 * Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A86 if P1 is invalid, 0x6A81 if public key
   derivation is not supported and the public key is omitted
+* Response Data = the key UID, defined as the SHA-256 of the public key
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
 P1:

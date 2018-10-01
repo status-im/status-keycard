@@ -34,6 +34,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Security;
 import java.security.Signature;
+import org.bouncycastle.jce.interfaces.ECPublicKey;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -117,6 +118,7 @@ public class WalletAppletTest {
     assertEquals(WalletApplet.APPLICATION_VERSION >> 8, data[24 + data[21]]);
     assertEquals(WalletApplet.APPLICATION_VERSION & 0xFF, data[25 + data[21]]);
     assertEquals(WalletApplet.TLV_INT, data[26 + data[21]]);
+    assertEquals(WalletApplet.TLV_KEY_UID, data[29 + data[21]]);
   }
 
   @Test
@@ -495,18 +497,22 @@ public class WalletAppletTest {
     // Correct LOAD KEY
     response = cmdSet.loadKey(keyPair);
     assertEquals(0x9000, response.getSW());
+    verifyKeyUID(response.getData(), ((ECPublicKey) keyPair.getPublic()));
 
     keyPair = g.generateKeyPair();
 
     // Check extended key
     response = cmdSet.loadKey(keyPair, false, chainCode);
     assertEquals(0x9000, response.getSW());
+    verifyKeyUID(response.getData(), ((ECPublicKey) keyPair.getPublic()));
 
     // Check omitted public key
     response = cmdSet.loadKey(keyPair, true, null);
     assertEquals(publicKeyDerivationSW, response.getSW());
+    verifyKeyUID(response.getData(), ((ECPublicKey) keyPair.getPublic()));
     response = cmdSet.loadKey(keyPair, true, chainCode);
     assertEquals(publicKeyDerivationSW, response.getSW());
+    verifyKeyUID(response.getData(), ((ECPublicKey) keyPair.getPublic()));
 
     // Check seed load
     response = cmdSet.loadKey(keyPair.getPrivate(), chainCode);
@@ -571,6 +577,16 @@ public class WalletAppletTest {
     response = cmdSet.loadKey(keyPair);
     assertEquals(0x9000, response.getSW());
 
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSW());
+    byte[] data = response.getData();
+    assertEquals(32, data[30 + data[21]]);
+    verifyKeyUID(Arrays.copyOfRange(data, (31 + data[21]), (63 + data[21])), (ECPublicKey) keyPair.getPublic());
+
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
     assertTrue(cmdSet.getKeyInitializationStatus());
 
     // Good case
@@ -578,6 +594,11 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     assertFalse(cmdSet.getKeyInitializationStatus());
+
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSW());
+    data = response.getData();
+    assertEquals(0, data[30 + data[21]]);
   }
 
   @Test
@@ -1523,5 +1544,13 @@ public class WalletAppletTest {
     byte[] sB = Numeric.toBytesPadded(s, 32);
 
     return new Sign.SignatureData(v, rB, sB);
+  }
+
+  private void verifyKeyUID(byte[] keyUID, ECPublicKey pubKey) {
+    verifyKeyUID(keyUID, pubKey.getQ().getEncoded(false));
+  }
+
+  private void verifyKeyUID(byte[] keyUID, byte[] pubKey) {
+    assertArrayEquals(sha256(pubKey), keyUID);
   }
 }
