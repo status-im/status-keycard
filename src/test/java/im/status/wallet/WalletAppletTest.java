@@ -152,6 +152,20 @@ public class WalletAppletTest {
     // Verify that the channel is open
     response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
+
+    // Verify that the keys are changed correctly. Since we do not know the internal counter we just iterate until that
+    // happens for a maximum of SC_COUNTER_MAX times
+    byte[] initialKey = extractPublicKeyFromSelect(cmdSet.select().getData());
+
+    for (int i = 0; i < SecureChannel.SC_COUNTER_MAX; i++) {
+      byte[] otherKey = extractPublicKeyFromSelect(cmdSet.select().getData());
+
+      if (!Arrays.equals(initialKey, otherKey)) {
+        secureChannel.generateSecret(otherKey);
+        cmdSet.autoOpenSecureChannel();
+        break;
+      }
+    }
   }
 
   @Test

@@ -13,6 +13,7 @@ public class SecureChannel {
   public static final short PAIRING_KEY_LENGTH = SC_SECRET_LENGTH + 1;
   public static final short SC_BLOCK_SIZE = 16;
   public static final short SC_OUT_OFFSET = ISO7816.OFFSET_CDATA + (SC_BLOCK_SIZE * 2);
+  public static final short SC_COUNTER_MAX = 100;
 
   public static final byte INS_OPEN_SECURE_CHANNEL = 0x10;
   public static final byte INS_MUTUALLY_AUTHENTICATE = 0x11;
@@ -33,6 +34,8 @@ public class SecureChannel {
   private KeyPair scKeypair;
   private byte[] secret;
   private byte[] pairingSecret;
+
+  private short scCounter;
 
   /*
    * To avoid overhead, the pairing keys are stored in a plain byte array as sequences of 33-bytes elements. The first
@@ -378,6 +381,18 @@ public class SecureChannel {
    */
   public byte getRemainingPairingSlots() {
     return remainingSlots;
+  }
+
+  /**
+   * Called before sending the public key to the client, gives a chance to change keys if needed.
+   */
+  public void updateSecureChannelCounter() {
+    if (scCounter < SC_COUNTER_MAX) {
+      scCounter++;
+    } else {
+      scKeypair.genKeyPair();
+      scCounter = 0;
+    }
   }
 
   /**

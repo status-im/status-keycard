@@ -299,6 +299,7 @@ public class WalletApplet extends Applet {
     pin.reset();
     puk.reset();
     secureChannel.reset();
+    secureChannel.updateSecureChannelCounter();
 
     byte[] apduBuffer = apdu.getBuffer();
 

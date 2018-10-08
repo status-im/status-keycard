@@ -17,6 +17,7 @@ import javax.smartcardio.CardException;
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
 import java.security.*;
+import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 
 /**
@@ -44,8 +45,13 @@ public class SecureChannelSession {
    * @param keyData the public key returned by the applet as response to the SELECT command
    */
   public SecureChannelSession(byte[] keyData) {
-    try {
       random = new SecureRandom();
+      generateSecret(keyData);
+      open = false;
+  }
+
+  public void generateSecret(byte[] keyData) {
+    try {
       ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
       KeyPairGenerator g = KeyPairGenerator.getInstance("ECDH", "BC");
       g.initialize(ecSpec, random);
@@ -61,10 +67,9 @@ public class SecureChannelSession {
 
       keyAgreement.doPhase(cardKey, true);
       secret = keyAgreement.generateSecret();
-
-      open = false;
-    } catch(Exception e) {
+    } catch (Exception e) {
       throw new RuntimeException("Is BouncyCastle in the classpath?", e);
+
     }
   }
 
