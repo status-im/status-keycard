@@ -417,7 +417,7 @@ public class WalletApplet extends Applet {
   }
 
   /**
-   * Processes the VERIFY PIN command. Requires a secure channel to be already open and the PIN to be verified. Since
+   * Processes the CHANGE PIN command. Requires a secure channel to be already open and the PIN to be verified. Since
    * the PIN is fixed to a 6-digits format, longer or shorter PINs or PINs containing non-numeric characters will be
    * refused.
    *
