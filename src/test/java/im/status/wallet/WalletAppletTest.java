@@ -65,8 +65,7 @@ public class WalletAppletTest {
     if (USE_SIMULATOR) {
       simulator = new CardSimulator();
       AID appletAID = AIDUtil.create(WalletAppletCommandSet.APPLET_AID);
-      byte[] instParams = Hex.decode("0F53746174757357616C6C657441707001000C313233343536373839303132");
-      simulator.installApplet(appletAID, WalletApplet.class, instParams, (short) 0, (byte) instParams.length);
+      simulator.installApplet(appletAID, WalletApplet.class);
       cardTerminal = CardTerminalSimulator.terminal(simulator);
     } else {
       TerminalFactory tf = TerminalFactory.getDefault();
@@ -81,6 +80,18 @@ public class WalletAppletTest {
 
     Card apduCard = cardTerminal.connect("*");
     apduChannel = apduCard.getBasicChannel();
+
+    initIfNeeded();
+  }
+
+  private static void initIfNeeded() throws CardException {
+    WalletAppletCommandSet cmdSet = new WalletAppletCommandSet(apduChannel);
+    byte[] data = cmdSet.select().getData();
+    if (data[0] == WalletApplet.TLV_APPLICATION_INFO_TEMPLATE) return;
+
+    SecureChannelSession secureChannel = new SecureChannelSession(Arrays.copyOfRange(data, 2, data.length));
+    cmdSet.setSecureChannel(secureChannel);
+    assertEquals(0x9000, cmdSet.init("123456789012", SHARED_SECRET).getSW());
   }
 
   @BeforeEach

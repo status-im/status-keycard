@@ -1,5 +1,6 @@
 package im.status.wallet;
 
+import com.licel.jcardsim.utils.ByteUtil;
 import javacard.framework.ISO7816;
 import org.bouncycastle.jce.interfaces.ECPrivateKey;
 import org.bouncycastle.jce.interfaces.ECPublicKey;
@@ -12,6 +13,7 @@ import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
 import java.security.KeyPair;
 import java.security.PrivateKey;
+import java.util.Arrays;
 
 /**
  * This class is used to send APDU to the applet. Each method corresponds to an APDU as defined in the APPLICATION.md
@@ -454,5 +456,20 @@ public class WalletAppletCommandSet {
     byte p2 = publicOnly ? WalletApplet.EXPORT_KEY_P2_PUBLIC_ONLY : WalletApplet.EXPORT_KEY_P2_PRIVATE_AND_PUBLIC;
     CommandAPDU exportKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_EXPORT_KEY, keyPathIndex, p2, new byte[0]);
     return secureChannel.transmit(apduChannel, exportKey);
+  }
+
+  /**
+   * Sends the INIT command to the card.
+   *
+   * @param puk the PUK
+   * @param sharedSecret the shared secret for pairing
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU init(String puk, byte[] sharedSecret) throws CardException {
+    byte[] initData = Arrays.copyOf(puk.getBytes(), puk.length() + sharedSecret.length);
+    System.arraycopy(sharedSecret, 0, initData, puk.length(), sharedSecret.length);
+    CommandAPDU init = new CommandAPDU(0x80, WalletApplet.INS_INIT, 0, 0, secureChannel.oneShotEncrypt(initData));
+    return apduChannel.transmit(init);
   }
 }

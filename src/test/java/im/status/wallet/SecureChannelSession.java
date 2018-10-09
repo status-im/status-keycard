@@ -7,6 +7,7 @@ import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.interfaces.ECPublicKey;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.jce.spec.ECPublicKeySpec;
+import org.bouncycastle.util.encoders.Hex;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyAgreement;
@@ -390,6 +391,32 @@ public class SecureChannelSession {
    */
   public void reset() {
     open = false;
+  }
+
+  /**
+   * Encrypts the payload for the INIT command
+   * @param initData the payload for the INIT command
+   *
+   * @return the encrypted buffer
+   */
+  public byte[] oneShotEncrypt(byte[] initData) {
+    try {
+      iv = new byte[SecureChannel.SC_BLOCK_SIZE];
+      random.nextBytes(iv);
+      IvParameterSpec ivParameterSpec = new IvParameterSpec(iv);
+      sessionEncKey = new SecretKeySpec(secret, "AES");
+      sessionCipher = Cipher.getInstance("AES/CBC/ISO7816-4Padding", "BC");
+      sessionCipher.init(Cipher.ENCRYPT_MODE, sessionEncKey, ivParameterSpec);
+      initData = sessionCipher.doFinal(initData);
+      byte[] encrypted = new byte[1 + publicKey.length + iv.length + initData.length];
+      encrypted[0] = (byte) publicKey.length;
+      System.arraycopy(publicKey, 0, encrypted, 1, publicKey.length);
+      System.arraycopy(iv, 0, encrypted, (1 + publicKey.length), iv.length);
+      System.arraycopy(initData, 0, encrypted, (1 + publicKey.length + iv.length), initData.length);
+      return encrypted;
+    } catch (Exception e) {
+      throw new RuntimeException("Is BouncyCastle in the classpath?", e);
+    }
   }
 
   /**
