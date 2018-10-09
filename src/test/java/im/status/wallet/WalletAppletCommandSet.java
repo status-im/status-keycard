@@ -461,14 +461,16 @@ public class WalletAppletCommandSet {
   /**
    * Sends the INIT command to the card.
    *
+   * @param pin the PIN
    * @param puk the PUK
    * @param sharedSecret the shared secret for pairing
    * @return the raw card response
    * @throws CardException communication error
    */
-  public ResponseAPDU init(String puk, byte[] sharedSecret) throws CardException {
-    byte[] initData = Arrays.copyOf(puk.getBytes(), puk.length() + sharedSecret.length);
-    System.arraycopy(sharedSecret, 0, initData, puk.length(), sharedSecret.length);
+  public ResponseAPDU init(String pin, String puk, byte[] sharedSecret) throws CardException {
+    byte[] initData = Arrays.copyOf(pin.getBytes(), pin.length() + puk.length() + sharedSecret.length);
+    System.arraycopy(puk.getBytes(), 0, initData, pin.length(), puk.length());
+    System.arraycopy(sharedSecret, 0, initData, pin.length() + puk.length(), sharedSecret.length);
     CommandAPDU init = new CommandAPDU(0x80, WalletApplet.INS_INIT, 0, 0, secureChannel.oneShotEncrypt(initData));
     return apduChannel.transmit(init);
   }

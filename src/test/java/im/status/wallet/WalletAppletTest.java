@@ -91,7 +91,7 @@ public class WalletAppletTest {
 
     SecureChannelSession secureChannel = new SecureChannelSession(Arrays.copyOfRange(data, 2, data.length));
     cmdSet.setSecureChannel(secureChannel);
-    assertEquals(0x9000, cmdSet.init("123456789012", SHARED_SECRET).getSW());
+    assertEquals(0x9000, cmdSet.init("000000", "123456789012", SHARED_SECRET).getSW());
   }
 
   @BeforeEach

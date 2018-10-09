@@ -280,19 +280,23 @@ public class WalletApplet extends Applet {
     } else if (apduBuffer[ISO7816.OFFSET_INS] == INS_INIT) {
       secureChannel.oneShotDecrypt(apduBuffer);
 
-      if (apduBuffer[ISO7816.OFFSET_LC] != (byte)(PUK_LENGTH + SecureChannel.SC_SECRET_LENGTH)) {
+      if (apduBuffer[ISO7816.OFFSET_LC] != (byte)(PIN_LENGTH + PUK_LENGTH + SecureChannel.SC_SECRET_LENGTH)) {
         ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
       }
 
+      if (!allDigits(apduBuffer, ISO7816.OFFSET_CDATA, (short)(PIN_LENGTH + PUK_LENGTH))) {
+        ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      }
+
       JCSystem.beginTransaction();
-      secureChannel.initSecureChannel(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PUK_LENGTH));
+      secureChannel.initSecureChannel(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH + PUK_LENGTH));
 
-      puk = new OwnerPIN(PUK_MAX_RETRIES, PUK_LENGTH);
-      puk.update(apduBuffer, ISO7816.OFFSET_CDATA, PUK_LENGTH);
-
-      Util.arrayFillNonAtomic(apduBuffer, ISO7816.OFFSET_CDATA, PIN_LENGTH, (byte) 0x30);
       pin = new OwnerPIN(PIN_MAX_RETRIES, PIN_LENGTH);
       pin.update(apduBuffer, ISO7816.OFFSET_CDATA, PIN_LENGTH);
+
+      puk = new OwnerPIN(PUK_MAX_RETRIES, PUK_LENGTH);
+      puk.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PUK_LENGTH);
+
       JCSystem.commitTransaction();
     } else {
       ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
