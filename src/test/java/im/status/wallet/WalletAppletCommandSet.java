@@ -1,5 +1,6 @@
 package im.status.wallet;
 
+import com.licel.jcardsim.utils.ByteUtil;
 import javacard.framework.ISO7816;
 import org.bouncycastle.jce.interfaces.ECPrivateKey;
 import org.bouncycastle.jce.interfaces.ECPublicKey;
@@ -12,6 +13,7 @@ import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
 import java.security.KeyPair;
 import java.security.PrivateKey;
+import java.util.Arrays;
 
 /**
  * This class is used to send APDU to the applet. Each method corresponds to an APDU as defined in the APPLICATION.md
@@ -168,12 +170,26 @@ public class WalletAppletCommandSet {
    * Sends a CHANGE PIN APDU. The raw bytes of the given string are encrypted using the secure channel and used as APDU
    * data.
    *
+   * @param pinType the PIN type
    * @param pin the new PIN
    * @return the raw card response
    * @throws CardException communication error
    */
-  public ResponseAPDU changePIN(String pin) throws CardException {
-    CommandAPDU changePIN = secureChannel.protectedCommand(0x80, WalletApplet.INS_CHANGE_PIN, 0, 0, pin.getBytes());
+  public ResponseAPDU changePIN(int pinType, String pin) throws CardException {
+    return changePIN(pinType, pin.getBytes());
+  }
+
+  /**
+   * Sends a CHANGE PIN APDU. The raw bytes of the given string are encrypted using the secure channel and used as APDU
+   * data.
+   *
+   * @param pinType the PIN type
+   * @param pin the new PIN
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU changePIN(int pinType, byte[] pin) throws CardException {
+    CommandAPDU changePIN = secureChannel.protectedCommand(0x80, WalletApplet.INS_CHANGE_PIN, pinType, 0, pin);
     return secureChannel.transmit(apduChannel, changePIN);
   }
 
@@ -454,5 +470,22 @@ public class WalletAppletCommandSet {
     byte p2 = publicOnly ? WalletApplet.EXPORT_KEY_P2_PUBLIC_ONLY : WalletApplet.EXPORT_KEY_P2_PRIVATE_AND_PUBLIC;
     CommandAPDU exportKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_EXPORT_KEY, keyPathIndex, p2, new byte[0]);
     return secureChannel.transmit(apduChannel, exportKey);
+  }
+
+  /**
+   * Sends the INIT command to the card.
+   *
+   * @param pin the PIN
+   * @param puk the PUK
+   * @param sharedSecret the shared secret for pairing
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU init(String pin, String puk, byte[] sharedSecret) throws CardException {
+    byte[] initData = Arrays.copyOf(pin.getBytes(), pin.length() + puk.length() + sharedSecret.length);
+    System.arraycopy(puk.getBytes(), 0, initData, pin.length(), puk.length());
+    System.arraycopy(sharedSecret, 0, initData, pin.length() + puk.length(), sharedSecret.length);
+    CommandAPDU init = new CommandAPDU(0x80, WalletApplet.INS_INIT, 0, 0, secureChannel.oneShotEncrypt(initData));
+    return apduChannel.transmit(init);
   }
 }

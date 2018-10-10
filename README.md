@@ -55,17 +55,6 @@ im.status.gradle.gpshell.kvn=0
 im.status.wallet.test.simulated=false
 ```
 
-## Alternative installation method
-This method does not require the JavaCard SDK but requires an already compiled CAP file. The cards generated this way
-have a random PUK and pairing code so they have better security. However applet installation/removal is not disabled,
-because the script is still meant to be used during the development phase.
-
-1. Install GPShell and Python 3
-2. Put the wallet.cap file in the same directory as status_hw_perso.py
-3. Disconnect all card reader terminals from the system, except the one with the card where you want to install the applet
-4. Run the status_hw_perso.py script with no arguments.
-5. Take note of the pairing code and PUK output by the script
-
 ## Implementation notes
 
 * The applet requires JavaCard 3.0.4 or later.

@@ -48,15 +48,13 @@ public class SecureChannel {
   private boolean mutuallyAuthenticated = false;
 
   private Crypto crypto;
-  private SECP256k1 secp256k1;
 
   /**
-   * Instantiates a Secure Channel. All memory allocations needed for the secure channel are performed here. The keypair
-   * used for the EC-DH algorithm is also generated here.
+   * Instantiates a Secure Channel. All memory allocations (except pairing secret) needed for the secure channel are
+   * performed here. The keypair used for the EC-DH algorithm is also generated here.
    */
-  public SecureChannel(byte pairingLimit, byte[] aPairingSecret, short off, Crypto crypto, SECP256k1 secp256k1) {
+  public SecureChannel(byte pairingLimit, Crypto crypto, SECP256k1 secp256k1) {
     this.crypto = crypto;
-    this.secp256k1 = secp256k1;
 
     scCipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
 
@@ -76,11 +74,48 @@ public class SecureChannel {
     scKeypair.genKeyPair();
 
     secret = JCSystem.makeTransientByteArray((short)(SC_SECRET_LENGTH * 2), JCSystem.CLEAR_ON_DESELECT);
-    pairingSecret = new byte[SC_SECRET_LENGTH];
     pairingKeys = new byte[(short)(PAIRING_KEY_LENGTH * pairingLimit)];
     remainingSlots = pairingLimit;
 
-    Util.arrayCopyNonAtomic(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
+  }
+
+  /**
+   * Initializes the SecureChannel instance with the pairing secret.
+   *
+   * @param aPairingSecret the pairing secret
+   * @param off the offset in the buffer
+   */
+  public void initSecureChannel(byte[] aPairingSecret, short off) {
+    if (pairingSecret != null) return;
+
+    pairingSecret = new byte[SC_SECRET_LENGTH];
+    Util.arrayCopy(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
+    scKeypair.genKeyPair();
+  }
+
+  /**
+   * Decrypts the content of the APDU by generating an AES key using EC-DH. Only usable in pre-initialization state.
+   * @param apduBuffer the APDU buffer
+   */
+  public void oneShotDecrypt(byte[] apduBuffer) {
+    if (pairingSecret != null) return;
+
+    crypto.ecdh.init(scKeypair.getPrivate());
+
+    short off = (short)(ISO7816.OFFSET_CDATA + 1);
+    try {
+      crypto.ecdh.generateSecret(apduBuffer, off, apduBuffer[ISO7816.OFFSET_CDATA], secret, (short) 0);
+      off = (short)(off + apduBuffer[ISO7816.OFFSET_CDATA]);
+    } catch(Exception e) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      return;
+    }
+
+    scEncKey.setKey(secret, (short) 0);
+    scCipher.init(scEncKey, Cipher.MODE_DECRYPT, apduBuffer, off, SC_BLOCK_SIZE);
+    off = (short)(off + SC_BLOCK_SIZE);
+
+    apduBuffer[ISO7816.OFFSET_LC] = (byte) scCipher.doFinal(apduBuffer, off, (short)((short)(apduBuffer[ISO7816.OFFSET_LC] & 0xff) - off + ISO7816.OFFSET_CDATA), apduBuffer, ISO7816.OFFSET_CDATA);
   }
 
   /**
@@ -402,6 +437,15 @@ public class SecureChannel {
     scEncKey.clearKey();
     scMacKey.clearKey();
     mutuallyAuthenticated = false;
+  }
+
+  /**
+   * Updates the pairing secret. Does not affect existing pairings.
+   * @param aPairingSecret the buffer
+   * @param off the offset
+   */
+  public void updatePairingSecret(byte[] aPairingSecret, byte off) {
+    Util.arrayCopy(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
   }
 
   /**

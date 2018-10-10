@@ -11,18 +11,22 @@ authentication.
 Before any application command is processed, a Secure Channel session must be established as specified in the 
 [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD) document.
 
+## INITIALIZATION
+
+After installation, the applet is not ready to operate and is in a pre-initializaed state. In this state the applet can
+only process the SELECT and INIT command. The INIT command is used to personalize the PIN, PUK and pairing secret, which
+must be generated off-card.
+
 ## PIN
 
-During installation the user's PIN is set to 000000 (six times zero). The PIN length is fixed at 6 digits. After 3 
-failed authentication attempts the PIN is blocked and authentication is not possible anymore. A blocked PIN can be 
-replaced and unblocked using a PUK. The PUK is a 12-digit number, unique for each installation and is generated off-card 
-and passed as an installation parameter to the applet according to the JavaCard specifications. After 5 failed attempts 
-to unblock the applet using the PUK, the PUK is blocked, meaning the wallet is lost.
+The PIN length is fixed at 6 digits. After 3 failed authentication attempts the PIN is blocked and authentication is not 
+possible anymore. A blocked PIN can be replaced and unblocked using a PUK. The PUK is a 12-digit number. After 5 failed
+attempts to unblock the applet using the PUK, the PUK is blocked, meaning the wallet is lost.
 
 After authentication, the user remains authenticated until the application is either deselected or the card is reset.
 Authentication with PIN is a requirement for most commands to succeed.
 
-The PIN can be changed by the user after authentication.
+The PIN and PUK can be changed by the user after authentication.
 
 ## Keys & Signature
 
@@ -48,7 +52,7 @@ SW 0x6985 is returned. All tagged data structures are encoded in the [BER-TLV fo
 * P1 = 0x04
 * P2 = 0x00
 * Data = 53746174757357616C6C6574417070 (hex)
-* Response = Application Info Template
+* Response = Application Info Template or ECC public key.
 
 Response Data format:
 - Tag 0xA4 = Application Info Template
@@ -66,6 +70,33 @@ application, formatted on two bytes. The first byte is the major version and the
 (e.g: version 1.1 is formatted as 0x0101). The number of remaining pairing slots is also included in the response.
 
 The Key UID can be either empty (when no key is loaded on card) or the SHA-256 hash of the master public key.
+
+When the applet is in pre-initializated state, it only returns the ECC public key, BER-TLV encoded with tag 0x80.
+
+### INIT
+* CLA = 0x80
+* INS = 0xFE
+* P1 = 0x00
+* P2 = 0x00
+* Data = EC public key (LV encoded) | IV | encrypted payload
+* Response SW = 0x9000 on success, 0x6D00 if the applet is already initialized
+
+This command is only available when the applet is in pre-initialized state and successful execution brings the applet in
+the initialized state. This command is needed to allow securely storing secrets on the applet at a different moment and 
+place than installation is taking place. Currently these are the PIN, PUK and pairing password.
+
+The client must take the public key received after the SELECT command, generate a random keypair and perform EC-DH to
+generate an AES key. It must then generate a random IV and encrypt the payload using AES-CBC with ISO/IEC 9797-1 Method 
+2 padding.
+
+They payload is the concatenation of the PIN (6 digits/bytes), PUK (12 digits/bytes) and pairing secret (32 bytes).
+
+This scheme guarantees protection against passive MITM attacks. Since the applet has no "owner" before the execution of
+this command, protection against active MITM cannot be provided at this stage. However since the communication happens
+locally (either through NFC or contacted interface) the realization of such an attack at this point is unrealistic.
+
+After successful execution, this command cannot be executed anymore. The regular SecureChannel (with pairing) is active
+and PIN and PUK are initialized.
 
 ### OPEN SECURE CHANNEL
 
@@ -133,15 +164,20 @@ always returns 0x63C0, even if the PIN is inserted correctly.
 
 * CLA = 0x80
 * INS = 0x21
-* P1 = 0x00
+* P1 = PIN identifier
 * P2 = 0x00
 * Data = the new PIN
-* Response SW = 0x9000 on success, 0x6A80 if the PIN format is invalid
+* Response SW = 0x9000 on success, 0x6A80 if the PIN format is invalid, 0x6A86 if P1 is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
-Used to change the user PIN. The new PIN must be composed of exactly 6 numeric digits. Should this be not the case,
-the code 0x6A80 is returned. If the conditions match, the user PIN is updated and authenticated for the rest of
-the session. The no-error SW 0x9000 is returned.
+Used to change a PIN or secret. In case of invalid format, the code 0x6A80 is returned. If the conditions match, the PIN 
+or secret is updated. The no-error SW 0x9000 is returned.
+
+P1:
+* 0x00: User PIN. Must be 6-digits. The updated PIN is authenticated for the rest of the session. 
+* 0x01: Applet PUK. Must be 12-digits.
+* 0x02: Pairing secret. Must be 32-bytes long. Existing pairings are not broken, but new pairings will need to use the
+new secret.
 
 ### UNBLOCK PIN
 

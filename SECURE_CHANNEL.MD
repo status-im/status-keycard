@@ -9,11 +9,13 @@ authentication for each APDU.
 A short description of establishing a session is as follows
 
 1. The client selects the application on card. The application responds with a public EC key.
-2. The client sends an OPEN SECURE CHANNEL command with its public key. The EC-DH algorithm is used by both parties to 
-   generate a shared 256-bit secret (more details below).
-3. The generated secret is used as an AES key to encrypt all further communication. CBC mode is used with a random IV
-generated for each APDU and prepended to the APDU payload. Both command and responses are encrypted.
-4. The client sends a MUTUALLY AUTHENTICATE command to verify that the keys are matching and thus the secure channel is
+2. The client sends an OPEN SECURE CHANNEL command with its public key and pairing index. The EC-DH algorithm is used by 
+both parties to generate a shared 256-bit secret (more details below).
+3. The generated secret is concatenated with the pairing key and random data and hashed with SHA-512.
+4. The first half of the generated value is used as an AES key to encrypt all further communication. CBC mode is used
+with a random IV generated for each APDU and prepended to the APDU payload. The second half is used to MAC generation
+ and verification. Both command and responses are encrypted.
+5. The client sends a MUTUALLY AUTHENTICATE command to verify that the keys are matching and thus the secure channel is
 successfully established.
 
 The EC keyset used by the card for the EC-DH algorithm is generated on-card on applet installation and is not used

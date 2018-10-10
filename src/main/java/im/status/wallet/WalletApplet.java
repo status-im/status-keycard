@@ -9,6 +9,7 @@ import javacard.security.*;
 public class WalletApplet extends Applet {
   static final short APPLICATION_VERSION = (short) 0x0102;
 
+  static final byte INS_INIT = (byte) 0xFE;
   static final byte INS_GET_STATUS = (byte) 0xF2;
   static final byte INS_VERIFY_PIN = (byte) 0x20;
   static final byte INS_CHANGE_PIN = (byte) 0x21;
@@ -36,6 +37,10 @@ public class WalletApplet extends Applet {
 
   static final byte GET_STATUS_P1_APPLICATION = 0x00;
   static final byte GET_STATUS_P1_KEY_PATH = 0x01;
+
+  static final byte CHANGE_PIN_P1_USER_PIN = 0x00;
+  static final byte CHANGE_PIN_P1_PUK = 0x01;
+  static final byte CHANGE_PIN_P1_PAIRING_SECRET = 0x02;
 
   static final byte LOAD_KEY_P1_EC = 0x01;
   static final byte LOAD_KEY_P1_EXT_EC = 0x02;
@@ -134,10 +139,11 @@ public class WalletApplet extends Applet {
   }
 
   /**
-   * Application constructor. All memory allocation is done here. The reason for this is two-fold: first the card might
-   * not have Garbage Collection so dynamic allocation will eventually eat all memory. The second reason is to be sure
-   * that if the application installs successfully, there is no risk of running out of memory because of other applets
-   * allocating memory. The constructor also registers the applet with the JCRE so that it becomes selectable.
+   * Application constructor. All memory allocation is done here and in the init function. The reason for this is
+   * two-fold: first the card might not have Garbage Collection so dynamic allocation will eventually eat all memory.
+   * The second reason is to be sure that if the application installs successfully, there is no risk of running out
+   * of memory because of other applets allocating memory. The constructor also registers the applet with the JCRE so
+   * that it becomes selectable.
    *
    * @param bArray installation parameters buffer
    * @param bOffset offset where the installation parameters begin
@@ -170,18 +176,7 @@ public class WalletApplet extends Applet {
     resetCurveParameters();
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
-
-    short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
-    c9Off += (short)(bArray[c9Off] + 2); // Skip Privileges and parameter length
-
-    secureChannel = new SecureChannel(PAIRING_MAX_CLIENT_COUNT, bArray, (short) (c9Off + PUK_LENGTH), crypto, secp256k1);
-
-    puk = new OwnerPIN(PUK_MAX_RETRIES, PUK_LENGTH);
-    puk.update(bArray, c9Off, PUK_LENGTH);
-
-    Util.arrayFillNonAtomic(bArray, c9Off, PIN_LENGTH, (byte) 0x30);
-    pin = new OwnerPIN(PIN_MAX_RETRIES, PIN_LENGTH);
-    pin.update(bArray, c9Off, PIN_LENGTH);
+    secureChannel = new SecureChannel(PAIRING_MAX_CLIENT_COUNT, crypto, secp256k1);
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
@@ -194,6 +189,12 @@ public class WalletApplet extends Applet {
    * @throws ISOException any processing error
    */
   public void process(APDU apdu) throws ISOException {
+    // If we have no PIN it means we still have to initialize the applet.
+    if (pin == null) {
+      processInit(apdu);
+      return;
+    }
+
     // Since selection can happen not only by a SELECT command, we check for that separately.
     if (selectingApplet()) {
       selectApplet(apdu);
@@ -264,6 +265,45 @@ public class WalletApplet extends Applet {
 
     if (shouldRespond(apdu)) {
       secureChannel.respond(apdu, (short) 0, ISO7816.SW_NO_ERROR);
+    }
+  }
+
+  /**
+   * Processes the init command, this is invoked only if the applet has not yet been personalized with secrets.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
+  private void processInit(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    apdu.setIncomingAndReceive();
+
+    if (selectingApplet()) {
+      apduBuffer[0] = TLV_PUB_KEY;
+      apduBuffer[1] = (byte) secureChannel.copyPublicKey(apduBuffer, (short) 2);
+      apdu.setOutgoingAndSend((short) 0, (short)(apduBuffer[1] + 2));
+    } else if (apduBuffer[ISO7816.OFFSET_INS] == INS_INIT) {
+      secureChannel.oneShotDecrypt(apduBuffer);
+
+      if (apduBuffer[ISO7816.OFFSET_LC] != (byte)(PIN_LENGTH + PUK_LENGTH + SecureChannel.SC_SECRET_LENGTH)) {
+        ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+      }
+
+      if (!allDigits(apduBuffer, ISO7816.OFFSET_CDATA, (short)(PIN_LENGTH + PUK_LENGTH))) {
+        ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      }
+
+      JCSystem.beginTransaction();
+      secureChannel.initSecureChannel(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH + PUK_LENGTH));
+
+      pin = new OwnerPIN(PIN_MAX_RETRIES, PIN_LENGTH);
+      pin.update(apduBuffer, ISO7816.OFFSET_CDATA, PIN_LENGTH);
+
+      puk = new OwnerPIN(PUK_MAX_RETRIES, PUK_LENGTH);
+      puk.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PUK_LENGTH);
+
+      JCSystem.commitTransaction();
+    } else {
+      ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
     }
   }
 
@@ -418,9 +458,8 @@ public class WalletApplet extends Applet {
   }
 
   /**
-   * Processes the CHANGE PIN command. Requires a secure channel to be already open and the PIN to be verified. Since
-   * the PIN is fixed to a 6-digits format, longer or shorter PINs or PINs containing non-numeric characters will be
-   * refused.
+   * Processes the CHANGE PIN command. Requires a secure channel to be already open and the user PIN to be verified. All
+   * PINs have a fixed format which is verified by this method.
    *
    * @param apdu the JCRE-owned APDU object.
    */
@@ -432,12 +471,60 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
+    switch(apduBuffer[ISO7816.OFFSET_P1]) {
+      case CHANGE_PIN_P1_USER_PIN:
+        changeUserPIN(apduBuffer, len);
+        break;
+      case CHANGE_PIN_P1_PUK:
+        changePUK(apduBuffer, len);
+        break;
+      case CHANGE_PIN_P1_PAIRING_SECRET:
+        changePairingSecret(apduBuffer, len);
+        break;
+      default:
+        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        break;
+    }
+  }
+
+  /**
+   * Changes the user PIN. Called internally by CHANGE PIN
+   * @param apduBuffer the APDU buffer
+   * @param len the data length
+   */
+  private void changeUserPIN(byte[] apduBuffer, byte len) {
     if (!(len == PIN_LENGTH && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
     pin.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
     pin.check(apduBuffer, ISO7816.OFFSET_CDATA, len);
+  }
+
+  /**
+   * Changes the PUK. Called internally by CHANGE PIN
+   * @param apduBuffer the APDU buffer
+   * @param len the data length
+   */
+  private void changePUK(byte[] apduBuffer, byte len) {
+    if (!(len == PUK_LENGTH && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    puk.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
+  }
+
+  /**
+   * Changes the pairing secret. Called internally by CHANGE PIN
+   * @param apduBuffer the APDU buffer
+   * @param len the data length
+   */
+  private void changePairingSecret(byte[] apduBuffer, byte len) {
+    if (len != SecureChannel.SC_SECRET_LENGTH) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    secureChannel.updatePairingSecret(apduBuffer, ISO7816.OFFSET_CDATA);
   }
 
   /**
