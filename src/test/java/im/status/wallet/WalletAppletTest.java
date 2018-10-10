@@ -390,23 +390,54 @@ public class WalletAppletTest {
   @DisplayName("CHANGE PIN command")
   void changePinTest() throws CardException {
     // Security condition violation: SecureChannel not open
-    ResponseAPDU response = cmdSet.changePIN("123456");
+    ResponseAPDU response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "123456");
     assertEquals(0x6985, response.getSW());
 
     cmdSet.autoOpenSecureChannel();
 
     // Security condition violation: PIN n ot verified
-    response = cmdSet.changePIN("123456");
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "123456");
     assertEquals(0x6985, response.getSW());
 
-    // Change PIN correctly, check that after PIN change the PIN remains validated
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
 
-    response = cmdSet.changePIN("123456");
+    // Wrong P1
+    response = cmdSet.changePIN(0x03, "123456");
+    assertEquals(0x6a86, response.getSW());
+
+    // Test wrong PIN formats (non-digits, too short, too long)
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "654a21");
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "54321");
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "7654321");
+    assertEquals(0x6A80, response.getSW());
+
+    // Test wrong PUK formats
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PUK, "210987654a21");
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PUK, "10987654321");
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PUK, "3210987654321");
+    assertEquals(0x6A80, response.getSW());
+
+    // Test wrong pairing secret format (too long, too short)
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PAIRING_SECRET, "abcdefghilmnopqrstuvz123456789012");
+    assertEquals(0x6A80, response.getSW());
+
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PAIRING_SECRET, "abcdefghilmnopqrstuvz1234567890");
+    assertEquals(0x6A80, response.getSW());
+
+    // Change PIN correctly, check that after PIN change the PIN remains validated
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "123456");
     assertEquals(0x9000, response.getSW());
 
-    response = cmdSet.changePIN("654321");
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "654321");
     assertEquals(0x9000, response.getSW());
 
     // Reset card and verify that the new PIN has really been set
@@ -415,18 +446,46 @@ public class WalletAppletTest {
     response = cmdSet.verifyPIN("654321");
     assertEquals(0x9000, response.getSW());
 
-    // Test wrong PIN formats (non-digits, too short, too long)
-    response = cmdSet.changePIN("654a21");
-    assertEquals(0x6A80, response.getSW());
+    // Change PUK
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PUK, "210987654321");
+    assertEquals(0x9000, response.getSW());
 
-    response = cmdSet.changePIN("54321");
-    assertEquals(0x6A80, response.getSW());
+    resetAndSelectAndOpenSC();
 
-    response = cmdSet.changePIN("7654321");
-    assertEquals(0x6A80, response.getSW());
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x63C2, response.getSW());
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x63C1, response.getSW());
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x63C0, response.getSW());
 
-    // Reset the PIN to make further tests possible
-    response = cmdSet.changePIN("000000");
+    // Reset the PIN with the new PUK
+    response = cmdSet.unblockPIN("210987654321", "000000");
+    assertEquals(0x9000, response.getSW());
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    // Reset PUK
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PUK, "123456789012");
+    assertEquals(0x9000, response.getSW());
+
+    // Change the pairing secret
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PAIRING_SECRET, "abcdefghilmnopqrstuvz12345678901");
+    assertEquals(0x9000, response.getSW());
+    cmdSet.autoUnpair();
+    reset();
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSW());
+    cmdSet.autoPair("abcdefghilmnopqrstuvz12345678901".getBytes());
+
+    // Reset pairing secret
+    cmdSet.autoOpenSecureChannel();
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PAIRING_SECRET, SHARED_SECRET);
     assertEquals(0x9000, response.getSW());
   }
 
@@ -475,7 +534,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     // Reset the PIN to make further tests possible
-    response = cmdSet.changePIN("000000");
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "000000");
     assertEquals(0x9000, response.getSW());
   }
 
@@ -1072,7 +1131,7 @@ public class WalletAppletTest {
     // Signing session can be resumed if other commands are sent
     response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,true, false);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.changePIN("000000");
+    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "000000");
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,false, true);
     assertEquals(0x9000, response.getSW());

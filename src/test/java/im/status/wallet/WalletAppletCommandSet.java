@@ -170,12 +170,26 @@ public class WalletAppletCommandSet {
    * Sends a CHANGE PIN APDU. The raw bytes of the given string are encrypted using the secure channel and used as APDU
    * data.
    *
+   * @param pinType the PIN type
    * @param pin the new PIN
    * @return the raw card response
    * @throws CardException communication error
    */
-  public ResponseAPDU changePIN(String pin) throws CardException {
-    CommandAPDU changePIN = secureChannel.protectedCommand(0x80, WalletApplet.INS_CHANGE_PIN, 0, 0, pin.getBytes());
+  public ResponseAPDU changePIN(int pinType, String pin) throws CardException {
+    return changePIN(pinType, pin.getBytes());
+  }
+
+  /**
+   * Sends a CHANGE PIN APDU. The raw bytes of the given string are encrypted using the secure channel and used as APDU
+   * data.
+   *
+   * @param pinType the PIN type
+   * @param pin the new PIN
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU changePIN(int pinType, byte[] pin) throws CardException {
+    CommandAPDU changePIN = secureChannel.protectedCommand(0x80, WalletApplet.INS_CHANGE_PIN, pinType, 0, pin);
     return secureChannel.transmit(apduChannel, changePIN);
   }
 

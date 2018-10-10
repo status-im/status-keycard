@@ -38,6 +38,10 @@ public class WalletApplet extends Applet {
   static final byte GET_STATUS_P1_APPLICATION = 0x00;
   static final byte GET_STATUS_P1_KEY_PATH = 0x01;
 
+  static final byte CHANGE_PIN_P1_USER_PIN = 0x00;
+  static final byte CHANGE_PIN_P1_PUK = 0x01;
+  static final byte CHANGE_PIN_P1_PAIRING_SECRET = 0x02;
+
   static final byte LOAD_KEY_P1_EC = 0x01;
   static final byte LOAD_KEY_P1_EXT_EC = 0x02;
   static final byte LOAD_KEY_P1_SEED = 0x03;
@@ -454,9 +458,8 @@ public class WalletApplet extends Applet {
   }
 
   /**
-   * Processes the CHANGE PIN command. Requires a secure channel to be already open and the PIN to be verified. Since
-   * the PIN is fixed to a 6-digits format, longer or shorter PINs or PINs containing non-numeric characters will be
-   * refused.
+   * Processes the CHANGE PIN command. Requires a secure channel to be already open and the user PIN to be verified. All
+   * PINs have a fixed format which is verified by this method.
    *
    * @param apdu the JCRE-owned APDU object.
    */
@@ -468,12 +471,60 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
+    switch(apduBuffer[ISO7816.OFFSET_P1]) {
+      case CHANGE_PIN_P1_USER_PIN:
+        changeUserPIN(apduBuffer, len);
+        break;
+      case CHANGE_PIN_P1_PUK:
+        changePUK(apduBuffer, len);
+        break;
+      case CHANGE_PIN_P1_PAIRING_SECRET:
+        changePairingSecret(apduBuffer, len);
+        break;
+      default:
+        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        break;
+    }
+  }
+
+  /**
+   * Changes the user PIN. Called internally by CHANGE PIN
+   * @param apduBuffer the APDU buffer
+   * @param len the data length
+   */
+  private void changeUserPIN(byte[] apduBuffer, byte len) {
     if (!(len == PIN_LENGTH && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
     pin.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
     pin.check(apduBuffer, ISO7816.OFFSET_CDATA, len);
+  }
+
+  /**
+   * Changes the PUK. Called internally by CHANGE PIN
+   * @param apduBuffer the APDU buffer
+   * @param len the data length
+   */
+  private void changePUK(byte[] apduBuffer, byte len) {
+    if (!(len == PUK_LENGTH && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    puk.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
+  }
+
+  /**
+   * Changes the pairing secret. Called internally by CHANGE PIN
+   * @param apduBuffer the APDU buffer
+   * @param len the data length
+   */
+  private void changePairingSecret(byte[] apduBuffer, byte len) {
+    if (len != SecureChannel.SC_SECRET_LENGTH) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    secureChannel.updatePairingSecret(apduBuffer, ISO7816.OFFSET_CDATA);
   }
 
   /**

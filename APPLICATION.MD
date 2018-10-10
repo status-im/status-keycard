@@ -91,6 +91,13 @@ generate an AES key. It must then generate a random IV and encrypt the payload u
 
 They payload is the concatenation of the PIN (6 digits/bytes), PUK (12 digits/bytes) and pairing secret (32 bytes).
 
+This scheme guarantees protection against passive MITM attacks. Since the applet has no "owner" before the execution of
+this command, protection against active MITM cannot be provided at this stage. However since the communication happens
+locally (either through NFC or contacted interface) the realization of such an attack at this point is unrealistic.
+
+After successful execution, this command cannot be executed anymore. The regular SecureChannel (with pairing) is active
+and PIN and PUK are initialized.
+
 ### OPEN SECURE CHANNEL
 
 The OPEN SECURE CHANNEL command is as specified in the [SECURE_CHANNEL.MD](SECURE_CHANNEL.MD).
@@ -157,15 +164,20 @@ always returns 0x63C0, even if the PIN is inserted correctly.
 
 * CLA = 0x80
 * INS = 0x21
-* P1 = 0x00
+* P1 = PIN identifier
 * P2 = 0x00
 * Data = the new PIN
-* Response SW = 0x9000 on success, 0x6A80 if the PIN format is invalid
+* Response SW = 0x9000 on success, 0x6A80 if the PIN format is invalid, 0x6A86 if P1 is invalid
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
-Used to change the user PIN. The new PIN must be composed of exactly 6 numeric digits. Should this be not the case,
-the code 0x6A80 is returned. If the conditions match, the user PIN is updated and authenticated for the rest of
-the session. The no-error SW 0x9000 is returned.
+Used to change a PIN or secret. In case of invalid format, the code 0x6A80 is returned. If the conditions match, the PIN 
+or secret is updated. The no-error SW 0x9000 is returned.
+
+P1:
+* 0x00: User PIN. Must be 6-digits. The updated PIN is authenticated for the rest of the session. 
+* 0x01: Applet PUK. Must be 12-digits.
+* 0x02: Pairing secret. Must be 32-bytes long. Existing pairings are not broken, but new pairings will need to use the
+new secret.
 
 ### UNBLOCK PIN
 

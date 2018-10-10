@@ -89,7 +89,7 @@ public class SecureChannel {
     if (pairingSecret != null) return;
 
     pairingSecret = new byte[SC_SECRET_LENGTH];
-    Util.arrayCopyNonAtomic(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
+    Util.arrayCopy(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
     scKeypair.genKeyPair();
   }
 
@@ -437,6 +437,15 @@ public class SecureChannel {
     scEncKey.clearKey();
     scMacKey.clearKey();
     mutuallyAuthenticated = false;
+  }
+
+  /**
+   * Updates the pairing secret. Does not affect existing pairings.
+   * @param aPairingSecret the buffer
+   * @param off the offset
+   */
+  public void updatePairingSecret(byte[] aPairingSecret, byte off) {
+    Util.arrayCopy(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
   }
 
   /**
