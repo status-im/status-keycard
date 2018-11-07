@@ -1,5 +1,14 @@
 # Status Wallet Application
 
+## Version
+
+Version numbers are in the form major.minor. An major revision increment indicates the presence of breaking changes as
+compared to the previous released version. This is version 2.0 of the specs (unreleased). 
+
+### Changes since 1.2
+* **BREAKING** Removed assisted key derivation
+* Added internal key generation
+
 ## Overview
 
 This application allows signing of transactions using ECDSA with a keyset stored on card. The keys are defined on the
@@ -130,8 +139,7 @@ command to work.
 * P2 = 0x00
 * Response SW = 0x9000 on success, 0x6A86 on undefined P1
 * Response Data = Application Status Template or Key Path
-* Preconditions: Secure Channel must be opened, if Key Path is required then the card must not be in the  middle of a 
-derivation session
+* Preconditions: Secure Channel must be opened
 
 Response Data format:
 if P1 = 0x00:
@@ -139,7 +147,6 @@ if P1 = 0x00:
   - Tag 0x02 = PIN retry count (1 byte)
   - Tag 0x02 = PUK retry count (1 byte)
   - Tag 0x01 = 0xff if key is initialized, 0 otherwise
-  - Tag 0x01 = 0xff if public key derivation is supported, 0 otherwise
 
 if P1 = 0x01
 - a sequence of 32-bit numbers indicating the current key path. Empty if master key is selected.
@@ -203,8 +210,7 @@ always returns 0x63C0, even if the PUK is inserted correctly. In this case the w
 * P1 = key type
 * P2 = 0x00
 * Data = the key data
-* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A86 if P1 is invalid, 0x6A81 if public key
-  derivation is not supported and the public key is omitted
+* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A86 if P1 is invalid
 * Response Data = the key UID, defined as the SHA-256 of the public key
 * Preconditions: Secure Channel must be opened, user PIN must be verified
 
@@ -217,7 +223,7 @@ Data:
 
 If P1 is 0x01 or 0x02
 - Tag 0xA1 = keypair template
-  - Tag 0x80 = ECC public key component (can be omitted if public key derivation is supported)
+  - Tag 0x80 = ECC public key component (can be omitted)
   - Tag 0x81 = ECC private key component
   - Tag 0x82 = chain code (if P1=0x02)
   
@@ -233,53 +239,32 @@ signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command
 * CLA = 0x80
 * INS = 0xD1
 * P1 = derivation options
-* P2 = assisted derivation phase
+* P2 = 0x00
 * Data = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used. On assisted
          derivation contains a public key when P2 = 0x02.
-* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6A81 if public key derivation is not supported and
-  bit 0 of P1 is set, 0x6A86 if P2 = 0x01 and bit 0 of P1 is not set, 0x6984 if one of the components in the path
+* Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6984 if one of the components in the path
   generates an invalid key, 0x6B00 if derivation from parent keys is selected but no valid parent key is cached.
-* Response Data = On assisted derivation and P2 = 0x01 the key derivation template. Empty otherwise.
 * Preconditions: Secure Channel must be opened, user PIN must be verified (if no PIN-less key is defined), an extended 
 keyset must be loaded
 
 This command is used before a signing session to generate a private key according to the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
 specifications. This command always aborts open signing sessions, if any. The generated key is used for all subsequent 
-SIGN sessions. Because JavaCard does not offer native EC point multiplication before version 3.0.5, there is an 
-alternative mode of operation where the public key is partially derived off-card and loaded back on card. In this mode
-of operation only 1 derivation step at the time can be completed and as such during assisted derivation the data can
-contain a single 32-bit integer, instead of a sequence. The maximum depth of derivation from the master key is 10. Any
-attempt to get deeper results in 0x6A80 being returned. The BIP32 specifications define a few checks which must be
-performed on the derived keys. If these fail, the 0x6984 is returned and the invalid key is discarded. A client should
-perform a GET STATUS command to get the actual current key path and resume derivation using a different path.
+SIGN sessions. The maximum depth of derivation from the master key is 10. Any attempt to get deeper results in 0x6A80
+being returned. The BIP32 specifications define a few checks which must be performed on the derived keys. If these fail, 
+the 0x6984 is returned and the invalid key is discarded. A client should perform a GET STATUS command to get the actual 
+current key path and resume derivation using a different path.
 
 The ability to start derivation from the parent keys allows to more efficiently switch between children of the same key. 
 Note however that only the immediate parent of the current key is cached so you cannot use this to go back in the 
 hierarchy. If no valid parent key is available the status code 0x6B00 will be returned.
 
-When loading the public key using assisted derivation the only valid P1/P2 combination is P1=0x81 and P2=0x01.
-
 P1:
-* bit 0 = if 0 derive autonomously (only works if public key derivation is supported), if 1 do assisted derivation
-* bit 1-5 = reserved
+* bit 0-5 = reserved
 * bit 7-6:
   - 00 derive from master keys
   - 01 derive from parent keys
   - 10 derive from current keys
   - 11 reserved
-
-P2:
-* 0x00 = data is a sequence of 32-bit integers
-* 0x01 = data is a public key
-
-Response Data format:
-The signature is calculated over the SHA-256 hash of the message "STATUS KEY DERIVATION"
-
-- Tag 0xA2 = key derivation template
-  - Tag 0x83 = ECC Public Key X component
-  - Tag 0x30 = ECDSA Signature
-    - Tag 0x02 = R value
-    - Tag 0x02 = S value
 
 ### GENERATE MNEMONIC
 

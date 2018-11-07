@@ -128,19 +128,6 @@ public class WalletAppletCommandSet {
   }
 
   /**
-   * Sends a GET STATUS APDU to retrieve the APPLICATION STATUS template and reads the byte indicating public key
-   * derivation support.
-   *
-   * @return whether public key derivation is supported or not
-   * @throws CardException communication error
-   */
-  public boolean getPublicKeyDerivationSupport() throws CardException {
-    ResponseAPDU resp = getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
-    byte[] data = resp.getData();
-    return data[data.length - 1] != 0x00;
-  }
-
-  /**
    * Sends a GET STATUS APDU to retrieve the APPLICATION STATUS template and reads the byte indicating key initialization
    * status
    *
@@ -150,7 +137,7 @@ public class WalletAppletCommandSet {
   public boolean getKeyInitializationStatus() throws CardException {
     ResponseAPDU resp = getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
     byte[] data = resp.getData();
-    return data[data.length - 4] != 0x00;
+    return data[data.length - 1] != 0x00;
   }
 
   /**
@@ -426,34 +413,27 @@ public class WalletAppletCommandSet {
   }
 
   /**
-   * Sends a DERIVE KEY APDU. The data is encrypted and sent as-is. The P1 and P2 parameters are forced to 0, meaning
-   * that the derivation starts from the master key and is non-assisted.
+   * Sends a DERIVE KEY APDU. The data is encrypted and sent as-is. The P1 is forced to 0, meaning that the derivation
+   * starts from the master key.
    *
    * @param data the raw key path
    * @return the raw card response
    * @throws CardException communication error
    */
   public ResponseAPDU deriveKey(byte[] data) throws CardException {
-    return deriveKey(data, WalletApplet.DERIVE_P1_SOURCE_MASTER, false, false);
+    return deriveKey(data, WalletApplet.DERIVE_P1_SOURCE_MASTER);
   }
 
   /**
-   * Sends a DERIVE KEY APDU. The data is encrypted and sent as-is. The reset and assisted parameters are combined to
-   * form P1. The isPublicKey parameter is used for P2.
+   * Sends a DERIVE KEY APDU. The data is encrypted and sent as-is. The source parameter is used as P1
    *
    * @param data the raw key path or a public key
    * @param source the source to start derivation
-   * @param assisted whether we are doing assisted derivation or not
-   * @param isPublicKey whether we are sending a public key or a key path (only make sense during assisted derivation)
    * @return the raw card response
    * @throws CardException communication error
    */
-  public ResponseAPDU deriveKey(byte[] data, int source, boolean assisted, boolean isPublicKey) throws CardException {
-    byte p1 = assisted ? WalletApplet.DERIVE_P1_ASSISTED_MASK : 0;
-    p1 |= source;
-    byte p2 = isPublicKey ? WalletApplet.DERIVE_P2_PUBLIC_KEY : WalletApplet.DERIVE_P2_KEY_PATH;
-
-    CommandAPDU deriveKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_DERIVE_KEY, p1, p2, data);
+  public ResponseAPDU deriveKey(byte[] data, int source) throws CardException {
+    CommandAPDU deriveKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_DERIVE_KEY, source, 0, data);
     return secureChannel.transmit(apduChannel, deriveKey);
   }
 

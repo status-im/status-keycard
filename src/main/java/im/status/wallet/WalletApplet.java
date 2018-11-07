@@ -7,7 +7,7 @@ import javacard.security.*;
  * The applet's main class. All incoming commands a processed by this class.
  */
 public class WalletApplet extends Applet {
-  static final short APPLICATION_VERSION = (short) 0x0102;
+  static final short APPLICATION_VERSION = (short) 0x0200;
 
   static final byte INS_INIT = (byte) 0xFE;
   static final byte INS_GET_STATUS = (byte) 0xF2;
@@ -53,14 +53,9 @@ public class WalletApplet extends Applet {
   static final byte SIGN_P2_FIRST_BLOCK_MASK = 0x01;
   static final byte SIGN_P2_LAST_BLOCK_MASK = (byte) 0x80;
 
-  static final byte DERIVE_P1_ASSISTED_MASK = 0x01;
-  static final byte DERIVE_P1_SOURCE_MASK = (byte) 0xC0;
   static final byte DERIVE_P1_SOURCE_MASTER = (byte) 0x00;
   static final byte DERIVE_P1_SOURCE_PARENT = (byte) 0x40;
   static final byte DERIVE_P1_SOURCE_CURRENT = (byte) 0x80;
-
-  static final byte DERIVE_P2_KEY_PATH = 0x00;
-  static final byte DERIVE_P2_PUBLIC_KEY = 0x01;
 
   static final byte GENERATE_MNEMONIC_P1_CS_MIN = 4;
   static final byte GENERATE_MNEMONIC_P1_CS_MAX = 8;
@@ -79,9 +74,6 @@ public class WalletApplet extends Applet {
   static final byte TLV_PRIV_KEY = (byte) 0x81;
   static final byte TLV_CHAIN_CODE = (byte) 0x82;
 
-  static final byte TLV_KEY_DERIVATION_TEMPLATE = (byte) 0xA2;
-  static final byte TLV_PUB_X = (byte) 0x83;
-
   static final byte TLV_APPLICATION_STATUS_TEMPLATE = (byte) 0xA3;
   static final byte TLV_INT = (byte) 0x02;
   static final byte TLV_BOOL = (byte) 0x01;
@@ -90,7 +82,6 @@ public class WalletApplet extends Applet {
   static final byte TLV_UID = (byte) 0x8F;
   static final byte TLV_KEY_UID = (byte) 0x8E;
 
-  private static final byte[] ASSISTED_DERIVATION_HASH = {(byte) 0xAA, (byte) 0x2D, (byte) 0xA9, (byte) 0x9D, (byte) 0x91, (byte) 0x8C, (byte) 0x7D, (byte) 0x95, (byte) 0xB8, (byte) 0x96, (byte) 0x89, (byte) 0x87, (byte) 0x3E, (byte) 0xAA, (byte) 0x37, (byte) 0x67, (byte) 0x25, (byte) 0x0C, (byte) 0xFF, (byte) 0x50, (byte) 0x13, (byte) 0x9A, (byte) 0x2F, (byte) 0x87, (byte) 0xBB, (byte) 0x4F, (byte) 0xCA, (byte) 0xB4, (byte) 0xAE, (byte) 0xC3, (byte) 0xE8, (byte) 0x90};
   private static final byte EXPORT_KEY_HIGH_MASK = (byte) 0xc0;
 
   private OwnerPIN pin;
@@ -120,7 +111,6 @@ public class WalletApplet extends Applet {
 
   private Signature signature;
   private boolean signInProgress;
-  private boolean expectPublicKey;
 
   private byte[] keyUID;
 
@@ -419,9 +409,6 @@ public class WalletApplet extends Applet {
     apduBuffer[off++] = TLV_BOOL;
     apduBuffer[off++] = 1;
     apduBuffer[off++] = privateKey.isInitialized() ? (byte) 0xFF : (byte) 0x00;
-    apduBuffer[off++] = TLV_BOOL;
-    apduBuffer[off++] = 1;
-    apduBuffer[off++] = secp256k1.hasECPointMultiplication() ? (byte) 0xFF : (byte) 0x00;
 
     return (short) (off - SecureChannel.SC_OUT_OFFSET);
   }
@@ -437,10 +424,6 @@ public class WalletApplet extends Applet {
    * @return the length in bytes of the data to output
    */
   private short getKeyStatus(byte[] apduBuffer, short off) {
-    if (expectPublicKey) {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-    }
-
     Util.arrayCopyNonAtomic(keyPath, (short) 0, apduBuffer, off, keyPathLen);
     return keyPathLen;
   }
@@ -616,7 +599,6 @@ public class WalletApplet extends Applet {
    */
   private void resetKeyStatus(boolean toParent) {
     signInProgress = false;
-    expectPublicKey = false;
     parentValid = false;
     keyPathLen = toParent ? (short) (keyPathLen - 4) : 0;
   }
@@ -635,7 +617,6 @@ public class WalletApplet extends Applet {
     short chainOffset = (short)(privOffset + apduBuffer[(short)(privOffset + 1)] + 2);
 
     if (apduBuffer[pubOffset] != TLV_PUB_KEY) {
-      secp256k1.assertECPointMultiplicationSupport();
       chainOffset = privOffset;
       privOffset = pubOffset;
       pubOffset = -1;
@@ -691,8 +672,6 @@ public class WalletApplet extends Applet {
    * @param apduBuffer the APDU buffer
    */
   private void loadSeed(byte[] apduBuffer) {
-    secp256k1.assertECPointMultiplicationSupport();
-
     if (apduBuffer[ISO7816.OFFSET_LC] != BIP39_SEED_SIZE) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
@@ -747,35 +726,15 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    boolean assistedDerivation = (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_ASSISTED_MASK) == DERIVE_P1_ASSISTED_MASK;
-    boolean isPublicKey = apduBuffer[ISO7816.OFFSET_P2]  == DERIVE_P2_PUBLIC_KEY;
-    boolean isReset = (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_SOURCE_MASK) == DERIVE_P1_SOURCE_MASTER;
-    boolean fromParent = (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_SOURCE_MASK) == DERIVE_P1_SOURCE_PARENT;
+    boolean isReset = apduBuffer[ISO7816.OFFSET_P1] == DERIVE_P1_SOURCE_MASTER;
+    boolean fromParent = apduBuffer[ISO7816.OFFSET_P1] == DERIVE_P1_SOURCE_PARENT;
 
     if (fromParent && !parentValid) {
       ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
     }
 
-    if ((isPublicKey != (expectPublicKey && !isReset && !fromParent)) || (isPublicKey && !assistedDerivation)) {
-      ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-    }
-
-    if (isPublicKey) {
-      JCSystem.beginTransaction();
-      publicKey.setW(apduBuffer, ISO7816.OFFSET_CDATA, len);
-      expectPublicKey = false;
-      keyPathLen += 4;
-      parentValid = true;
-      JCSystem.commitTransaction();
-      return;
-    }
-
-    if (((short) (len % 4) != 0) || (assistedDerivation && (len > 4)) || ((short)(len + (isReset ? 0 : keyPathLen)) > keyPath.length)) {
+    if (((short) (len % 4) != 0) || ((short)(len + (isReset ? 0 : keyPathLen)) > keyPath.length)) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-    }
-
-    if ((len != 0) && !assistedDerivation) {
-      secp256k1.assertECPointMultiplicationSupport();
     }
 
     short chainEnd = (short) (ISO7816.OFFSET_CDATA + len);
@@ -797,39 +756,13 @@ public class WalletApplet extends Applet {
 
       Util.arrayCopy(apduBuffer, i, keyPath, keyPathLen, (short) 4);
 
-      if (assistedDerivation) {
-        expectPublicKey = true;
-        outputPublicX(apdu, apduBuffer);
-      } else {
-        short pubLen = secp256k1.derivePublicKey(privateKey, apduBuffer, chainEnd);
-        publicKey.setW(apduBuffer, chainEnd, pubLen);
-        keyPathLen += 4;
-        parentValid = true;
-      }
+      short pubLen = secp256k1.derivePublicKey(privateKey, apduBuffer, chainEnd);
+      publicKey.setW(apduBuffer, chainEnd, pubLen);
+      keyPathLen += 4;
+      parentValid = true;
 
       JCSystem.commitTransaction();
     }
-  }
-
-  /**
-   * Outputs the X of the public key for the current private. Called internally by the deriveKey method and used during
-   * assisted key derivation.
-   *
-   * @param apdu the JCRE-owned APDU object.
-   * @param apduBuffer the APDU buffer.
-   */
-  private void outputPublicX(APDU apdu, byte[] apduBuffer) {
-    short xLen = secp256k1.derivePublicX(privateKey, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 4));
-
-    signature.init(privateKey, Signature.MODE_SIGN);
-    short sigLen = signature.signPreComputedHash(ASSISTED_DERIVATION_HASH, (short) 0, (short) ASSISTED_DERIVATION_HASH.length, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + xLen + 4));
-
-    apduBuffer[SecureChannel.SC_OUT_OFFSET] = TLV_KEY_DERIVATION_TEMPLATE;
-    apduBuffer[(short) (SecureChannel.SC_OUT_OFFSET + 1)] = (byte) (xLen + sigLen + 2);
-    apduBuffer[(short) (SecureChannel.SC_OUT_OFFSET + 2)] = TLV_PUB_X;
-    apduBuffer[(short) (SecureChannel.SC_OUT_OFFSET + 3)] = (byte) xLen;
-
-    secureChannel.respond(apdu, (short) (xLen + sigLen + 4), ISO7816.SW_NO_ERROR);
   }
 
   /**
@@ -970,7 +903,6 @@ public class WalletApplet extends Applet {
     parentValid = false;
     isExtended = false;
     signInProgress = false;
-    expectPublicKey = false;
     privateKey.clearKey();
     publicKey.clearKey();
     masterPrivate.clearKey();
@@ -1024,7 +956,7 @@ public class WalletApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     short len = secureChannel.preprocessAPDU(apduBuffer);
 
-    if (!((pin.isValidated() || isPinless()) && privateKey.isInitialized() && !expectPublicKey)) {
+    if (!((pin.isValidated() || isPinless()) && privateKey.isInitialized())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 

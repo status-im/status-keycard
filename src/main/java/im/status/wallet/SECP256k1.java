@@ -1,8 +1,5 @@
 package im.status.wallet;
 
-import javacard.framework.ISO7816;
-import javacard.framework.ISOException;
-import javacard.security.CryptoException;
 import javacard.security.ECKey;
 import javacard.security.ECPrivateKey;
 import javacard.security.KeyAgreement;
@@ -60,12 +57,7 @@ public class SECP256k1 {
    */
   SECP256k1(Crypto crypto) {
     this.crypto = crypto;
-
-    try {
-      ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
-    } catch(CryptoException e) {
-      ecPointMultiplier = null;
-    }
+    ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
   }
 
   /**
@@ -96,21 +88,6 @@ public class SECP256k1 {
   }
 
   /**
-   * Derives the X of the public key from the given private key and outputs it in the xOut buffer. This is the plain
-   * output of the EC-DH algorithm calculated using the G point of the curve in place of the public key of the second
-   * party.
-   *
-   * @param privateKey the private key
-   * @param xOut the output buffer for the X of the public key
-   * @param xOff the offset in xOut
-   * @return the length of X
-   */
-  short derivePublicX(ECPrivateKey privateKey, byte[] xOut, short xOff) {
-    crypto.ecdh.init(privateKey);
-    return crypto.ecdh.generateSecret(SECP256K1_G, (short) 0, (short) SECP256K1_G.length, xOut, xOff);
-  }
-
-  /**
    * Multiplies a scalar in the form of a private key by the given point. Internally uses a special version of EC-DH
    * supported since JavaCard 3.0.5 which outputs both X and Y in their uncompressed form.
    *
@@ -123,27 +100,7 @@ public class SECP256k1 {
    * @return the length of the data written in the out buffer
    */
   short multiplyPoint(ECPrivateKey privateKey, byte[] point, short pointOff, short pointLen, byte[] out, short outOff) {
-    assertECPointMultiplicationSupport();
     ecPointMultiplier.init(privateKey);
     return ecPointMultiplier.generateSecret(point, pointOff, pointLen, out, outOff);
-  }
-
-  /**
-   * Returns whether the card supports EC point multiplication or not.
-   *
-   * @return whether the card supports EC point multiplication or not
-   */
-  boolean hasECPointMultiplication() {
-    return ecPointMultiplier != null;
-  }
-
-  /**
-   * Asserts that EC point multiplication is supported. If not, the 0x6A81 status word is returned by throwing an
-   * ISOException.
-   */
-  void assertECPointMultiplicationSupport() {
-    if(!hasECPointMultiplication()) {
-      ISOException.throwIt(ISO7816.SW_FUNC_NOT_SUPPORTED);
-    }
   }
 }
