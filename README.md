@@ -57,13 +57,15 @@ im.status.wallet.test.simulated=false
 
 ## Implementation notes
 
-* The applet requires JavaCard 3.0.4 or later.
+* The applet requires JavaCard 3.0.4 (with the addition of KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY
+)or later.
 * The class byte of the APDU is not checked since there are no conflicting INS code.
 
 The algorithms the card must support are at least:
 * Cipher.ALG_AES_BLOCK_128_CBC_NOPAD
 * Cipher.ALG_AES_CBC_ISO9797_M2
 * KeyAgreement.ALG_EC_SVDP_DH_PLAIN
+* KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY
 * KeyPair.ALG_EC_FP (generation of 256-bit keys)
 * MessageDigest.ALG_SHA_256
 * MessageDigest.ALG_SHA_512
@@ -71,6 +73,5 @@ The algorithms the card must support are at least:
 * Signature.ALG_ECDSA_SHA_256
 
 Best performance is achieved if the card supports:
-* KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY
 * Signature.ALG_AES_MAC_128_NOPAD (if this is supported, then Cipher.ALG_AES_BLOCK_128_CBC_NOPAD is not required)
 * Signature.ALG_HMAC_SHA_512
