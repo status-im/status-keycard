@@ -686,6 +686,34 @@ public class WalletAppletTest {
   }
 
   @Test
+  @DisplayName("GENERATE KEY command")
+  void generateKeyTest() throws Exception {
+    // Security condition violation: SecureChannel not open
+    ResponseAPDU response = cmdSet.generateKey();
+    assertEquals(0x6985, response.getSW());
+
+    cmdSet.autoOpenSecureChannel();
+
+    // Security condition violation: PIN not verified
+    response = cmdSet.generateKey();
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    // Good case
+    response = cmdSet.generateKey();
+    assertEquals(0x9000, response.getSW());
+    byte[] keyUID = response.getData();
+
+    response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_ANY, true);
+    assertEquals(0x9000, response.getSW());
+    byte[] pubKey = response.getData();
+
+    verifyKeyUID(keyUID, Arrays.copyOfRange(pubKey, 4, pubKey.length));
+  }
+
+  @Test
   @DisplayName("DERIVE KEY command")
   void deriveKeyTest() throws Exception {
     // Security condition violation: SecureChannel not open

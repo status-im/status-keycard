@@ -1000,7 +1000,9 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    crypto.random.generateData(apduBuffer, (short) 0, BIP39_SEED_SIZE);
+    apduBuffer[ISO7816.OFFSET_LC] = BIP39_SEED_SIZE;
+    crypto.random.generateData(apduBuffer, ISO7816.OFFSET_CDATA, BIP39_SEED_SIZE);
+
     loadSeed(apduBuffer);
     generateKeyUIDAndRespond(apdu, apduBuffer);
   }

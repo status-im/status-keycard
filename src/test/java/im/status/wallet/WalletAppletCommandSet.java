@@ -396,6 +396,17 @@ public class WalletAppletCommandSet {
   }
 
   /**
+   * Sends a GENERATE KEY APDU.
+   *
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU generateKey() throws CardException {
+    CommandAPDU generateKey = secureChannel.protectedCommand(0x80, WalletApplet.INS_GENERATE_KEY, 0, 0, new byte[0]);
+    return secureChannel.transmit(apduChannel, generateKey);
+  }
+
+  /**
    * Sends a SIGN APDU. The dataType is P1 as defined in the applet. The isFirst and isLast arguments are used to form
    * the P2 parameter. The data is the data to sign, or part of it. Only when sending the last block a signature is
    * generated and thus returned. When signing a precomputed hash it must be done in a single block, so isFirst and
