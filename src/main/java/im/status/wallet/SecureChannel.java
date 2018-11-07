@@ -29,7 +29,6 @@ public class SecureChannel {
   private AESKey scMacKey;
   private Cipher scCipher;
   private Cipher scMacCipher;
-  private byte[] macCipherBuf;
   private Signature scMac;
   private KeyPair scKeypair;
   private byte[] secret;
@@ -58,12 +57,7 @@ public class SecureChannel {
 
     scCipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
 
-    try {
-      scMac = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
-    } catch (CryptoException e) {
-      scMacCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_CBC_NOPAD, false);
-      macCipherBuf = JCSystem.makeTransientByteArray(MAX_MAC_APDU_SIZE, JCSystem.CLEAR_ON_DESELECT);
-    }
+    scMac = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
 
     scEncKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
     scMacKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
@@ -327,19 +321,11 @@ public class SecureChannel {
    * @param apduLen the data len
    */
   private boolean verifyAESMAC(byte[] apduBuffer, short apduLen) {
-    if (scMac == null) {
-      scMacCipher.init(scMacKey, Cipher.MODE_ENCRYPT);
-      short encLen = scMacCipher.update(apduBuffer, (short) 0, ISO7816.OFFSET_CDATA, macCipherBuf, (short) 0);
-      encLen += scMacCipher.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - ISO7816.OFFSET_CDATA), macCipherBuf, encLen);
-      encLen += scMacCipher.doFinal(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), macCipherBuf, encLen);
-      return Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, macCipherBuf, (short)(encLen - SC_BLOCK_SIZE), SC_BLOCK_SIZE) == 0;
-    } else {
-      scMac.init(scMacKey, Signature.MODE_VERIFY);
-      scMac.update(apduBuffer, (short) 0, ISO7816.OFFSET_CDATA);
-      scMac.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - ISO7816.OFFSET_CDATA));
+    scMac.init(scMacKey, Signature.MODE_VERIFY);
+    scMac.update(apduBuffer, (short) 0, ISO7816.OFFSET_CDATA);
+    scMac.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - ISO7816.OFFSET_CDATA));
 
-      return scMac.verify(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
-    }
+    return scMac.verify(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
   }
 
   /**
@@ -377,18 +363,10 @@ public class SecureChannel {
    * @param apduBuffer the APDU buffer
    */
   private void computeAESMAC(short len, byte[] apduBuffer) {
-    if (scMac == null) {
-      scMacCipher.init(scMacKey, Cipher.MODE_ENCRYPT);
-      short encLen = scMacCipher.update(apduBuffer, (short) 0, (short) 1, macCipherBuf, (short) 0);
-      encLen += scMacCipher.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - 1), macCipherBuf, encLen);
-      encLen += scMacCipher.doFinal(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), len, macCipherBuf, encLen);
-      Util.arrayCopyNonAtomic(macCipherBuf, (short)(encLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA, SC_BLOCK_SIZE);
-    } else {
-      scMac.init(scMacKey, Signature.MODE_SIGN);
-      scMac.update(apduBuffer, (short) 0, (short) 1);
-      scMac.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - 1));
-      scMac.sign(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), len, apduBuffer, ISO7816.OFFSET_CDATA);
-    }
+    scMac.init(scMacKey, Signature.MODE_SIGN);
+    scMac.update(apduBuffer, (short) 0, (short) 1);
+    scMac.update(secret, SC_BLOCK_SIZE, (short) (SC_BLOCK_SIZE - 1));
+    scMac.sign(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), len, apduBuffer, ISO7816.OFFSET_CDATA);
   }
 
   /**
