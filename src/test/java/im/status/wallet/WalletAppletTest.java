@@ -793,13 +793,13 @@ public class WalletAppletTest {
     byte[] hash = sha256(data);
 
     // Security condition violation: SecureChannel not open
-    ResponseAPDU response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    ResponseAPDU response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSW());
 
     cmdSet.autoOpenSecureChannel();
 
     // Security condition violation: PIN not verified
-    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true,true);
+    response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSW());
 
     response = cmdSet.verifyPIN("000000");
@@ -812,15 +812,12 @@ public class WalletAppletTest {
     response = cmdSet.loadKey(keyPair);
     assertEquals(0x9000, response.getSW());
 
-    // Wrong P2: no active signing session but first block bit not set
-    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,false, false);
-    assertEquals(0x6A86, response.getSW());
-
-    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,false, true);
-    assertEquals(0x6A86, response.getSW());
+    // Wrong Data length
+    response = cmdSet.sign(data);
+    assertEquals(0x6A80, response.getSW());
 
     // Correctly sign a precomputed hash
-    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    response = cmdSet.sign(hash);
     assertEquals(0x9000, response.getSW());
     byte[] sig = response.getData();
     byte[] keyData = extractPublicKeyFromSignature(sig);
@@ -869,15 +866,15 @@ public class WalletAppletTest {
 
     // Verify that only PINless path can be used without PIN
     resetAndSelectAndOpenSC();
-    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, WalletApplet.DERIVE_P1_SOURCE_CURRENT);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    response = cmdSet.sign(hash);
     assertEquals(0x9000, response.getSW());
 
     // Verify changing path
@@ -886,12 +883,12 @@ public class WalletAppletTest {
     response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01});
     assertEquals(0x9000, response.getSW());
     resetAndSelectAndOpenSC();
-    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSW());
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    response = cmdSet.sign(hash);
     assertEquals(0x9000, response.getSW());
 
     // Reset
@@ -900,7 +897,7 @@ public class WalletAppletTest {
     response = cmdSet.setPinlessPath(new byte[] {});
     assertEquals(0x9000, response.getSW());
     resetAndSelectAndOpenSC();
-    response = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSW());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x6985, response.getSW());
@@ -985,105 +982,6 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
     response = cmdSet.exportKey(WalletApplet.EXPORT_KEY_P1_HIGH, false);
     assertEquals(0x6985, response.getSW());
-  }
-
-  @Test
-  @DisplayName("SIGN data (unused for the current scenario)")
-  @Tag("manual")
-  void signDataTest() throws Exception {
-    Random r = new Random();
-    byte[] data = new byte[SecureChannelSession.PAYLOAD_MAX_SIZE];
-    byte[] smallData = Arrays.copyOf(data, 20);
-    r.nextBytes(data);
-
-    cmdSet.autoOpenSecureChannel();
-
-    ResponseAPDU response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSW());
-
-    KeyPair keyPair = keypairGenerator().generateKeyPair();
-    Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
-    signature.initVerify(keyPair.getPublic());
-
-    response = cmdSet.loadKey(keyPair);
-    assertEquals(0x9000, response.getSW());
-
-    // Wrong P2: no active signing session but first block bit not set
-    response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,false, false);
-    assertEquals(0x6A86, response.getSW());
-
-    response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,false, true);
-    assertEquals(0x6A86, response.getSW());
-
-    // Correctly sign 1 block (P2: 0x81)
-    response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,true, true);
-    assertEquals(0x9000, response.getSW());
-    byte[] sig = extractSignature(response.getData());
-    signature.update(smallData);
-    assertTrue(signature.verify(sig));
-
-    // Correctly sign 2 blocks (P2: 0x01, 0x81)
-    response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,true, false);
-    assertEquals(0x9000, response.getSW());
-    response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,false, true);
-    assertEquals(0x9000, response.getSW());
-    sig = extractSignature(response.getData());
-    signature.update(data);
-    signature.update(smallData);
-    assertTrue(signature.verify(sig));
-
-    // Correctly sign 3 blocks (P2: 0x01, 0x00, 0x80)
-    response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,true, false);
-    assertEquals(0x9000, response.getSW());
-    response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,false, false);
-    assertEquals(0x9000, response.getSW());
-    response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,false, true);
-    assertEquals(0x9000, response.getSW());
-    sig = extractSignature(response.getData());
-    signature.update(data);
-    signature.update(data);
-    signature.update(smallData);
-    assertTrue(signature.verify(sig));
-
-    // Re-start signing session by sending new first block
-    response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,true, false);
-    assertEquals(0x9000, response.getSW());
-    response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,true, true);
-    assertEquals(0x9000, response.getSW());
-    sig = extractSignature(response.getData());
-    signature.update(smallData);
-    assertTrue(signature.verify(sig));
-
-    // Abort signing session by loading new keys
-    response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,true, false);
-    assertEquals(0x9000, response.getSW());
-    keyPair = keypairGenerator().generateKeyPair();
-    signature.initVerify(keyPair.getPublic());
-    response = cmdSet.loadKey(keyPair);
-    assertEquals(0x9000, response.getSW());
-    response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,false, true);
-    assertEquals(0x6A86, response.getSW());
-
-    // Signing session is aborted on reselection
-    response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,true, false);
-    assertEquals(0x9000, response.getSW());
-    resetAndSelectAndOpenSC();
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSW());
-    response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,false, true);
-    assertEquals(0x6A86, response.getSW());
-
-    // Signing session can be resumed if other commands are sent
-    response = cmdSet.sign(data, WalletApplet.SIGN_P1_DATA,true, false);
-    assertEquals(0x9000, response.getSW());
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "000000");
-    assertEquals(0x9000, response.getSW());
-    response = cmdSet.sign(smallData, WalletApplet.SIGN_P1_DATA,false, true);
-    assertEquals(0x9000, response.getSW());
-    sig = extractSignature(response.getData());
-    signature.update(data);
-    signature.update(smallData);
-    assertTrue(signature.verify(sig));
   }
 
   @Test
@@ -1263,7 +1161,7 @@ public class WalletAppletTest {
     DeterministicKey key = deriveKey(keyPair, chainCode, path);
 
     byte[] hash = Hash.sha3(new byte[8]);
-    ResponseAPDU resp = cmdSet.sign(hash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH, true, true);
+    ResponseAPDU resp = cmdSet.sign(hash);
     assertEquals(0x9000, resp.getSW());
     byte[] sig = resp.getData();
     byte[] publicKey = extractPublicKeyFromSignature(sig);
@@ -1347,7 +1245,7 @@ public class WalletAppletTest {
   private Sign.SignatureData signMessage(byte[] message) throws Exception {
     byte[] messageHash = Hash.sha3(message);
 
-    ResponseAPDU response = cmdSet.sign(messageHash, WalletApplet.SIGN_P1_PRECOMPUTED_HASH,true, true);
+    ResponseAPDU response = cmdSet.sign(messageHash);
     assertEquals(0x9000, response.getSW());
     byte[] respData = response.getData();
     byte[] rawSig = extractSignature(respData);

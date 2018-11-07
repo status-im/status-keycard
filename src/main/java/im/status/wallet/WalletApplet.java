@@ -47,12 +47,6 @@ public class WalletApplet extends Applet {
   static final byte LOAD_KEY_P1_EXT_EC = 0x02;
   static final byte LOAD_KEY_P1_SEED = 0x03;
 
-  static final byte SIGN_P1_DATA = 0x00;
-  static final byte SIGN_P1_PRECOMPUTED_HASH = 0x01;
-
-  static final byte SIGN_P2_FIRST_BLOCK_MASK = 0x01;
-  static final byte SIGN_P2_LAST_BLOCK_MASK = (byte) 0x80;
-
   static final byte DERIVE_P1_SOURCE_MASTER = (byte) 0x00;
   static final byte DERIVE_P1_SOURCE_PARENT = (byte) 0x40;
   static final byte DERIVE_P1_SOURCE_CURRENT = (byte) 0x80;
@@ -110,7 +104,6 @@ public class WalletApplet extends Applet {
   private short pinlessPathLen;
 
   private Signature signature;
-  private boolean signInProgress;
 
   private byte[] keyUID;
 
@@ -278,11 +271,7 @@ public class WalletApplet extends Applet {
     } else if (apduBuffer[ISO7816.OFFSET_INS] == INS_INIT) {
       secureChannel.oneShotDecrypt(apduBuffer);
 
-      if (apduBuffer[ISO7816.OFFSET_LC] != (byte)(PIN_LENGTH + PUK_LENGTH + SecureChannel.SC_SECRET_LENGTH)) {
-        ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-      }
-
-      if (!allDigits(apduBuffer, ISO7816.OFFSET_CDATA, (short)(PIN_LENGTH + PUK_LENGTH))) {
+      if ((apduBuffer[ISO7816.OFFSET_LC] != (byte)(PIN_LENGTH + PUK_LENGTH + SecureChannel.SC_SECRET_LENGTH)) || !allDigits(apduBuffer, ISO7816.OFFSET_CDATA, (short)(PIN_LENGTH + PUK_LENGTH))) {
         ISOException.throwIt(ISO7816.SW_WRONG_DATA);
       }
 
@@ -329,7 +318,6 @@ public class WalletApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void selectApplet(APDU apdu) {
-    signInProgress = false;
     pin.reset();
     puk.reset();
     secureChannel.reset();
@@ -598,7 +586,6 @@ public class WalletApplet extends Applet {
    * manipulation has happened to be sure that the state is always consistent.
    */
   private void resetKeyStatus(boolean toParent) {
-    signInProgress = false;
     parentValid = false;
     keyPathLen = toParent ? (short) (keyPathLen - 4) : 0;
   }
@@ -742,8 +729,6 @@ public class WalletApplet extends Applet {
     if (isReset || fromParent) {
       resetKeys(fromParent, apduBuffer, chainEnd);
     }
-
-    signInProgress = false;
 
     for (short i = ISO7816.OFFSET_CDATA; i < chainEnd; i += 4) {
       JCSystem.beginTransaction();
@@ -902,7 +887,6 @@ public class WalletApplet extends Applet {
     pinlessPathLen = 0;
     parentValid = false;
     isExtended = false;
-    signInProgress = false;
     privateKey.clearKey();
     publicKey.clearKey();
     masterPrivate.clearKey();
@@ -960,40 +944,26 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    if ((apduBuffer[ISO7816.OFFSET_P2] & SIGN_P2_FIRST_BLOCK_MASK) == SIGN_P2_FIRST_BLOCK_MASK)  {
-      signInProgress = true;
-      signature.init(privateKey, Signature.MODE_SIGN);
-    } else if (!signInProgress) {
-      ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+    if (len != MessageDigest.LENGTH_SHA_256) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
-    if ((apduBuffer[ISO7816.OFFSET_P2] & SIGN_P2_LAST_BLOCK_MASK) == SIGN_P2_LAST_BLOCK_MASK) {
-      signInProgress = false;
+    signature.init(privateKey, Signature.MODE_SIGN);
 
-      apduBuffer[SecureChannel.SC_OUT_OFFSET] = TLV_SIGNATURE_TEMPLATE;
-      apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 3)] = TLV_PUB_KEY;
-      short outLen = apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 4)] = (byte) publicKey.getW(apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
+    apduBuffer[SecureChannel.SC_OUT_OFFSET] = TLV_SIGNATURE_TEMPLATE;
+    apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 3)] = TLV_PUB_KEY;
+    short outLen = apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 4)] = (byte) publicKey.getW(apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
 
-      outLen += 5;
-      short sigOff = (short) (SecureChannel.SC_OUT_OFFSET + outLen);
+    outLen += 5;
+    short sigOff = (short) (SecureChannel.SC_OUT_OFFSET + outLen);
 
-      if ((apduBuffer[ISO7816.OFFSET_P1]) == SIGN_P1_DATA) {
-        outLen += signature.sign(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, sigOff);
-      } else if ((apduBuffer[ISO7816.OFFSET_P1]) == SIGN_P1_PRECOMPUTED_HASH) {
-        outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, sigOff);
-      } else {
-        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
-      }
+    outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, sigOff);
+    outLen += crypto.fixS(apduBuffer, sigOff);
 
-      outLen += crypto.fixS(apduBuffer, sigOff);
+    apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) 0x81;
+    apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 2)] = (byte) (outLen - 3);
 
-      apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) 0x81;
-      apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 2)] = (byte) (outLen - 3);
-
-      secureChannel.respond(apdu, outLen, ISO7816.SW_NO_ERROR);
-    } else {
-      signature.update(apduBuffer, ISO7816.OFFSET_CDATA, len);
-    }
+    secureChannel.respond(apdu, outLen, ISO7816.SW_NO_ERROR);
   }
 
   /**

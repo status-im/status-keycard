@@ -394,21 +394,14 @@ public class WalletAppletCommandSet {
   }
 
   /**
-   * Sends a SIGN APDU. The dataType is P1 as defined in the applet. The isFirst and isLast arguments are used to form
-   * the P2 parameter. The data is the data to sign, or part of it. Only when sending the last block a signature is
-   * generated and thus returned. When signing a precomputed hash it must be done in a single block, so isFirst and
-   * isLast will always be true at the same time.
+   * Sends a SIGN APDU. This signs a precomputed hash so the input must be exactly 32-bytes long.
    *
    * @param data the data to sign
-   * @param dataType the P1 parameter
-   * @param isFirst whether this is the first block of the command or not
-   * @param isLast whether this is the last block of the command or not
    * @return the raw card response
    * @throws CardException communication error
    */
-  public ResponseAPDU sign(byte[] data, byte dataType, boolean isFirst, boolean isLast) throws CardException {
-    byte p2 = (byte) ((isFirst ? 0x01 : 0x00) | (isLast ? 0x80 : 0x00));
-    CommandAPDU sign = secureChannel.protectedCommand(0x80, WalletApplet.INS_SIGN, dataType, p2, data);
+  public ResponseAPDU sign(byte[] data) throws CardException {
+    CommandAPDU sign = secureChannel.protectedCommand(0x80, WalletApplet.INS_SIGN, 0x00, 0x00, data);
     return secureChannel.transmit(apduChannel, sign);
   }
 
