@@ -18,6 +18,7 @@ public class WalletApplet extends Applet {
   static final byte INS_DERIVE_KEY = (byte) 0xD1;
   static final byte INS_GENERATE_MNEMONIC = (byte) 0xD2;
   static final byte INS_REMOVE_KEY = (byte) 0xD3;
+  static final byte INS_GENERATE_KEY = (byte) 0xD4;
   static final byte INS_SIGN = (byte) 0xC0;
   static final byte INS_SET_PINLESS_PATH = (byte) 0xC1;
   static final byte INS_EXPORT_KEY = (byte) 0xC2;
@@ -241,6 +242,9 @@ public class WalletApplet extends Applet {
           break;
         case INS_REMOVE_KEY:
           removeKey(apdu);
+          break;
+        case INS_GENERATE_KEY:
+          generateKey(apdu);
           break;
         case INS_SIGN:
           sign(apdu);
@@ -590,6 +594,16 @@ public class WalletApplet extends Applet {
         break;
     }
 
+    generateKeyUIDAndRespond(apdu, apduBuffer);
+  }
+
+  /**
+   * Generates the Key UID from the current master public key and responds to the command.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   * @param apduBuffer the APDU buffer
+   */
+  private void generateKeyUIDAndRespond(APDU apdu, byte[] apduBuffer) {
     short pubLen = masterPublic.getW(apduBuffer, (short) 0);
     crypto.sha256.doFinal(apduBuffer, (short) 0, pubLen, keyUID, (short) 0);
     Util.arrayCopyNonAtomic(keyUID, (short) 0, apduBuffer, SecureChannel.SC_OUT_OFFSET, KEY_UID_LENGTH);
@@ -937,6 +951,12 @@ public class WalletApplet extends Applet {
     return (short) ((short)((short) 0x4000 >>> (short) (amount - 1)) | tmp);
   }
 
+  /**
+   * Processes the REMOVE KEY command. Removes the master key and all derived keys. Secure Channel and PIN
+   * authentication are required.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
   private void removeKey(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
     secureChannel.preprocessAPDU(apduBuffer);
@@ -963,6 +983,26 @@ public class WalletApplet extends Applet {
     Util.arrayFillNonAtomic(masterChainCode, (short) 0, (short) masterChainCode.length, (byte) 0);
     Util.arrayFillNonAtomic(keyPath, (short) 0, (short) keyPath.length, (byte) 0);
     Util.arrayFillNonAtomic(pinlessPath, (short) 0, (short) pinlessPath.length, (byte) 0);
+  }
+
+  /**
+   * Processes the GENERATE KEY command. Requires an open Secure Channel and PIN authentication. The generated keys are
+   * extended and can be used with key derivation. They are not however generated according to BIP39, which means they
+   * do not have a mnemonic associated.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
+  private void generateKey(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    secureChannel.preprocessAPDU(apduBuffer);
+
+    if (!pin.isValidated()) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    crypto.random.generateData(apduBuffer, (short) 0, BIP39_SEED_SIZE);
+    loadSeed(apduBuffer);
+    generateKeyUIDAndRespond(apdu, apduBuffer);
   }
 
   /**
