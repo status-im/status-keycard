@@ -17,14 +17,6 @@ public class NDEFApplet extends Applet {
 
   private static final short NDEF_READ_SIZE = (short) 0xff;
 
-  private static final byte[] NDEF_DATA_FILE = {
-      (byte) 0x00, (byte) 0x24, (byte) 0xd4, (byte) 0x0f, (byte) 0x12, (byte) 0x61, (byte) 0x6e, (byte) 0x64,
-      (byte) 0x72, (byte) 0x6f, (byte) 0x69, (byte) 0x64, (byte) 0x2e, (byte) 0x63, (byte) 0x6f, (byte) 0x6d,
-      (byte) 0x3a, (byte) 0x70, (byte) 0x6b, (byte) 0x67, (byte) 0x69, (byte) 0x6d, (byte) 0x2e, (byte) 0x73,
-      (byte) 0x74, (byte) 0x61, (byte) 0x74, (byte) 0x75, (byte) 0x73, (byte) 0x2e, (byte) 0x65, (byte) 0x74,
-      (byte) 0x68, (byte) 0x65, (byte) 0x72, (byte) 0x65, (byte) 0x75, (byte) 0x6d
-  };
-
   private static final byte[] NDEF_CAPS_FILE = {
       (byte) 0x00, (byte) 0x0f, (byte) 0x20, (byte) 0x00, (byte) 0xff, (byte) 0x00, (byte) 0x01, (byte) 0x04,
       (byte) 0x06, (byte) 0xe1, (byte) 0x04, (byte) 0x04, (byte) 0x00, (byte) 0x00, (byte) 0xff
@@ -112,14 +104,17 @@ public class NDEFApplet extends Applet {
   private void processReadBinary(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
 
-    byte[] output;
+    byte[] data;
+    short dataLen;
 
     switch(selectedFile) {
       case FILEID_NDEF_CAPS:
-        output = NDEF_CAPS_FILE;
+        data = NDEF_CAPS_FILE;
+        dataLen = (short) NDEF_CAPS_FILE.length;
         break;
       case FILEID_NDEF_DATA:
-        output = NDEF_DATA_FILE;
+        data = SharedMemory.ndefDataFile;
+        dataLen = (short) (Util.makeShort(data[0], data[1]) + 2);
         break;
       default:
         ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
@@ -128,7 +123,7 @@ public class NDEFApplet extends Applet {
 
     short offset = Util.getShort(apduBuffer, ISO7816.OFFSET_P1);
 
-    if (offset < 0 || offset >= (short) output.length) {
+    if (offset < 0 || offset >= dataLen) {
       ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
     }
 
@@ -137,11 +132,11 @@ public class NDEFApplet extends Applet {
       le = NDEF_READ_SIZE;
     }
 
-    if((short)(offset + le) >= (short) output.length) {
-      le = (short)(((short) output.length) - offset);
+    if((short)(offset + le) >= dataLen) {
+      le = (short)(dataLen - offset);
     }
 
     apdu.setOutgoingLength(le);
-    apdu.sendBytesLong(output, offset, le);
+    apdu.sendBytesLong(data, offset, le);
   }
 }

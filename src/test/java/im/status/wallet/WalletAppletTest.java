@@ -352,6 +352,40 @@ public class WalletAppletTest {
   }
 
   @Test
+  @DisplayName("SET NDEF command")
+  void setNDEFTest() throws CardException {
+    byte[] ndefData = {
+        (byte) 0x00, (byte) 0x24, (byte) 0xd4, (byte) 0x0f, (byte) 0x12, (byte) 0x61, (byte) 0x6e, (byte) 0x64,
+        (byte) 0x72, (byte) 0x6f, (byte) 0x69, (byte) 0x64, (byte) 0x2e, (byte) 0x63, (byte) 0x6f, (byte) 0x6d,
+        (byte) 0x3a, (byte) 0x70, (byte) 0x6b, (byte) 0x67, (byte) 0x69, (byte) 0x6d, (byte) 0x2e, (byte) 0x73,
+        (byte) 0x74, (byte) 0x61, (byte) 0x74, (byte) 0x75, (byte) 0x73, (byte) 0x2e, (byte) 0x65, (byte) 0x74,
+        (byte) 0x68, (byte) 0x65, (byte) 0x72, (byte) 0x65, (byte) 0x75, (byte) 0x6d
+    };
+
+    // Security condition violation: SecureChannel not open
+    ResponseAPDU response = cmdSet.setNDEF(ndefData);
+    assertEquals(0x6985, response.getSW());
+
+    cmdSet.autoOpenSecureChannel();
+
+    // Security condition violation: PIN not verified
+    response = cmdSet.setNDEF(ndefData);
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    // Good case.
+    response = cmdSet.setNDEF(ndefData);
+    assertEquals(0x9000, response.getSW());
+
+    // Wrong length
+    ndefData[1]++;
+    response = cmdSet.setNDEF(ndefData);
+    assertEquals(0x6A80, response.getSW());
+  }
+
+  @Test
   @DisplayName("VERIFY PIN command")
   void verifyPinTest() throws CardException {
     // Security condition violation: SecureChannel not open

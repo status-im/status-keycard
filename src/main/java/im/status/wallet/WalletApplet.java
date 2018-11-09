@@ -9,8 +9,9 @@ import javacard.security.*;
 public class WalletApplet extends Applet {
   static final short APPLICATION_VERSION = (short) 0x0200;
 
-  static final byte INS_INIT = (byte) 0xFE;
   static final byte INS_GET_STATUS = (byte) 0xF2;
+  static final byte INS_SET_NDEF = (byte) 0xF3;
+  static final byte INS_INIT = (byte) 0xFE;
   static final byte INS_VERIFY_PIN = (byte) 0x20;
   static final byte INS_CHANGE_PIN = (byte) 0x21;
   static final byte INS_UNBLOCK_PIN = (byte) 0x22;
@@ -205,6 +206,9 @@ public class WalletApplet extends Applet {
         case INS_GET_STATUS:
           getStatus(apdu);
           break;
+        case INS_SET_NDEF:
+          setNDEF(apdu);
+          break;
         case INS_VERIFY_PIN:
           verifyPIN(apdu);
           break;
@@ -374,6 +378,31 @@ public class WalletApplet extends Applet {
     }
 
     secureChannel.respond(apdu, len, ISO7816.SW_NO_ERROR);
+  }
+
+  /**
+   * Sets the content of the NDEF data file returned by the NDEF applet. Requires a secure channel to be already open
+   * and the PIN to be verified.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
+  private void setNDEF(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    secureChannel.preprocessAPDU(apduBuffer);
+
+    if (!pin.isValidated()) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    short dataLen = Util.makeShort((byte) 0x00, apduBuffer[ISO7816.OFFSET_LC]);
+
+    if (Util.makeShort(apduBuffer[ISO7816.OFFSET_CDATA], apduBuffer[(short)(ISO7816.OFFSET_CDATA + 1)]) != (short)(dataLen - 2)) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    JCSystem.beginTransaction();
+    Util.arrayCopy(apduBuffer, ISO7816.OFFSET_CDATA, SharedMemory.ndefDataFile, (short) 0, dataLen);
+    JCSystem.commitTransaction();
   }
 
   /**
