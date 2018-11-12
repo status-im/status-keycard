@@ -23,12 +23,12 @@ public class SecureChannel {
   public static final byte PAIR_P1_FIRST_STEP = 0x00;
   public static final byte PAIR_P1_LAST_STEP = 0x01;
 
-  public static final short MAX_MAC_APDU_SIZE = (short) 256;
+  // This is the maximum length acceptable for plaintext commands/responses for APDUs in short format
+  public static final short SC_MAX_PLAIN_LENGTH = (short) 223;
 
   private AESKey scEncKey;
   private AESKey scMacKey;
   private Cipher scCipher;
-  private Cipher scMacCipher;
   private Signature scMac;
   private KeyPair scKeypair;
   private byte[] secret;

@@ -128,6 +128,18 @@ public class WalletAppletCommandSet {
   }
 
   /**
+   * Sends a SET NDEF APDU.
+   *
+   * @param ndef the data field of the APDU
+   * @return the raw card response
+   * @throws CardException communication error
+   */
+  public ResponseAPDU setNDEF(byte[] ndef) throws CardException {
+    CommandAPDU setNDEF = secureChannel.protectedCommand(0x80, WalletApplet.INS_SET_NDEF, 0, 0, ndef);
+    return secureChannel.transmit(apduChannel, setNDEF);
+  }
+
+  /**
    * Sends a GET STATUS APDU to retrieve the APPLICATION STATUS template and reads the byte indicating key initialization
    * status
    *
