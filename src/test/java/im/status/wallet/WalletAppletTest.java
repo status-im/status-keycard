@@ -3,6 +3,7 @@ package im.status.wallet;
 import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.smartcardio.CardTerminalSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
+import im.status.hardwallet.lite.WalletAppletCommandSet;
 import javacard.framework.AID;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.crypto.ChildNumber;
@@ -49,8 +50,8 @@ public class WalletAppletTest {
   private static CardChannel apduChannel;
   private static CardSimulator simulator;
 
-  private SecureChannelSession secureChannel;
-  private WalletAppletCommandSet cmdSet;
+  private TestSecureChannelSession secureChannel;
+  private TestWalletAppletCommandSet cmdSet;
 
   private static final boolean USE_SIMULATOR;
 
@@ -88,18 +89,16 @@ public class WalletAppletTest {
     WalletAppletCommandSet cmdSet = new WalletAppletCommandSet(apduChannel);
     byte[] data = cmdSet.select().getData();
     if (data[0] == WalletApplet.TLV_APPLICATION_INFO_TEMPLATE) return;
-
-    SecureChannelSession secureChannel = new SecureChannelSession(Arrays.copyOfRange(data, 2, data.length));
-    cmdSet.setSecureChannel(secureChannel);
     assertEquals(0x9000, cmdSet.init("000000", "123456789012", SHARED_SECRET).getSW());
   }
 
   @BeforeEach
   void init() throws CardException {
     reset();
-    cmdSet = new WalletAppletCommandSet(apduChannel);
-    byte[] keyData = extractPublicKeyFromSelect(cmdSet.select().getData());
-    secureChannel = new SecureChannelSession(keyData);
+    cmdSet = new TestWalletAppletCommandSet(apduChannel);
+    secureChannel = new TestSecureChannelSession();
+    cmdSet.setSecureChannel(secureChannel);
+    WalletAppletCommandSet.checkOK(cmdSet.select());
     cmdSet.setSecureChannel(secureChannel);
     cmdSet.autoPair(SHARED_SECRET);
   }
