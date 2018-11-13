@@ -47,6 +47,14 @@ public class NDEFApplet extends Applet {
    * @param bLength length of the installation parameters
    */
   public NDEFApplet(byte[] bArray, short bOffset, byte bLength) {
+    short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
+    c9Off += (short)(bArray[c9Off] + 1); // Skip Privileges and parameter length
+
+    short dataLen = Util.makeShort((byte) 0x00, bArray[c9Off++]);
+    if ((dataLen > 2) && ((short)(dataLen - 2) == Util.makeShort(bArray[c9Off], bArray[(short)(c9Off + 1)]))) {
+      Util.arrayCopyNonAtomic(bArray, c9Off, SharedMemory.ndefDataFile, (short) 0, dataLen);
+    }
+
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
 
