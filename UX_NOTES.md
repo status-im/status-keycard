@@ -10,12 +10,13 @@ card does not have any user input or output devices, all input and output happen
 device needs a card reader to interface with the card.
 
 Each card will have a uniquely generated 12-digits PUK code (used to unblock the PIN) and a unique pairing code. The
-format of the pairing code must be decided, it can be anything since in the end it will be converted to a 256-bit secret.
-These codes cannot be changed.
+pairing code is a password which must be converted to a 256-bit secret as defined in [CLIENT_NOTES.md](CLIENT_NOTES.md).
 
-The initial PIN of the card is "000000" and can be changed by the user. The length is always 6 digits. The user has 3
-attempts to insert the correct PIN, after which it is blocked. The PIN can be reset by using the PUK. The user has 5
-attempts to insert the correct PUK.
+The initial PIN of the card can be set to "000000" or can be chosen by the user. The length is always 6 digits. The user
+has 3 attempts to insert the correct PIN, after which it is blocked. The PIN can be reset by using the PUK. The user has 
+5 attempts to insert the correct PUK.
+
+PIN, PUK and pairing password can be changed at any time by the user, after authenticating with the current PIN.
 
 ## Application selection
 
@@ -45,8 +46,13 @@ two options that make sense are "Unpair this device" and "Unpair all others".
 
 ## Initialization
 
-When the card is delivered, it does not contain any key so it is not able to operate properly. The PIN is set to a default
-one as well and must be changed. The GET STATUS command can be used to determine if the card is ready to be used or not.
+When the card is delivered, it does not contain any secret so it is not able to operate properly. In this state only the
+INIT command will work, which allows setting the initial PIN, PUK and pairing password using a temporary secure channel.
+
+After this first initialization, a master key must be stored on the card. It can be recovered from a mnemonic phrase,
+generated ex-novo using BIP39 or internally on the card.
+
+The GET STATUS command can be used to determine if the card is ready to be used for signing or not.
 
 The card is able to generate the mnemonic phrase internally and send it to the client as a sequence of 16-bit numbers which
 are the indexes in the word dictionary. The actual key generation must happen off-card however, because the applet does not
@@ -90,5 +96,5 @@ if the needed wallet is selected already. The selected wallet is also retained a
 
 ## Exporting keys
 
-Exporting the private key is not allowed, except if the selected wallet is m/1/1 (Whisper key). This step requires PIN
-authorization.
+Exporting the private key is not allowed, except for specific key paths. This step requires PIN authorization. Public
+keys can be exported for any path.

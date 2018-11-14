@@ -38,7 +38,8 @@ generation on establishment of a Secure Channel. The client must permanently sto
 the secret generated during pairing and the index which the card assigned to this client. Said index must be provided 
 when opening a Secure Channel so that the card knows with which client it is speaking. Since the pairing secret is 
 sensitive data, it should be stored as securely as possible, eventually with password protection. Losing this secret 
-allows an attacker to pose either as the client to the card or as the card to the client.
+allows an attacker to pose either as the client to the card or as the card to the client. It does not allow however
+decrypting older communication and perform passive attacks.
 
 Note that the card can only pair with a limited number of clients (currently 5). Unpairing allows to replace old clients
 with new ones.
@@ -73,8 +74,8 @@ session.
 ## Wallet features and workflow
 
 Now that the client can finally talk with the applet and provide user authentication facilities, it is time to look on
-how to actually use the wallet. The wallet applet allows management of a single HD wallet as described in the [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) 
-specifications. It provides the following features
+how to actually use the wallet. The wallet applet allows management of a single HD wallet as described in the 
+[BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) specifications. It provides the following features
 
 1. Source of entropy to generate master seeds (GENERATE MNEMONIC). No PIN required (has no effect on card state).
 2. Loading of master key (LOAD KEY). PIN required. The same command can be used to replace the loaded master key.
@@ -84,8 +85,7 @@ specifications. It provides the following features
    transaction is signed and must be generate off-card. The actual transaction data are not sent to the card.
 5. Setting/Unsetting a PIN-less path (SET PINLESS PATH). PIN required. It allows disabling PIN authentication for a 
    specific key path.
-6. Exporting keys (EXPORT KEY). PIN required. Currently this is only allowed if the current key path is that of the
-   Whisper key (m/1/1)
+6. Exporting keys (EXPORT KEY). PIN required. Exporting the private key is only allowed for specific keys.
 
 Additionally the GET STATUS command (no PIN required) allows retrieving information about the card status and the
 current key path.
@@ -116,9 +116,9 @@ that setting the PIN-less key path does not automatically set the current key pa
 to use DERIVE KEY to get there. Only when the current key path matches the PIN-less one the SIGN command will not require
 PIN authentication. The master key can never be used without PIN.
 
-Finally, some keys can be exported (after PIN authentication). At the moment only the Whisper key (m/1/1) can be
-exported. The EXPORT KEY command does not automatically do key derivation. This means that you must use DERIVE KEY first
-so that the current key path matches m/1/1 and only then will the EXPORT KEY command work.
+Finally, some keys can be exported (after PIN authentication). The public key can be exported for any key, while the
+private one only for specific keys. The EXPORT KEY command does not automatically do key derivation. This means that you 
+must use DERIVE KEY before exporting the desired key.
 
 ## Additional notes
 
@@ -127,18 +127,14 @@ so that the current key path matches m/1/1 and only then will the EXPORT KEY com
    Keccak-256 (which is not available) making it useless. This mode of operation has been implemented before the current
    one with precomputed hashes. It remains because if we get hold of a hardware platform implementing Keccak-256, or we
    decide to implement it in software, we might want to operate this way.
-2. The DERIVE KEY command on the current hardware platform can only be used in "assisted key derivation" mode, because
-   it does not have support of the KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY algorithm. Assisted key derivation is indeed a
-   workaround which should be removed if we find a suitable hardware platform (currently there is no JavaCard 3.0.5 
-   implementation that can be easily found on the low-volumes market)
-3. Communication has less overhead when using the T=1 protocol. However the card/reader/os combination I have seems to 
+2. Communication has less overhead when using the T=1 protocol. However the card/reader/os combination I have seems to 
    only work with T=0 (although all claim to support T=1). Contactless readers always emulate T=1 when operated through
    the PC/SC interface.
-4. You can refer to the tests for examples of communication with the card. The manual-only signTransactionTest test in
+3. You can refer to the tests for examples of communication with the card. The manual-only signTransactionTest test in
    particular generates a real transaction, signs it and submits it to the network.
-5. If you test your client against our fork of jCardSim instead of a real card, keep in mind that it supports unassisted 
+4. If you test your client against our fork of jCardSim instead of a real card, keep in mind that it supports unassisted 
    key derivation, but you shouldn't use it because, as explained above, it wouldn't work on the card.
-6. If using jCardSim, only use our fork, since some of the needed algorithms are unsupported in the upstream version.
-7. The pairing code is a randomly generated password (using whatever password generation algorithm is desired). This
+5. If using jCardSim, only use our fork, since some of the needed algorithms are unsupported in the upstream version.
+6. The pairing code is a randomly generated password (using whatever password generation algorithm is desired). This
 password must be converted to a 256-bit key using PBKDF2 with the salt "Status Hardware Wallet Lite" and 50000 iterations.
 
