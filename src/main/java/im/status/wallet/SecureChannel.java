@@ -88,12 +88,10 @@ public class SecureChannel {
   }
 
   /**
-   * Decrypts the content of the APDU by generating an AES key using EC-DH. Only usable in pre-initialization state.
+   * Decrypts the content of the APDU by generating an AES key using EC-DH. Usable only with specific commands.
    * @param apduBuffer the APDU buffer
    */
   public void oneShotDecrypt(byte[] apduBuffer) {
-    if (pairingSecret != null) return;
-
     crypto.ecdh.init(scKeypair.getPrivate());
 
     short off = (short)(ISO7816.OFFSET_CDATA + 1);

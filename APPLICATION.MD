@@ -362,8 +362,8 @@ Returns the encrypted duplicate of the master key and terminates the duplication
 
 #### IMPORT DUPLICATE
 This command must be sent to all the cards which are a target for duplication. The Data field must contain the output
-from the EXPORT DUPLICATE command performed on the source card. Returns no data. It follows exactly the same rules as
-the EXPORT DUPLICATE subcommand
+from the EXPORT DUPLICATE command performed on the source card. Returns the key UID. It follows exactly the same rules 
+as the EXPORT DUPLICATE subcommand.
 
 ### SIGN
 

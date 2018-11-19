@@ -20,6 +20,7 @@ public class WalletApplet extends Applet {
   static final byte INS_GENERATE_MNEMONIC = (byte) 0xD2;
   static final byte INS_REMOVE_KEY = (byte) 0xD3;
   static final byte INS_GENERATE_KEY = (byte) 0xD4;
+  static final byte INS_DUPLICATE_KEY = (byte) 0xD5;
   static final byte INS_SIGN = (byte) 0xC0;
   static final byte INS_SET_PINLESS_PATH = (byte) 0xC1;
   static final byte INS_EXPORT_KEY = (byte) 0xC2;
@@ -55,6 +56,11 @@ public class WalletApplet extends Applet {
   static final byte GENERATE_MNEMONIC_P1_CS_MIN = 4;
   static final byte GENERATE_MNEMONIC_P1_CS_MAX = 8;
   static final byte GENERATE_MNEMONIC_TMP_OFF = SecureChannel.SC_OUT_OFFSET + ((((GENERATE_MNEMONIC_P1_CS_MAX * 32) + GENERATE_MNEMONIC_P1_CS_MAX) / 11) * 2);
+
+  static final byte DUPLICATE_KEY_P1_START = 0x00;
+  static final byte DUPLICATE_KEY_P1_ADD_ENTROPY = 0x01;
+  static final byte DUPLICATE_KEY_P1_EXPORT = 0x02;
+  static final byte DUPLICATE_KEY_P1_IMPORT = 0x03;
 
   static final byte EXPORT_KEY_P1_ANY = 0x00;
   static final byte EXPORT_KEY_P1_HIGH = 0x01;
@@ -111,6 +117,9 @@ public class WalletApplet extends Applet {
   private Crypto crypto;
   private SECP256k1 secp256k1;
 
+  private byte[] duplicationEncKey;
+  private short expectedEntropy;
+
   /**
    * Invoked during applet installation. Creates an instance of this class. The installation parameters are passed in
    * the given buffer.
@@ -162,6 +171,9 @@ public class WalletApplet extends Applet {
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
     secureChannel = new SecureChannel(PAIRING_MAX_CLIENT_COUNT, crypto, secp256k1);
+
+    duplicationEncKey = new byte[(short)(KeyBuilder.LENGTH_AES_128/8)];
+    expectedEntropy = -1;
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
@@ -233,6 +245,8 @@ public class WalletApplet extends Applet {
         case INS_GENERATE_KEY:
           generateKey(apdu);
           break;
+        case INS_DUPLICATE_KEY:
+          duplicateKey(apdu);
         case INS_SIGN:
           sign(apdu);
           break;
@@ -620,9 +634,9 @@ public class WalletApplet extends Applet {
   }
 
   /**
-   * Called internally by the loadKey method to load a key in the TLV format. The presence of the public key is optional
-   * if public key derivation is supported on card, otherwise it is mandatory. The presence of a chain code is indicated
-   * explicitly through the newExtended argument (which is set depending on the P1 parameter of the command).
+   * Called internally by the loadKey method to load a key in the TLV format. The presence of the public key is optional.
+   * The presence of a chain code is indicated explicitly through the newExtended argument (which is set depending on
+   * the P1 parameter of the command).
    *
    * @param apduBuffer the APDU buffer
    * @param newExtended whether the key to load contains a chain code or not
@@ -950,6 +964,90 @@ public class WalletApplet extends Applet {
 
     loadSeed(apduBuffer);
     generateKeyUIDAndRespond(apdu, apduBuffer);
+  }
+
+  /**
+   * Processes the DUPLICATE KEY command. The actual processing depends on the subcommand.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
+  private void duplicateKey(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+
+    if (apduBuffer[ISO7816.OFFSET_P1] == DUPLICATE_KEY_P1_ADD_ENTROPY) {
+      if (expectedEntropy <= 0) {
+        ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+      }
+
+      secureChannel.oneShotDecrypt(apduBuffer);
+      addEntropy(apduBuffer);
+      return;
+    } else {
+      secureChannel.preprocessAPDU(apduBuffer);
+
+      if (!pin.isValidated()) {
+        ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+      }
+    }
+
+    switch(apduBuffer[ISO7816.OFFSET_P1]) {
+      case DUPLICATE_KEY_P1_START:
+        startDuplication(apduBuffer);
+        break;
+      case DUPLICATE_KEY_P1_EXPORT:
+        short len = exportDuplicate(apduBuffer);
+        secureChannel.respond(apdu, len, ISO7816.SW_NO_ERROR);
+        break;
+      case DUPLICATE_KEY_P1_IMPORT:
+        importDuplicate(apduBuffer);
+        generateKeyUIDAndRespond(apdu, apduBuffer);
+        break;
+      default:
+        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        break;
+    }
+  }
+
+  private void startDuplication(byte[] apduBuffer) {
+    if (apduBuffer[ISO7816.OFFSET_LC] != (short) duplicationEncKey.length) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    JCSystem.beginTransaction();
+    Util.arrayCopy(apduBuffer, ISO7816.OFFSET_CDATA, duplicationEncKey, (short) 0, (short) duplicationEncKey.length);
+    expectedEntropy = (short) (apduBuffer[ISO7816.OFFSET_P2] - 1);
+    JCSystem.commitTransaction();
+  }
+
+  private void addEntropy(byte[] apduBuffer) {
+    if (apduBuffer[ISO7816.OFFSET_LC] != (short) duplicationEncKey.length) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    JCSystem.beginTransaction();
+    for (short i = 0; i < (short) duplicationEncKey.length; i++) {
+      duplicationEncKey[i] ^= apduBuffer[(short) (ISO7816.OFFSET_CDATA + i)];
+    }
+
+    expectedEntropy--;
+    JCSystem.commitTransaction();
+  }
+
+  private void finalizeDuplicationKey() {
+    if (expectedEntropy != 0) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    expectedEntropy = -1;
+  }
+
+  private short exportDuplicate(byte[] apduBuffer) {
+    finalizeDuplicationKey();
+    return 0;
+  }
+
+  private void importDuplicate(byte[] apduBuffer) {
+    finalizeDuplicationKey();
   }
 
   /**
