@@ -3,12 +3,15 @@ package im.status.wallet;
 import javacard.framework.JCSystem;
 import javacard.framework.Util;
 import javacard.security.*;
+import javacardx.crypto.Cipher;
 
 /**
  * Crypto utilities, mostly BIP32 related. The init method must be called during application installation. This class
  * is not meant to be instantiated.
  */
 public class Crypto {
+  final static public short AES_BLOCK_SIZE = 16;
+
   final static private short KEY_SECRET_SIZE = 32;
   final static private short KEY_DERIVATION_INPUT_SIZE = 37;
   final static private short HMAC_OUT_SIZE = 64;
@@ -23,14 +26,17 @@ public class Crypto {
 
   final static private byte[] KEY_BITCOIN_SEED = {'B', 'i', 't', 'c', 'o', 'i', 'n', ' ', 's', 'e', 'e', 'd'};
 
-  // The below 4 objects can be accessed anywhere from the entire applet
+  // The below 5 objects can be accessed anywhere from the entire applet
   RandomData random;
   KeyAgreement ecdh;
   MessageDigest sha256;
   MessageDigest sha512;
+  Cipher aesCbcIso9797m2;
 
   private Signature hmacSHA512;
   private HMACKey hmacKey;
+
+  private AESKey tmpAES256;
 
   private byte[] tmp;
 
@@ -39,6 +45,9 @@ public class Crypto {
     sha256 = MessageDigest.getInstance(MessageDigest.ALG_SHA_256, false);
     ecdh = KeyAgreement.getInstance(KeyAgreement.ALG_EC_SVDP_DH_PLAIN, false);
     sha512 = MessageDigest.getInstance(MessageDigest.ALG_SHA_512, false);
+    aesCbcIso9797m2 = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
+
+    tmpAES256 = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
 
     short blockSize;
 
@@ -52,6 +61,12 @@ public class Crypto {
     }
 
     tmp = JCSystem.makeTransientByteArray((short) (HMAC_BLOCK_OFFSET + blockSize), JCSystem.CLEAR_ON_RESET);
+  }
+
+  public short oneShotAES(byte mode, byte[] src, short sOff, short sLen, byte[] dst, short dOff, byte[] key, short keyOff) {
+    tmpAES256.setKey(key, keyOff);
+    aesCbcIso9797m2.init(tmpAES256, mode, src, sOff, AES_BLOCK_SIZE);
+    return aesCbcIso9797m2.doFinal(src, (short) (sOff + AES_BLOCK_SIZE), sLen, dst, dOff);
   }
 
   /**

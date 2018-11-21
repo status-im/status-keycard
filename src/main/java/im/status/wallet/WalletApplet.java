@@ -2,6 +2,7 @@ package im.status.wallet;
 
 import javacard.framework.*;
 import javacard.security.*;
+import javacardx.crypto.Cipher;
 
 /**
  * The applet's main class. All incoming commands a processed by this class.
@@ -592,13 +593,10 @@ public class WalletApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    boolean newExtended = false;
-
     switch (apduBuffer[ISO7816.OFFSET_P1])  {
-      case LOAD_KEY_P1_EXT_EC:
-        newExtended = true;
       case LOAD_KEY_P1_EC:
-        loadKeyPair(apduBuffer, newExtended);
+      case LOAD_KEY_P1_EXT_EC:
+        loadKeyPair(apduBuffer);
         break;
       case LOAD_KEY_P1_SEED:
         loadSeed(apduBuffer);
@@ -635,13 +633,11 @@ public class WalletApplet extends Applet {
 
   /**
    * Called internally by the loadKey method to load a key in the TLV format. The presence of the public key is optional.
-   * The presence of a chain code is indicated explicitly through the newExtended argument (which is set depending on
-   * the P1 parameter of the command).
+   * The presence of the chain code determines whether the key is extended or not.
    *
    * @param apduBuffer the APDU buffer
-   * @param newExtended whether the key to load contains a chain code or not
    */
-  private void loadKeyPair(byte[] apduBuffer, boolean newExtended) {
+  private void loadKeyPair(byte[] apduBuffer) {
     short pubOffset = (short)(ISO7816.OFFSET_CDATA + (apduBuffer[(short) (ISO7816.OFFSET_CDATA + 1)] == (byte) 0x81 ? 3 : 2));
     short privOffset = (short)(pubOffset + apduBuffer[(short)(pubOffset + 1)] + 2);
     short chainOffset = (short)(privOffset + apduBuffer[(short)(privOffset + 1)] + 2);
@@ -652,14 +648,14 @@ public class WalletApplet extends Applet {
       pubOffset = -1;
     }
 
-    if (!((apduBuffer[ISO7816.OFFSET_CDATA] == TLV_KEY_TEMPLATE) && (apduBuffer[privOffset] == TLV_PRIV_KEY) && (!newExtended || apduBuffer[chainOffset] == TLV_CHAIN_CODE)))  {
+    if (!((apduBuffer[ISO7816.OFFSET_CDATA] == TLV_KEY_TEMPLATE) && (apduBuffer[privOffset] == TLV_PRIV_KEY)))  {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
     JCSystem.beginTransaction();
 
     try {
-      isExtended = newExtended;
+      isExtended = (apduBuffer[chainOffset] == TLV_CHAIN_CODE);
 
       masterPrivate.setS(apduBuffer, (short) (privOffset + 2), apduBuffer[(short) (privOffset + 1)]);
       privateKey.setS(apduBuffer, (short) (privOffset + 2), apduBuffer[(short) (privOffset + 1)]);
@@ -1043,19 +1039,40 @@ public class WalletApplet extends Applet {
 
   private short exportDuplicate(byte[] apduBuffer) {
     finalizeDuplicationKey();
-    return 0;
+    crypto.random.generateData(apduBuffer, SecureChannel.SC_OUT_OFFSET, Crypto.AES_BLOCK_SIZE);
+    short off = (short) (SecureChannel.SC_OUT_OFFSET + Crypto.AES_BLOCK_SIZE);
+    Util.arrayCopyNonAtomic(apduBuffer, SecureChannel.SC_OUT_OFFSET, apduBuffer, off, Crypto.AES_BLOCK_SIZE);
+    off += Crypto.AES_BLOCK_SIZE;
+
+    apduBuffer[off++] = TLV_KEY_TEMPLATE;
+    short keyTemplateLenOff = off++;
+
+    apduBuffer[off++] = TLV_PRIV_KEY;
+    apduBuffer[off] = (byte) masterPrivate.getS(apduBuffer, (short) (off + 1));
+    apduBuffer[keyTemplateLenOff] = (byte) (apduBuffer[off] + 2);
+    off += (short) (apduBuffer[off] + 1);
+
+    if (isExtended) {
+      apduBuffer[off++] = TLV_CHAIN_CODE;
+      apduBuffer[off++] = CHAIN_CODE_SIZE;
+      Util.arrayCopyNonAtomic(masterChainCode, (short) 0, apduBuffer, off, CHAIN_CODE_SIZE);
+      apduBuffer[keyTemplateLenOff] += (byte) (CHAIN_CODE_SIZE + 2);
+      off += CHAIN_CODE_SIZE;
+    }
+
+    return (short) (Crypto.AES_BLOCK_SIZE + crypto.oneShotAES(Cipher.MODE_ENCRYPT, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + Crypto.AES_BLOCK_SIZE), off, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + Crypto.AES_BLOCK_SIZE), duplicationEncKey, (short) 0));
   }
 
   private void importDuplicate(byte[] apduBuffer) {
     finalizeDuplicationKey();
+    short len = crypto.oneShotAES(Cipher.MODE_DECRYPT, apduBuffer, ISO7816.OFFSET_CDATA, (short) (apduBuffer[ISO7816.OFFSET_LC] & 0xff), apduBuffer, ISO7816.OFFSET_CDATA, duplicationEncKey, (short) 0);
+    apduBuffer[ISO7816.OFFSET_LC] = (byte) len;
+    loadKeyPair(apduBuffer);
   }
 
   /**
    * Processes the SIGN command. Requires a secure channel to open and either the PIN to be verified or the PIN-less key
-   * path to be the current key path. This command supports signing data using SHA-256 with possible segmentation over
-   * multiple APDUs as well as signing a precomputed 32-bytes hash. The latter option is the actual use case at the
-   * moment, since Ethereum signatures actually require Keccak-256 hashes, which are not supported by any version of
-   * JavaCard (including 3.0.5 which supports SHA-3 but not Keccak-256 which is slightly different). The signature is
+   * path to be the current key path. This command supports signing  a precomputed 32-bytes hash. The signature is
    * generated using the current keys, so if no keys are loaded the command does not work. The result of the execution
    * is not the plain signature, but a TLV object containing the public key which must be used to verify the signature
    * and the signature itself. The client should use this to calculate 'v' and format the signature according to the
