@@ -358,7 +358,9 @@ data must be sent to all the cards taking part in the duplication process.
 #### EXPORT DUPLICATE
 This command must be sent to the card which you wish to duplicate. Requires an open secure channel and authenticated
 PIN. Works only if a duplication session is active and ADD ENTROPY has been performed the required number of times.
-Returns the encrypted duplicate of the master key and terminates the duplication session for this card.
+Returns the encrypted duplicate of the master key and terminates the duplication session for this card. The format is
+exactly the same as the one defined in the LOAD KEY (TLV) command with omitted public key. It is however prepended by a 
+16-bytes IV and the entire TLV structure is encrypted.
 
 #### IMPORT DUPLICATE
 This command must be sent to all the cards which are a target for duplication. The Data field must contain the output
