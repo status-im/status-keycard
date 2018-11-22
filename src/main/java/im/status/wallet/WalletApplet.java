@@ -173,7 +173,7 @@ public class WalletApplet extends Applet {
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
     secureChannel = new SecureChannel(PAIRING_MAX_CLIENT_COUNT, crypto, secp256k1);
 
-    duplicationEncKey = new byte[(short)(KeyBuilder.LENGTH_AES_128/8)];
+    duplicationEncKey = new byte[(short)(KeyBuilder.LENGTH_AES_256/8)];
     expectedEntropy = -1;
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
@@ -248,6 +248,7 @@ public class WalletApplet extends Applet {
           break;
         case INS_DUPLICATE_KEY:
           duplicateKey(apdu);
+          break;
         case INS_SIGN:
           sign(apdu);
           break;
