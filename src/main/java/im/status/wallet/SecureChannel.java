@@ -11,7 +11,7 @@ public class SecureChannel {
   public static final short SC_KEY_LENGTH = 256;
   public static final short SC_SECRET_LENGTH = 32;
   public static final short PAIRING_KEY_LENGTH = SC_SECRET_LENGTH + 1;
-  public static final short SC_BLOCK_SIZE = 16;
+  public static final short SC_BLOCK_SIZE = Crypto.AES_BLOCK_SIZE;
   public static final short SC_OUT_OFFSET = ISO7816.OFFSET_CDATA + (SC_BLOCK_SIZE * 2);
   public static final short SC_COUNTER_MAX = 100;
 
@@ -28,7 +28,6 @@ public class SecureChannel {
 
   private AESKey scEncKey;
   private AESKey scMacKey;
-  private Cipher scCipher;
   private Signature scMac;
   private KeyPair scKeypair;
   private byte[] secret;
@@ -54,8 +53,6 @@ public class SecureChannel {
    */
   public SecureChannel(byte pairingLimit, Crypto crypto, SECP256k1 secp256k1) {
     this.crypto = crypto;
-
-    scCipher = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
 
     scMac = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
 
@@ -88,12 +85,10 @@ public class SecureChannel {
   }
 
   /**
-   * Decrypts the content of the APDU by generating an AES key using EC-DH. Only usable in pre-initialization state.
+   * Decrypts the content of the APDU by generating an AES key using EC-DH. Usable only with specific commands.
    * @param apduBuffer the APDU buffer
    */
   public void oneShotDecrypt(byte[] apduBuffer) {
-    if (pairingSecret != null) return;
-
     crypto.ecdh.init(scKeypair.getPrivate());
 
     short off = (short)(ISO7816.OFFSET_CDATA + 1);
@@ -106,10 +101,10 @@ public class SecureChannel {
     }
 
     scEncKey.setKey(secret, (short) 0);
-    scCipher.init(scEncKey, Cipher.MODE_DECRYPT, apduBuffer, off, SC_BLOCK_SIZE);
+    crypto.aesCbcIso9797m2.init(scEncKey, Cipher.MODE_DECRYPT, apduBuffer, off, SC_BLOCK_SIZE);
     off = (short)(off + SC_BLOCK_SIZE);
 
-    apduBuffer[ISO7816.OFFSET_LC] = (byte) scCipher.doFinal(apduBuffer, off, (short)((short)(apduBuffer[ISO7816.OFFSET_LC] & 0xff) - off + ISO7816.OFFSET_CDATA), apduBuffer, ISO7816.OFFSET_CDATA);
+    apduBuffer[ISO7816.OFFSET_LC] = (byte) crypto.aesCbcIso9797m2.doFinal(apduBuffer, off, (short)((short)(apduBuffer[ISO7816.OFFSET_LC] & 0xff) - off + ISO7816.OFFSET_CDATA), apduBuffer, ISO7816.OFFSET_CDATA);
   }
 
   /**
@@ -304,9 +299,9 @@ public class SecureChannel {
       ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
     }
 
-    scCipher.init(scEncKey, Cipher.MODE_DECRYPT, secret, (short) 0, SC_BLOCK_SIZE);
+    crypto.aesCbcIso9797m2.init(scEncKey, Cipher.MODE_DECRYPT, secret, (short) 0, SC_BLOCK_SIZE);
     Util.arrayCopyNonAtomic(apduBuffer, ISO7816.OFFSET_CDATA, secret, (short) 0, SC_BLOCK_SIZE);
-    short len = scCipher.doFinal(apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA);
+    short len = crypto.aesCbcIso9797m2.doFinal(apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE), (short) (apduLen - SC_BLOCK_SIZE), apduBuffer, ISO7816.OFFSET_CDATA);
 
     apduBuffer[ISO7816.OFFSET_LC] = (byte) len;
 
@@ -342,8 +337,8 @@ public class SecureChannel {
     Util.setShort(apduBuffer, (short) (SC_OUT_OFFSET + len), sw);
     len += 2;
 
-    scCipher.init(scEncKey, Cipher.MODE_ENCRYPT, secret, (short) 0, SC_BLOCK_SIZE);
-    len = scCipher.doFinal(apduBuffer, SC_OUT_OFFSET, len, apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE));
+    crypto.aesCbcIso9797m2.init(scEncKey, Cipher.MODE_ENCRYPT, secret, (short) 0, SC_BLOCK_SIZE);
+    len = crypto.aesCbcIso9797m2.doFinal(apduBuffer, SC_OUT_OFFSET, len, apduBuffer, (short)(ISO7816.OFFSET_CDATA + SC_BLOCK_SIZE));
 
     apduBuffer[0] = (byte) (len + SC_BLOCK_SIZE);
 

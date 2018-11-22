@@ -1018,6 +1018,105 @@ public class WalletAppletTest {
   }
 
   @Test
+  @DisplayName("DUPLICATE KEY command")
+  void duplicateTest() throws Exception {
+    int secretCount = 5;
+    Random random = new Random();
+    byte[][] secrets = new byte[secretCount][32];
+    for (int i = 0; i < secretCount; i++) {
+      random.nextBytes(secrets[i]);
+    }
+
+    // Security condition violation: SecureChannel not open
+    ResponseAPDU response = cmdSet.duplicateKeyStart(secretCount, secrets[0]);
+    assertEquals(0x6985, response.getSW());
+
+    cmdSet.autoOpenSecureChannel();
+
+    // Security condition violation: PIN not verified
+    response = cmdSet.duplicateKeyStart(secretCount, secrets[0]);
+    assertEquals(0x6985, response.getSW());
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+    response = cmdSet.generateKey();
+    assertEquals(0x9000, response.getSW());
+    byte[] keyUID = response.getData();
+
+    // Init duplication
+    response = cmdSet.duplicateKeyStart(secretCount, secrets[0]);
+    assertEquals(0x9000, response.getSW());
+
+    // Adding key entropy must work without secure channel and PIN authentication
+    reset();
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSW());
+
+    // Put all except the last piece of entropy
+    for (int i = 1; i < (secretCount - 1); i++) {
+      response = cmdSet.duplicateKeyAddEntropy(secrets[i]);
+      assertEquals(0x9000, response.getSW());
+    }
+
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    // Try to backup before enough entropy has been set
+    response = cmdSet.duplicateKeyExport();
+    assertEquals(0x6985, response.getSW());
+
+    reset();
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSW());
+
+    // Put last piece of entropy
+    response = cmdSet.duplicateKeyAddEntropy(secrets[(secretCount - 1)]);
+    assertEquals(0x9000, response.getSW());
+
+    // Try putting more entropy (failure expected)
+    response = cmdSet.duplicateKeyAddEntropy(secrets[(secretCount - 1)]);
+    assertEquals(0x6985, response.getSW());
+
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    // Backup
+    response = cmdSet.duplicateKeyExport();
+    assertEquals(0x9000, response.getSW());
+    byte[] backup = response.getData();
+
+    // Try to restore the backup (failure expected, session is over)
+    response = cmdSet.duplicateKeyImport(backup);
+    assertEquals(0x6985, response.getSW());
+
+    // Now try to restore the backup and check that the key UID matches, but first change the keys to random ones
+    response = cmdSet.generateKey();
+    assertEquals(0x9000, response.getSW());
+
+    response = cmdSet.duplicateKeyStart(secretCount, secrets[0]);
+    assertEquals(0x9000, response.getSW());
+
+    reset();
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSW());
+
+    for (int i = 1; i < secretCount; i++) {
+      response = cmdSet.duplicateKeyAddEntropy(secrets[i]);
+      assertEquals(0x9000, response.getSW());
+    }
+
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSW());
+
+    response = cmdSet.duplicateKeyImport(backup);
+    assertEquals(0x9000, response.getSW());
+    assertArrayEquals(keyUID, response.getData());
+  }
+
+  @Test
   @DisplayName("Sign actual Ethereum transaction")
   @Tag("manual")
   void signTransactionTest() throws Exception {
