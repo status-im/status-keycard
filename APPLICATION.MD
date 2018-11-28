@@ -262,8 +262,7 @@ signing sessions, if any. Unless a DERIVE KEY is sent, a subsequent SIGN command
 * INS = 0xD1
 * P1 = derivation options
 * P2 = 0x00
-* Data = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used. On assisted
-         derivation contains a public key when P2 = 0x02.
+* Data = a sequence of 32-bit integers (most significant byte first). Empty if the master key must be used.
 * Response SW = 0x9000 on success, 0x6A80 if the format is invalid, 0x6984 if one of the components in the path
   generates an invalid key, 0x6B00 if derivation from parent keys is selected but no valid parent key is cached.
 * Preconditions: Secure Channel must be opened, user PIN must be verified (if no PIN-less key is defined), an extended 
