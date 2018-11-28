@@ -63,8 +63,9 @@ public class WalletApplet extends Applet {
   static final byte DUPLICATE_KEY_P1_EXPORT = 0x02;
   static final byte DUPLICATE_KEY_P1_IMPORT = 0x03;
 
-  static final byte EXPORT_KEY_P1_ANY = 0x00;
-  static final byte EXPORT_KEY_P1_HIGH = 0x01;
+  static final byte EXPORT_KEY_P1_CURRENT = 0x00;
+  static final byte EXPORT_KEY_P1_DERIVE = 0x01;
+  static final byte EXPORT_KEY_P1_DERIVE_AND_MAKE_CURRENT = 0x02;
 
   static final byte EXPORT_KEY_P2_PRIVATE_AND_PUBLIC = 0x00;
   static final byte EXPORT_KEY_P2_PUBLIC_ONLY = 0x01;
@@ -84,7 +85,7 @@ public class WalletApplet extends Applet {
   static final byte TLV_UID = (byte) 0x8F;
   static final byte TLV_KEY_UID = (byte) 0x8E;
 
-  private static final byte EXPORT_KEY_HIGH_MASK = (byte) 0xc0;
+  static final byte[] EIP_1581_PREFIX = { (byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D};
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -749,12 +750,27 @@ public class WalletApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     short len = secureChannel.preprocessAPDU(apduBuffer);
 
-    if (!((pin.isValidated() || (pinlessPathLen > 0)) && isExtended)) {
+    if (!((pin.isValidated() || (pinlessPathLen > 0)))) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
     boolean isReset = apduBuffer[ISO7816.OFFSET_P1] == DERIVE_P1_SOURCE_MASTER;
     boolean fromParent = apduBuffer[ISO7816.OFFSET_P1] == DERIVE_P1_SOURCE_PARENT;
+
+    doDerive(apduBuffer, len, isReset, fromParent);
+  }
+
+  /**
+   * Internal derivation function, called by DERIVE KEY and EXPORT KEY
+   *  @param apduBuffer the APDU buffer
+   * @param len the APDU len
+   * @param isReset start deriving from master
+   * @param fromParent start deriving from parent
+   */
+  private void doDerive(byte[] apduBuffer, short len, boolean isReset, boolean fromParent) {
+    if (!isExtended) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
 
     if (fromParent && !parentValid) {
       ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
@@ -1138,16 +1154,13 @@ public class WalletApplet extends Applet {
   }
 
   /**
-   * Processes the EXPORT KEY command. Requires an open secure channel and the PIN to be verified. The P1 parameter is
-   * an index to which key must be exported from the list of exportable ones. At the moment only the Whisper key with
-   * key path m/1/1 is exportable. The key is exported only if the current key path matches the key path of the key to
-   * be exported. The public key of the current path can always be exported with P1=0x00 and P2=0x01.
+   * Processes the EXPORT KEY command. Requires an open secure channel and the PIN to be verified.
    *
    * @param apdu the JCRE-owned APDU object.
    */
   private void exportKey(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
-    secureChannel.preprocessAPDU(apduBuffer);
+    short dataLen = secureChannel.preprocessAPDU(apduBuffer);
 
     if (!pin.isValidated() || !privateKey.isInitialized()) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
@@ -1167,20 +1180,37 @@ public class WalletApplet extends Applet {
         return;
     }
 
+    byte[] exportPath;
+    short exportPathOff;
+    short exportPathLen;
+    boolean derive = false;
+    boolean makeCurrent = false;
+
     switch (apduBuffer[ISO7816.OFFSET_P1]) {
-      case EXPORT_KEY_P1_ANY:
-        if (!publicOnly) {
-          ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-        }
+      case EXPORT_KEY_P1_CURRENT:
+        exportPath = keyPath;
+        exportPathOff = (short) 0;
+        exportPathLen = keyPathLen;
         break;
-      case EXPORT_KEY_P1_HIGH:
-        if (keyPathLen < 4 || ((((byte)(keyPath[(byte)(keyPathLen - 4)] & EXPORT_KEY_HIGH_MASK)) != EXPORT_KEY_HIGH_MASK))){
-          ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-        }
+      case EXPORT_KEY_P1_DERIVE_AND_MAKE_CURRENT:
+        makeCurrent = true;
+      case EXPORT_KEY_P1_DERIVE:
+        derive = true;
+        exportPath = apduBuffer;
+        exportPathOff = ISO7816.OFFSET_CDATA;
+        exportPathLen = dataLen;
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
         return;
+    }
+
+    if (!publicOnly && ((exportPathLen < (short)(((short) EIP_1581_PREFIX.length) + 8)) || (Util.arrayCompare(EIP_1581_PREFIX, (short) 0, exportPath, exportPathOff, (short) EIP_1581_PREFIX.length) != 0))) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    if (makeCurrent) {
+      doDerive(apduBuffer, dataLen, true, false);
     }
 
     short off = SecureChannel.SC_OUT_OFFSET;

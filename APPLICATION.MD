@@ -6,10 +6,12 @@ Version numbers are in the form major.minor. An major revision increment indicat
 compared to the previous released version. This is version 2.0 of the specs (unreleased). 
 
 ### Changes since 1.2
+* **BREAKING** Completely redefined the EXPORT KEY command
 * **BREAKING** Removed assisted key derivation
 * **BREAKING** Removed plain data signing, now only 32-byte long hashes can be signed
 * Added internal key generation (GENERATE KEY)
 * Added the ability to customize the NDEF response (SET NDEF)
+* Added DUPLICATE KEY command
 
 
 ## Overview
@@ -410,16 +412,18 @@ will work even if no PIN authentication has been performed. An empty sequence me
 
 * CLA = 0x80
 * INS = 0xC2
-* P1 = key path index
+* P1 = derivation options
 * P2 = export options
 * Response SW = 0x9000 on success, 0x6A86 if P1 or P2 are wrong
+* Data = a sequence of 32-bit integers (empty if P1=0x00)
 * Response Data = key pair template
-* Preconditions: Secure Channel must be opened, user PIN must be verified, the current key path must match the one of
-  the key selected through P1
+* Response SW = 0x9000 on success, 0x6985 if the private key cannot be exported, 0x6A80 if the path is malformed
+* Preconditions: Secure Channel must be opened, user PIN must be verified
   
 P1:
-0x00 = Any key
-0x01 = Non-wallet key
+0x00 = Current key
+0x01 = Derive
+0x02 = Derive and make current
 
 P2:
 0x00 = private and public key
@@ -430,10 +434,10 @@ Response Data format:
   - Tag 0x80 = ECC public key component
   - Tag 0x81 = ECC private key component (if P2=0x00)
   
-This command exports the current public and private key if and only if the current key path matches the conditions
-dictated by the given P1 parameter. This currently allows exporting any key whose last path component has a key index
-with the two most significant bits set (that is, matches the 0xc0000000 mask). No key in this range should be used for
-wallet accounts, even as intermediate path component. These keys are meant for client-specific use such as the Whisper key.
+This command exports the requested public and private key. The public key can be always exported (P2=0x01), but the 
+private key (P2=0x00) can be exported if and only if the requested key path is in the 
+[EIP-1581](https://eips.ethereum.org/EIPS/eip-1581) subtree. 
 
-The special index 0x00 indicates any path, which means the current key will always be exported regardless of its actual
-path. This works however only in combination with P2=0x01, so only the public key will be exported.
+The P1 parameter indicates how to the derive the desired key. P1 = 0x00 indicates that the current key must be exported,
+and no derivation will be performed. P1 = 0x01 derives the path given in the data field without changing the current
+path of the card. P1 = 0x02 derives the path but also changes the current path of the card.
