@@ -120,6 +120,8 @@ public class WalletApplet extends Applet {
   private byte[] duplicationEncKey;
   private short expectedEntropy;
 
+  private byte[] derivationOutput;
+
   /**
    * Invoked during applet installation. Creates an instance of this class. The installation parameters are passed in
    * the given buffer.
@@ -174,6 +176,8 @@ public class WalletApplet extends Applet {
 
     duplicationEncKey = new byte[(short)(KeyBuilder.LENGTH_AES_256/8)];
     expectedEntropy = -1;
+
+    derivationOutput = JCSystem.makeTransientByteArray((short) (Crypto.KEY_SECRET_SIZE + CHAIN_CODE_SIZE), JCSystem.CLEAR_ON_RESET);
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
@@ -826,8 +830,7 @@ public class WalletApplet extends Applet {
     short dataOff = (short) (scratchOff + Crypto.KEY_DERIVATION_SCRATCH_SIZE);
 
     short pubKeyOff = (short) (dataOff + sourcePriv.getS(apduBuffer, dataOff));
-    pubKeyOff = Util.arrayCopyNonAtomic(sourceChain, (short)0, apduBuffer, pubKeyOff, CHAIN_CODE_SIZE);
-    short outputOff = (short) (pubKeyOff + Crypto.KEY_PUB_SIZE);
+    pubKeyOff = Util.arrayCopyNonAtomic(sourceChain, (short) 0, apduBuffer, pubKeyOff, CHAIN_CODE_SIZE);
 
     if (!crypto.bip32IsHardened(apduBuffer, ISO7816.OFFSET_CDATA)) {
       sourcePub.getW(apduBuffer, pubKeyOff);
@@ -836,15 +839,17 @@ public class WalletApplet extends Applet {
     }
 
     for (short i = ISO7816.OFFSET_CDATA; i < scratchOff; i += 4) {
-      Util.arrayCopyNonAtomic(apduBuffer, outputOff, apduBuffer, dataOff, (short) (Crypto.KEY_SECRET_SIZE + CHAIN_CODE_SIZE));
+      if (i > ISO7816.OFFSET_CDATA) {
+        Util.arrayCopyNonAtomic(derivationOutput, (short) 0, apduBuffer, dataOff, (short) (Crypto.KEY_SECRET_SIZE + CHAIN_CODE_SIZE));
 
-      if ((i > ISO7816.OFFSET_CDATA) && !crypto.bip32IsHardened(apduBuffer, i)) {
-        secp256k1.derivePublicKey(apduBuffer, dataOff, apduBuffer, pubKeyOff);
-      } else {
-        apduBuffer[pubKeyOff] = 0;
+        if (!crypto.bip32IsHardened(apduBuffer, i)) {
+          secp256k1.derivePublicKey(apduBuffer, dataOff, apduBuffer, pubKeyOff);
+        } else {
+          apduBuffer[pubKeyOff] = 0;
+        }
       }
 
-      if (!crypto.bip32CKDPriv(apduBuffer, i, apduBuffer, scratchOff, apduBuffer, dataOff, apduBuffer, outputOff)) {
+      if (!crypto.bip32CKDPriv(apduBuffer, i, apduBuffer, scratchOff, apduBuffer, dataOff, derivationOutput, (short) 0)) {
         ISOException.throwIt(ISO7816.SW_DATA_INVALID);
       }
     }
@@ -862,10 +867,8 @@ public class WalletApplet extends Applet {
         parentPublicKey.setW(apduBuffer, scratchOff, Crypto.KEY_PUB_SIZE);
       }
 
-      parentPublicKey.setW(apduBuffer, pubKeyOff, Crypto.KEY_PUB_SIZE);
-
-      privateKey.setS(apduBuffer, outputOff, Crypto.KEY_SECRET_SIZE);
-      Util.arrayCopy(apduBuffer, (short)(outputOff + Crypto.KEY_SECRET_SIZE), chainCode, (short) 0, CHAIN_CODE_SIZE);
+      privateKey.setS(derivationOutput, (short) 0, Crypto.KEY_SECRET_SIZE);
+      Util.arrayCopy(derivationOutput, Crypto.KEY_SECRET_SIZE, chainCode, (short) 0, CHAIN_CODE_SIZE);
       secp256k1.derivePublicKey(privateKey, apduBuffer, scratchOff);
       publicKey.setW(apduBuffer, scratchOff, Crypto.KEY_PUB_SIZE);
 

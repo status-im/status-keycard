@@ -89,9 +89,9 @@ public class Crypto {
       off = Util.arrayCopyNonAtomic(data, (short) (dataOff + KEY_SECRET_SIZE + KEY_SECRET_SIZE + 1), scratch, off, KEY_SECRET_SIZE);
     }
 
-    off = Util.arrayCopyNonAtomic(i, iOff, hmacBlock, off, (short) 4);
+    off = Util.arrayCopyNonAtomic(i, iOff, scratch, off, (short) 4);
 
-    hmacSHA512(data, (short)(dataOff + KEY_SECRET_SIZE), KEY_SECRET_SIZE, scratch, scratchOff, off, output, outOff);
+    hmacSHA512(data, (short)(dataOff + KEY_SECRET_SIZE), KEY_SECRET_SIZE, scratch, scratchOff, (short)(off - scratchOff), output, outOff);
 
     if (ucmp256(output, outOff, SECP256k1.SECP256K1_R, (short) 0) >= 0) {
       return false;
