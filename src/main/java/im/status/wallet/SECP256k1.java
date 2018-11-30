@@ -3,6 +3,7 @@ package im.status.wallet;
 import javacard.security.ECKey;
 import javacard.security.ECPrivateKey;
 import javacard.security.KeyAgreement;
+import javacard.security.KeyBuilder;
 
 /**
  * Utility methods to work with the SECP256k1 curve. This class is not meant to be instantiated, but its init method
@@ -47,17 +48,23 @@ public class SECP256k1 {
 
   static final byte SECP256K1_K = (byte)0x01;
 
+  static final short SECP256K1_KEY_SIZE = 256;
+
   private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6; // constant from JavaCard 3.0.5
+
 
   private KeyAgreement ecPointMultiplier;
   private Crypto crypto;
+  private ECPrivateKey tmpECPrivateKey;
 
   /**
    * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
    */
   SECP256k1(Crypto crypto) {
     this.crypto = crypto;
-    ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
+    this.ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
+    this.tmpECPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256K1_KEY_SIZE, false);
+    setCurveParameters(tmpECPrivateKey);
   }
 
   /**
@@ -85,6 +92,21 @@ public class SECP256k1 {
    */
   short derivePublicKey(ECPrivateKey privateKey, byte[] pubOut, short pubOff) {
     return multiplyPoint(privateKey, SECP256K1_G, (short) 0, (short) SECP256K1_G.length, pubOut, pubOff);
+  }
+
+
+  /**
+   * Derives the public key from the given private key and outputs it in the pubOut buffer. This is done by multiplying
+   * the private key by the G point of the curve.
+   *
+   * @param privateKey the private key
+   * @param pubOut the output buffer for the public key
+   * @param pubOff the offset in pubOut
+   * @return the length of the public key
+   */
+  short derivePublicKey(byte[] privateKey, short privOff, byte[] pubOut, short pubOff) {
+    tmpECPrivateKey.setS(privateKey, privOff, (short)(SECP256K1_KEY_SIZE/8));
+    return derivePublicKey(tmpECPrivateKey, pubOut, pubOff);
   }
 
   /**

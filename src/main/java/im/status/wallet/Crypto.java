@@ -12,8 +12,9 @@ import javacardx.crypto.Cipher;
 public class Crypto {
   final static public short AES_BLOCK_SIZE = 16;
 
-  final static private short KEY_SECRET_SIZE = 32;
-  final static private short KEY_DERIVATION_INPUT_SIZE = 37;
+  final static short KEY_SECRET_SIZE = 32;
+  final static short KEY_PUB_SIZE = 65;
+  final static short KEY_DERIVATION_SCRATCH_SIZE = 37;
   final static private short HMAC_OUT_SIZE = 64;
 
   final static private byte[] MAX_S = { (byte) 0x7F, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0x5D, (byte) 0x57, (byte) 0x6E, (byte) 0x73, (byte) 0x57, (byte) 0xA4, (byte) 0x50, (byte) 0x1D, (byte) 0xDF, (byte) 0xE9, (byte) 0x2F, (byte) 0x46, (byte) 0x68, (byte) 0x1B, (byte) 0x20, (byte) 0xA0 };
@@ -22,7 +23,6 @@ public class Crypto {
   final static private byte HMAC_IPAD = (byte) 0x36;
   final static private byte HMAC_OPAD = (byte) 0x5c;
   final static private short HMAC_BLOCK_SIZE = (short) 128;
-  final static private short HMAC_BLOCK_OFFSET = (short) KEY_DERIVATION_INPUT_SIZE + HMAC_OUT_SIZE;
 
   final static private byte[] KEY_BITCOIN_SEED = {'B', 'i', 't', 'c', 'o', 'i', 'n', ' ', 's', 'e', 'e', 'd'};
 
@@ -38,7 +38,7 @@ public class Crypto {
 
   private AESKey tmpAES256;
 
-  private byte[] tmp;
+  private byte[] hmacBlock;
 
   Crypto() {
     random = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
@@ -49,24 +49,24 @@ public class Crypto {
 
     tmpAES256 = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
 
-    short blockSize;
-
     try {
-      blockSize = 0;
       hmacSHA512 = Signature.getInstance(Signature.ALG_HMAC_SHA_512, false);
       hmacKey = (HMACKey) KeyBuilder.buildKey(KeyBuilder.TYPE_HMAC_TRANSIENT_DESELECT, KEY_SECRET_SIZE, false);
     } catch (CryptoException e) {
       hmacSHA512 = null;
-      blockSize = HMAC_BLOCK_SIZE;
+      hmacBlock = JCSystem.makeTransientByteArray(HMAC_BLOCK_SIZE, JCSystem.CLEAR_ON_RESET);
     }
 
-    tmp = JCSystem.makeTransientByteArray((short) (HMAC_BLOCK_OFFSET + blockSize), JCSystem.CLEAR_ON_RESET);
   }
 
   public short oneShotAES(byte mode, byte[] src, short sOff, short sLen, byte[] dst, short dOff, byte[] key, short keyOff) {
     tmpAES256.setKey(key, keyOff);
     aesCbcIso9797m2.init(tmpAES256, mode, src, sOff, AES_BLOCK_SIZE);
     return aesCbcIso9797m2.doFinal(src, (short) (sOff + AES_BLOCK_SIZE), sLen, dst, dOff);
+  }
+
+  boolean bip32IsHardened(byte[] i, short iOff) {
+    return (i[iOff] & (byte) 0x80) == (byte) 0x80;
   }
 
   /**
@@ -76,42 +76,32 @@ public class Crypto {
    *
    * @param i the buffer containing the key path element (a 32-bit big endian integer)
    * @param iOff the offset in the buffer
-   * @param privateKey the parent private key
-   * @param publicKey the parent public key
-   * @param chain the chain code
-   * @param chainOff the offset in the chain code buffer
    * @return true if successful, false otherwise
    */
-  boolean bip32CKDPriv(byte[] i, short iOff, ECPrivateKey privateKey, ECPublicKey publicKey, byte[] chain, short chainOff) {
-    short off = 0;
+  boolean bip32CKDPriv(byte[] i, short iOff, byte[] scratch, short scratchOff, byte[] data, short dataOff, byte[] output, short outOff) {
+    short off = scratchOff;
 
-    if ((i[iOff] & (byte) 0x80) == (byte) 0x80) {
-      tmp[off++] = 0;
-      off += privateKey.getS(tmp, off);
+    if (bip32IsHardened(i, iOff)) {
+      scratch[off++] = 0;
+      off = Util.arrayCopyNonAtomic(data, dataOff, scratch, off, KEY_SECRET_SIZE);
     } else {
-      off = (short) (publicKey.getW(tmp, (short) 0) - 1);
-      tmp[0] = ((tmp[off] & 1) != 0 ? (byte) 0x03 : (byte) 0x02);
-      off = (short) ((short) (off / 2) + 1);
+      scratch[off++] = ((data[(short) (dataOff + KEY_SECRET_SIZE + KEY_SECRET_SIZE + KEY_PUB_SIZE - 1)] & 1) != 0 ? (byte) 0x03 : (byte) 0x02);
+      off = Util.arrayCopyNonAtomic(data, (short) (dataOff + KEY_SECRET_SIZE + KEY_SECRET_SIZE + 1), scratch, off, KEY_SECRET_SIZE);
     }
 
-    off = Util.arrayCopyNonAtomic(i, iOff, tmp, off, (short) 4);
+    off = Util.arrayCopyNonAtomic(i, iOff, scratch, off, (short) 4);
 
-    hmacSHA512(chain, chainOff, KEY_SECRET_SIZE, tmp, (short) 0, off, tmp, off);
+    hmacSHA512(data, (short)(dataOff + KEY_SECRET_SIZE), KEY_SECRET_SIZE, scratch, scratchOff, (short)(off - scratchOff), output, outOff);
 
-    if (ucmp256(tmp, off, SECP256k1.SECP256K1_R, (short) 0) >= 0) {
+    if (ucmp256(output, outOff, SECP256k1.SECP256K1_R, (short) 0) >= 0) {
       return false;
     }
 
-    privateKey.getS(tmp, (short) 0);
+    addm256(output, outOff, data, dataOff, SECP256k1.SECP256K1_R, (short) 0, output, outOff);
 
-    addm256(tmp, off, tmp, (short) 0, SECP256k1.SECP256K1_R, (short) 0, tmp, off);
-
-    if (isZero256(tmp, off)) {
+    if (isZero256(output, outOff)) {
       return false;
     }
-
-    privateKey.setS(tmp, off, (short) KEY_SECRET_SIZE);
-    Util.arrayCopy(tmp, (short)(off + KEY_SECRET_SIZE), chain, chainOff, (short) KEY_SECRET_SIZE);
 
     return true;
   }
@@ -177,13 +167,13 @@ public class Crypto {
       hmacSHA512.sign(in, inOff, inLen, out, outOff);
     } else {
       for (byte i = 0; i < 2; i++) {
-        Util.arrayFillNonAtomic(tmp, HMAC_BLOCK_OFFSET, HMAC_BLOCK_SIZE, (i == 0 ? HMAC_IPAD : HMAC_OPAD));
+        Util.arrayFillNonAtomic(hmacBlock, (short) 0, HMAC_BLOCK_SIZE, (i == 0 ? HMAC_IPAD : HMAC_OPAD));
 
         for (short j = 0; j < keyLen; j++) {
-          tmp[(short)(HMAC_BLOCK_OFFSET + j)] ^= key[(short)(keyOff + j)];
+          hmacBlock[j] ^= key[(short)(keyOff + j)];
         }
 
-        sha512.update(tmp, HMAC_BLOCK_OFFSET, HMAC_BLOCK_SIZE);
+        sha512.update(hmacBlock, (short) 0, HMAC_BLOCK_SIZE);
 
         if (i == 0) {
           sha512.doFinal(in, inOff, inLen, out, outOff);
