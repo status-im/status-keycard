@@ -978,13 +978,28 @@ public class WalletAppletTest {
     response = cmdSet.exportCurrentKey(true);
     assertEquals(0x9000, response.getSW());
     byte[] keyTemplate = response.getData();
-    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000 }, true);
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000 }, true, false);
 
-    // Correct
+    // Derive & Make current
     response = cmdSet.exportKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, true,false);
     assertEquals(0x9000, response.getSW());
     keyTemplate = response.getData();
-    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000000 }, false);
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000000 }, false, false);
+
+    // Derive without making current
+    response = cmdSet.exportKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x01}, false,false);
+    assertEquals(0x9000, response.getSW());
+    keyTemplate = response.getData();
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000001 }, false, true);
+    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);
+    assertEquals(0x9000, response.getSW());
+    assertArrayEquals(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, response.getData());
+
+    // Export current
+    response = cmdSet.exportCurrentKey(false);
+    assertEquals(0x9000, response.getSW());
+    keyTemplate = response.getData();
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000000 }, false, false);
 
     // Reset
     response = cmdSet.deriveKey(new byte[] {}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
@@ -1289,19 +1304,24 @@ public class WalletAppletTest {
     }
   }
 
-  private void verifyExportedKey(byte[] keyTemplate, KeyPair keyPair, byte[] chainCode, int[] path, boolean publicOnly) {
+  private void verifyExportedKey(byte[] keyTemplate, KeyPair keyPair, byte[] chainCode, int[] path, boolean publicOnly, boolean noPubKey) {
     ECKey key = deriveKey(keyPair, chainCode, path).decompress();
     assertEquals(WalletApplet.TLV_KEY_TEMPLATE, keyTemplate[0]);
-    assertEquals(WalletApplet.TLV_PUB_KEY, keyTemplate[2]);
-    byte[] pubKey = Arrays.copyOfRange(keyTemplate, 4, 4 + keyTemplate[3]);
-    assertArrayEquals(key.getPubKey(), pubKey);
+    int pubKeyLen = 0;
+
+    if (!noPubKey) {
+      assertEquals(WalletApplet.TLV_PUB_KEY, keyTemplate[2]);
+      byte[] pubKey = Arrays.copyOfRange(keyTemplate, 4, 4 + keyTemplate[3]);
+      assertArrayEquals(key.getPubKey(), pubKey);
+      pubKeyLen = 2 + pubKey.length;
+    }
 
     if (publicOnly) {
-      assertEquals(pubKey.length + 2, keyTemplate[1]);
-      assertEquals(pubKey.length + 4, keyTemplate.length);
+      assertEquals(pubKeyLen, keyTemplate[1]);
+      assertEquals(pubKeyLen + 2, keyTemplate.length);
     } else {
-      assertEquals(WalletApplet.TLV_PRIV_KEY, keyTemplate[4 + pubKey.length]);
-      byte[] privateKey = Arrays.copyOfRange(keyTemplate, 6 + pubKey.length, 6 + pubKey.length + keyTemplate[5 + pubKey.length]);
+      assertEquals(WalletApplet.TLV_PRIV_KEY, keyTemplate[2 + pubKeyLen]);
+      byte[] privateKey = Arrays.copyOfRange(keyTemplate, 4 + pubKeyLen, 4 + pubKeyLen + keyTemplate[3 + pubKeyLen]);
 
       byte[] tPrivKey = key.getPrivKey().toByteArray();
 

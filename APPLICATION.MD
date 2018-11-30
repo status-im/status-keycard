@@ -430,7 +430,7 @@ P2:
   
 Response Data format:
 - Tag 0xA1 = keypair template
-  - Tag 0x80 = ECC public key component
+  - Tag 0x80 = ECC public key component (could be omitted)
   - Tag 0x81 = ECC private key component (if P2=0x00)
   
 This command exports the requested public and private key. The public key can be always exported (P2=0x01), but the 
@@ -440,3 +440,6 @@ private key (P2=0x00) can be exported if and only if the requested key path is i
 The P1 parameter indicates how to the derive the desired key. P1 = 0x00 indicates that the current key must be exported,
 and no derivation will be performed. P1 = 0x01 derives the path given in the data field without changing the current
 path of the card. P1 = 0x02 derives the path but also changes the current path of the card.
+
+If the private key is being exported, the card could omit exporting the public key for performance reason. The public
+key can then be calculate off-card if needed.

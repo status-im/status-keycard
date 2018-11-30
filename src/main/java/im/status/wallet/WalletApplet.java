@@ -1270,16 +1270,34 @@ public class WalletApplet extends Applet {
 
     apduBuffer[off++] = TLV_KEY_TEMPLATE;
     off++;
-    apduBuffer[off++] = TLV_PUB_KEY;
-    off++;
-    short len = publicKey.getW(apduBuffer, off);
-    apduBuffer[(short)(off - 1)] = (byte) len;
-    off += len;
+
+    short len;
+
+    if (!derive || makeCurrent) {
+      apduBuffer[off++] = TLV_PUB_KEY;
+      off++;
+      len = publicKey.getW(apduBuffer, off);
+      apduBuffer[(short) (off - 1)] = (byte) len;
+      off += len;
+    } else if (publicOnly) {
+      apduBuffer[off++] = TLV_PUB_KEY;
+      off++;
+      len = secp256k1.derivePublicKey(derivationOutput, (short) 0, apduBuffer, off);
+      apduBuffer[(short) (off - 1)] = (byte) len;
+      off += len;
+    }
 
     if (!publicOnly) {
       apduBuffer[off++] = TLV_PRIV_KEY;
       off++;
-      len = privateKey.getS(apduBuffer, off);
+
+      if (!derive || makeCurrent) {
+        len = privateKey.getS(apduBuffer, off);
+      } else {
+        Util.arrayCopyNonAtomic(derivationOutput, (short) 0, apduBuffer, off, Crypto.KEY_SECRET_SIZE);
+        len = Crypto.KEY_SECRET_SIZE;
+      }
+
       apduBuffer[(short) (off - 1)] = (byte) len;
       off += len;
     }
