@@ -64,6 +64,7 @@ public class SECP256k1 {
     this.crypto = crypto;
     this.ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
     this.tmpECPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256K1_KEY_SIZE, false);
+    setCurveParameters(tmpECPrivateKey);
   }
 
   /**
@@ -105,10 +106,7 @@ public class SECP256k1 {
    */
   short derivePublicKey(byte[] privateKey, short privOff, byte[] pubOut, short pubOff) {
     tmpECPrivateKey.setS(privateKey, privOff, (short)(SECP256K1_KEY_SIZE/8));
-    short res = derivePublicKey(tmpECPrivateKey, pubOut, pubOff);
-    // Unfortunately our current card does not support EC transient keys
-    tmpECPrivateKey.clearKey();
-    return res;
+    return derivePublicKey(tmpECPrivateKey, pubOut, pubOff);
   }
 
   /**

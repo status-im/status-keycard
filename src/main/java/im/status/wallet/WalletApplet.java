@@ -640,7 +640,7 @@ public class WalletApplet extends Applet {
    */
   private void resetKeyStatus() {
     parentPrivateKey.clearKey();
-    parentPublicKey.clearKey();
+    secp256k1.setCurveParameters(parentPrivateKey);
     keyPathLen = 0;
   }
 
@@ -800,7 +800,7 @@ public class WalletApplet extends Applet {
         pathLenOff = 0;
         break;
       case DERIVE_P1_SOURCE_PARENT:
-        if (!parentPublicKey.isInitialized()) {
+        if (!parentPrivateKey.isInitialized()) {
           ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
         }
 
