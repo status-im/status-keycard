@@ -439,7 +439,9 @@ private key (P2=0x00) can be exported if and only if the requested key path is i
 
 The P1 parameter indicates how to the derive the desired key. P1 = 0x00 indicates that the current key must be exported,
 and no derivation will be performed. P1 = 0x01 derives the path given in the data field without changing the current
-path of the card. P1 = 0x02 derives the path but also changes the current path of the card.
+path of the card. P1 = 0x02 derives the path but also changes the current path of the card. The source for derivation
+can be set by OR'ing P1 with the constants defined in the DERIVE KEY command. This allows deriving from master, parent
+or current.
 
 If the private key is being exported, the card could omit exporting the public key for performance reason. The public
 key can then be calculate off-card if needed.

@@ -52,6 +52,7 @@ public class WalletApplet extends Applet {
   static final byte DERIVE_P1_SOURCE_MASTER = (byte) 0x00;
   static final byte DERIVE_P1_SOURCE_PARENT = (byte) 0x40;
   static final byte DERIVE_P1_SOURCE_CURRENT = (byte) 0x80;
+  static final byte DERIVE_P1_SOURCE_MASK = (byte) 0xC0;
 
   static final byte GENERATE_MNEMONIC_P1_CS_MIN = 4;
   static final byte GENERATE_MNEMONIC_P1_CS_MAX = 8;
@@ -1233,25 +1234,26 @@ public class WalletApplet extends Applet {
         return;
     }
 
-    byte[] exportPath;
-    short exportPathOff;
-    short exportPathLen;
+    byte[] exportPath = keyPath;
+    short exportPathOff = (short) 0;
+    short exportPathLen = keyPathLen;
+
     boolean derive = false;
     boolean makeCurrent = false;
+    byte derivationSource = (byte) (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_SOURCE_MASK);
 
-    switch (apduBuffer[ISO7816.OFFSET_P1]) {
+    switch ((byte) (apduBuffer[ISO7816.OFFSET_P1] & ~DERIVE_P1_SOURCE_MASK)) {
       case EXPORT_KEY_P1_CURRENT:
-        exportPath = keyPath;
-        exportPathOff = (short) 0;
-        exportPathLen = keyPathLen;
         break;
       case EXPORT_KEY_P1_DERIVE_AND_MAKE_CURRENT:
         makeCurrent = true;
       case EXPORT_KEY_P1_DERIVE:
         derive = true;
-        exportPath = apduBuffer;
-        exportPathOff = ISO7816.OFFSET_CDATA;
-        exportPathLen = dataLen;
+        if (derivationSource == DERIVE_P1_SOURCE_MASTER) {
+          exportPath = apduBuffer;
+          exportPathOff = ISO7816.OFFSET_CDATA;
+          exportPathLen = dataLen;
+        }
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -1263,7 +1265,7 @@ public class WalletApplet extends Applet {
     }
 
     if (derive) {
-      doDerive(apduBuffer, dataLen, DERIVE_P1_SOURCE_MASTER, makeCurrent);
+      doDerive(apduBuffer, dataLen, derivationSource, makeCurrent);
     }
 
     short off = SecureChannel.SC_OUT_OFFSET;
