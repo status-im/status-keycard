@@ -266,15 +266,23 @@ public class WalletApplet extends Applet {
           break;
       }
     } catch(ISOException sw) {
-      if (shouldRespond(apdu) && (sw.getReason() != ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED)) {
-        secureChannel.respond(apdu, (short) 0, sw.getReason());
-      } else {
-        throw sw;
-      }
+      handleException(apdu, sw.getReason());
+    } catch (CryptoException ce) {
+      handleException(apdu, (short)(ISO7816.SW_UNKNOWN | ce.getReason()));
+    } catch (Exception e) {
+      handleException(apdu, ISO7816.SW_UNKNOWN);
     }
 
     if (shouldRespond(apdu)) {
       secureChannel.respond(apdu, (short) 0, ISO7816.SW_NO_ERROR);
+    }
+  }
+
+  private void handleException(APDU apdu, short sw) {
+    if (shouldRespond(apdu) && (sw != ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED)) {
+      secureChannel.respond(apdu, (short) 0, sw);
+    } else {
+      ISOException.throwIt(sw);
     }
   }
 
