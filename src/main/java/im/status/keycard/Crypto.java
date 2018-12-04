@@ -1,4 +1,4 @@
-package im.status.wallet;
+package im.status.keycard;
 
 import javacard.framework.JCSystem;
 import javacard.framework.Util;

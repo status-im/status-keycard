@@ -1,6 +1,6 @@
-# Status Wallet UX guidelines
+# Status Keycard UX guidelines
 
-The scope of this document is to describe the interactions between the hardware wallet, the user and client applications.
+The scope of this document is to describe the interactions between the keycard, the user and client applications.
 Technical details about the commands mentioned here are to be found in the [APPLICATION.MD](APPLICATION.MD) file.
 
 ## Physical interaction
@@ -20,7 +20,7 @@ PIN, PUK and pairing password can be changed at any time by the user, after auth
 
 ## Application selection
 
-When the client detects a SmartCard, it should try to select the Status Wallet application by sending a selection command.
+When the client detects a SmartCard, it should try to select the Status Keycard application by sending a selection command.
 The applet will respond providing details useful for the next steps.
 
 ## PIN sessions

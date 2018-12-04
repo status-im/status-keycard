@@ -1,4 +1,4 @@
-# Status Wallet Application
+# Status Keycard Application
 
 ## Version
 

@@ -1,9 +1,8 @@
-package im.status.wallet;
+package im.status.keycard;
 
 import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.smartcardio.CardTerminalSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
-import im.status.hardwallet.lite.WalletAppletCommandSet;
 import javacard.framework.AID;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.crypto.ChildNumber;
@@ -42,8 +41,8 @@ import java.util.Random;
 import static org.apache.commons.codec.digest.DigestUtils.sha256;
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("Test the Wallet Applet")
-public class WalletAppletTest {
+@DisplayName("Test the Keycard Applet")
+public class KeycardTest {
   // Psiring key is WalletAppletTest
   public static final byte[] SHARED_SECRET = new byte[] { (byte) 0xe9, (byte) 0x29, (byte) 0xd4, (byte) 0x25, (byte) 0xd7, (byte) 0xf7, (byte) 0x3c, (byte) 0x2a, (byte) 0x0a, (byte) 0x24, (byte) 0xff, (byte) 0xef, (byte) 0xad, (byte) 0x87, (byte) 0xb6, (byte) 0x5e, (byte) 0x9b, (byte) 0x2e, (byte) 0xe9, (byte) 0x66, (byte) 0x03, (byte) 0xea, (byte) 0xb3, (byte) 0x4d, (byte) 0x64, (byte) 0x08, (byte) 0x8b, (byte) 0x5a, (byte) 0xae, (byte) 0x2a, (byte) 0x02, (byte) 0x6f };
   private static CardTerminal cardTerminal;
@@ -51,12 +50,12 @@ public class WalletAppletTest {
   private static CardSimulator simulator;
 
   private TestSecureChannelSession secureChannel;
-  private TestWalletAppletCommandSet cmdSet;
+  private TestKeycardCommandSet cmdSet;
 
   private static final boolean USE_SIMULATOR;
 
   static {
-    USE_SIMULATOR = !System.getProperty("im.status.wallet.test.simulated", "false").equals("false");
+    USE_SIMULATOR = !System.getProperty("im.status.keycard.test.simulated", "false").equals("false");
   }
 
   @BeforeAll
@@ -65,8 +64,8 @@ public class WalletAppletTest {
 
     if (USE_SIMULATOR) {
       simulator = new CardSimulator();
-      AID appletAID = AIDUtil.create(WalletAppletCommandSet.APPLET_AID);
-      simulator.installApplet(appletAID, WalletApplet.class);
+      AID appletAID = AIDUtil.create(KeycardCommandSet.APPLET_AID);
+      simulator.installApplet(appletAID, KeycardApplet.class);
       cardTerminal = CardTerminalSimulator.terminal(simulator);
     } else {
       TerminalFactory tf = TerminalFactory.getDefault();
@@ -86,19 +85,19 @@ public class WalletAppletTest {
   }
 
   private static void initIfNeeded() throws CardException {
-    WalletAppletCommandSet cmdSet = new WalletAppletCommandSet(apduChannel);
+    KeycardCommandSet cmdSet = new KeycardCommandSet(apduChannel);
     byte[] data = cmdSet.select().getData();
-    if (data[0] == WalletApplet.TLV_APPLICATION_INFO_TEMPLATE) return;
+    if (data[0] == KeycardApplet.TLV_APPLICATION_INFO_TEMPLATE) return;
     assertEquals(0x9000, cmdSet.init("000000", "123456789012", SHARED_SECRET).getSW());
   }
 
   @BeforeEach
   void init() throws CardException {
     reset();
-    cmdSet = new TestWalletAppletCommandSet(apduChannel);
+    cmdSet = new TestKeycardCommandSet(apduChannel);
     secureChannel = new TestSecureChannelSession();
     cmdSet.setSecureChannel(secureChannel);
-    WalletAppletCommandSet.checkOK(cmdSet.select());
+    KeycardCommandSet.checkOK(cmdSet.select());
     cmdSet.setSecureChannel(secureChannel);
     cmdSet.autoPair(SHARED_SECRET);
   }
@@ -121,14 +120,14 @@ public class WalletAppletTest {
     ResponseAPDU response = cmdSet.select();
     assertEquals(0x9000, response.getSW());
     byte[] data = response.getData();
-    assertEquals(WalletApplet.TLV_APPLICATION_INFO_TEMPLATE, data[0]);
-    assertEquals(WalletApplet.TLV_UID, data[2]);
-    assertEquals(WalletApplet.TLV_PUB_KEY, data[20]);
-    assertEquals(WalletApplet.TLV_INT, data[22 + data[21]]);
-    assertEquals(WalletApplet.APPLICATION_VERSION >> 8, data[24 + data[21]]);
-    assertEquals(WalletApplet.APPLICATION_VERSION & 0xFF, data[25 + data[21]]);
-    assertEquals(WalletApplet.TLV_INT, data[26 + data[21]]);
-    assertEquals(WalletApplet.TLV_KEY_UID, data[29 + data[21]]);
+    assertEquals(KeycardApplet.TLV_APPLICATION_INFO_TEMPLATE, data[0]);
+    assertEquals(KeycardApplet.TLV_UID, data[2]);
+    assertEquals(KeycardApplet.TLV_PUB_KEY, data[20]);
+    assertEquals(KeycardApplet.TLV_INT, data[22 + data[21]]);
+    assertEquals(KeycardApplet.APPLICATION_VERSION >> 8, data[24 + data[21]]);
+    assertEquals(KeycardApplet.APPLICATION_VERSION & 0xFF, data[25 + data[21]]);
+    assertEquals(KeycardApplet.TLV_INT, data[26 + data[21]]);
+    assertEquals(KeycardApplet.TLV_KEY_UID, data[29 + data[21]]);
   }
 
   @Test
@@ -150,7 +149,7 @@ public class WalletAppletTest {
 
     // Send command before MUTUALLY AUTHENTICATE
     secureChannel.reset();
-    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x6985, response.getSW());
 
     // Perform mutual authentication
@@ -160,7 +159,7 @@ public class WalletAppletTest {
     assertTrue(secureChannel.verifyMutuallyAuthenticateResponse(response));
 
     // Verify that the channel is open
-    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
 
     // Verify that the keys are changed correctly. Since we do not know the internal counter we just iterate until that
@@ -211,13 +210,13 @@ public class WalletAppletTest {
     cmdSet.autoOpenSecureChannel();
 
     // MUTUALLY AUTHENTICATE has no effect on an already open secure channel
-    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
 
     response = cmdSet.mutuallyAuthenticate();
     assertEquals(0x6985, response.getSW());
 
-    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
   }
 
@@ -318,33 +317,33 @@ public class WalletAppletTest {
   @DisplayName("GET STATUS command")
   void getStatusTest() throws CardException {
     // Security condition violation: SecureChannel not open
-    ResponseAPDU response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    ResponseAPDU response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x6985, response.getSW());
     cmdSet.autoOpenSecureChannel();
 
     // Good case. Since the order of test execution is undefined, the test cannot know if the keys are initialized or not.
     // Additionally, support for public key derivation is hw dependent.
-    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
     byte[] data = response.getData();
     assertTrue(Hex.toHexString(data).matches("a30c0201030201050101[0f][0f]"));
 
     response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C2, response.getSW());
-    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
     data = response.getData();
     assertTrue(Hex.toHexString(data).matches("a30c0201020201050101[0f][0f]"));
 
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_APPLICATION);
+    response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSW());
     data = response.getData();
     assertTrue(Hex.toHexString(data).matches("a30c0201030201050101[0f][0f]"));
 
     // Check that key path is empty
-    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);
+    response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_KEY_PATH);
     assertEquals(0x9000, response.getSW());
     data = response.getData();
     assertEquals(0, data.length);
@@ -423,13 +422,13 @@ public class WalletAppletTest {
   @DisplayName("CHANGE PIN command")
   void changePinTest() throws CardException {
     // Security condition violation: SecureChannel not open
-    ResponseAPDU response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "123456");
+    ResponseAPDU response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "123456");
     assertEquals(0x6985, response.getSW());
 
     cmdSet.autoOpenSecureChannel();
 
     // Security condition violation: PIN n ot verified
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "123456");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "123456");
     assertEquals(0x6985, response.getSW());
 
     response = cmdSet.verifyPIN("000000");
@@ -440,37 +439,37 @@ public class WalletAppletTest {
     assertEquals(0x6a86, response.getSW());
 
     // Test wrong PIN formats (non-digits, too short, too long)
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "654a21");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "654a21");
     assertEquals(0x6A80, response.getSW());
 
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "54321");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "54321");
     assertEquals(0x6A80, response.getSW());
 
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "7654321");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "7654321");
     assertEquals(0x6A80, response.getSW());
 
     // Test wrong PUK formats
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PUK, "210987654a21");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PUK, "210987654a21");
     assertEquals(0x6A80, response.getSW());
 
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PUK, "10987654321");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PUK, "10987654321");
     assertEquals(0x6A80, response.getSW());
 
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PUK, "3210987654321");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PUK, "3210987654321");
     assertEquals(0x6A80, response.getSW());
 
     // Test wrong pairing secret format (too long, too short)
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PAIRING_SECRET, "abcdefghilmnopqrstuvz123456789012");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PAIRING_SECRET, "abcdefghilmnopqrstuvz123456789012");
     assertEquals(0x6A80, response.getSW());
 
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PAIRING_SECRET, "abcdefghilmnopqrstuvz1234567890");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PAIRING_SECRET, "abcdefghilmnopqrstuvz1234567890");
     assertEquals(0x6A80, response.getSW());
 
     // Change PIN correctly, check that after PIN change the PIN remains validated
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "123456");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "123456");
     assertEquals(0x9000, response.getSW());
 
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "654321");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "654321");
     assertEquals(0x9000, response.getSW());
 
     // Reset card and verify that the new PIN has really been set
@@ -480,7 +479,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     // Change PUK
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PUK, "210987654321");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PUK, "210987654321");
     assertEquals(0x9000, response.getSW());
 
     resetAndSelectAndOpenSC();
@@ -500,11 +499,11 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     // Reset PUK
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PUK, "123456789012");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PUK, "123456789012");
     assertEquals(0x9000, response.getSW());
 
     // Change the pairing secret
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PAIRING_SECRET, "abcdefghilmnopqrstuvz12345678901");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PAIRING_SECRET, "abcdefghilmnopqrstuvz12345678901");
     assertEquals(0x9000, response.getSW());
     cmdSet.autoUnpair();
     reset();
@@ -518,7 +517,7 @@ public class WalletAppletTest {
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSW());
 
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_PAIRING_SECRET, SHARED_SECRET);
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PAIRING_SECRET, SHARED_SECRET);
     assertEquals(0x9000, response.getSW());
   }
 
@@ -567,7 +566,7 @@ public class WalletAppletTest {
     assertEquals(0x9000, response.getSW());
 
     // Reset the PIN to make further tests possible
-    response = cmdSet.changePIN(WalletApplet.CHANGE_PIN_P1_USER_PIN, "000000");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "000000");
     assertEquals(0x9000, response.getSW());
   }
 
@@ -595,14 +594,14 @@ public class WalletAppletTest {
     assertEquals(0x6A86, response.getSW());
 
     // Wrong data (wrong template, missing private key, invalid keys)
-    response = cmdSet.loadKey(new byte[]{(byte) 0xAA, 0x02, (byte) 0x80, 0x00}, WalletApplet.LOAD_KEY_P1_EC);
+    response = cmdSet.loadKey(new byte[]{(byte) 0xAA, 0x02, (byte) 0x80, 0x00}, KeycardApplet.LOAD_KEY_P1_EC);
     assertEquals(0x6A80, response.getSW());
 
-    response = cmdSet.loadKey(new byte[]{(byte) 0xA1, 0x02, (byte) 0x80, 0x00}, WalletApplet.LOAD_KEY_P1_EC);
+    response = cmdSet.loadKey(new byte[]{(byte) 0xA1, 0x02, (byte) 0x80, 0x00}, KeycardApplet.LOAD_KEY_P1_EC);
     assertEquals(0x6A80, response.getSW());
 
     if (!USE_SIMULATOR) { // the simulator does not check the key format
-      response = cmdSet.loadKey(new byte[]{(byte) 0xA1, 0x06, (byte) 0x80, 0x01, 0x01, (byte) 0x81, 0x01, 0x02}, WalletApplet.LOAD_KEY_P1_EC);
+      response = cmdSet.loadKey(new byte[]{(byte) 0xA1, 0x06, (byte) 0x80, 0x01, 0x01, (byte) 0x81, 0x01, 0x02}, KeycardApplet.LOAD_KEY_P1_EC);
       assertEquals(0x6A80, response.getSW());
     }
 
@@ -791,7 +790,7 @@ public class WalletAppletTest {
     verifyKeyDerivation(keyPair, chainCode, new int[]{1, 0x80000000, 2});
 
     // From parent
-    response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x03}, WalletApplet.DERIVE_P1_SOURCE_PARENT);
+    response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x03}, KeycardApplet.DERIVE_P1_SOURCE_PARENT);
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[]{1, 0x80000000, 3});
 
@@ -801,15 +800,15 @@ public class WalletAppletTest {
     verifyKeyDerivation(keyPair, chainCode, new int[0]);
 
     // Try parent when none available
-    response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x03}, WalletApplet.DERIVE_P1_SOURCE_PARENT);
+    response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x03}, KeycardApplet.DERIVE_P1_SOURCE_PARENT);
     assertEquals(0x6B00, response.getSW());
 
     // 3 levels with hardened key using separate commands
-    response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
+    response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x01}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(new byte[]{(byte) 0x80, 0x00, 0x00, 0x00}, WalletApplet.DERIVE_P1_SOURCE_CURRENT);
+    response = cmdSet.deriveKey(new byte[]{(byte) 0x80, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_CURRENT);
     assertEquals(0x9000, response.getSW());
-    response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x02}, WalletApplet.DERIVE_P1_SOURCE_CURRENT);
+    response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x02}, KeycardApplet.DERIVE_P1_SOURCE_CURRENT);
     assertEquals(0x9000, response.getSW());
     verifyKeyDerivation(keyPair, chainCode, new int[]{1, 0x80000000, 2});
 
@@ -890,7 +889,7 @@ public class WalletAppletTest {
     // Wrong data
     response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00});
     assertEquals(0x6a80, response.getSW());
-    response = cmdSet.setPinlessPath(new byte[(WalletApplet.KEY_PATH_MAX_DEPTH + 1)* 4]);
+    response = cmdSet.setPinlessPath(new byte[(KeycardApplet.KEY_PATH_MAX_DEPTH + 1)* 4]);
     assertEquals(0x6a80, response.getSW());
 
     // Correct
@@ -901,11 +900,11 @@ public class WalletAppletTest {
     resetAndSelectAndOpenSC();
     response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSW());
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSW());
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, WalletApplet.DERIVE_P1_SOURCE_CURRENT);
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, KeycardApplet.DERIVE_P1_SOURCE_CURRENT);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(hash);
     assertEquals(0x9000, response.getSW());
@@ -919,7 +918,7 @@ public class WalletAppletTest {
     response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSW());
     assertEquals(0x6985, response.getSW());
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.sign(hash);
     assertEquals(0x9000, response.getSW());
@@ -932,7 +931,7 @@ public class WalletAppletTest {
     resetAndSelectAndOpenSC();
     response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSW());
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
+    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x6985, response.getSW());
   }
 
@@ -963,12 +962,12 @@ public class WalletAppletTest {
     response = cmdSet.exportCurrentKey(false);
     assertEquals(0x6985, response.getSW());
 
-    response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2c, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
+    response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2c, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.exportCurrentKey(false);
     assertEquals(0x6985, response.getSW());
 
-    response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
+    response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSW());
     response = cmdSet.exportCurrentKey(false);
     assertEquals(0x6985, response.getSW());
@@ -981,17 +980,17 @@ public class WalletAppletTest {
     verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000 }, true, false);
 
     // Derive & Make current
-    response = cmdSet.exportKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, WalletApplet.DERIVE_P1_SOURCE_MASTER,true,false);
+    response = cmdSet.exportKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER,true,false);
     assertEquals(0x9000, response.getSW());
     keyTemplate = response.getData();
     verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000000 }, false, false);
 
     // Derive without making current
-    response = cmdSet.exportKey(new byte[] {(byte) 0x00, 0x00, 0x00, 0x01}, WalletApplet.DERIVE_P1_SOURCE_PARENT, false,false);
+    response = cmdSet.exportKey(new byte[] {(byte) 0x00, 0x00, 0x00, 0x01}, KeycardApplet.DERIVE_P1_SOURCE_PARENT, false,false);
     assertEquals(0x9000, response.getSW());
     keyTemplate = response.getData();
     verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000001 }, false, true);
-    response = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);
+    response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_KEY_PATH);
     assertEquals(0x9000, response.getSW());
     assertArrayEquals(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, response.getData());
 
@@ -1002,7 +1001,7 @@ public class WalletAppletTest {
     verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000000 }, false, false);
 
     // Reset
-    response = cmdSet.deriveKey(new byte[0], WalletApplet.DERIVE_P1_SOURCE_MASTER);
+    response = cmdSet.deriveKey(new byte[0], KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSW());
   }
 
@@ -1175,7 +1174,7 @@ public class WalletAppletTest {
 
     for (int i = 0; i < SAMPLE_COUNT; i++) {
       time = System.currentTimeMillis();
-      response = cmdSet.deriveKey(new byte[] { (byte) 0x80, 0x00, 0x00, 0x2C, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, WalletApplet.DERIVE_P1_SOURCE_MASTER);
+      response = cmdSet.deriveKey(new byte[] { (byte) 0x80, 0x00, 0x00, 0x2C, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
       deriveAccount += System.currentTimeMillis() - time;
       assertEquals(0x9000, response.getSW());
     }
@@ -1184,7 +1183,7 @@ public class WalletAppletTest {
 
     for (int i = 0; i < SAMPLE_COUNT; i++) {
       time = System.currentTimeMillis();
-      response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, (byte) i}, WalletApplet.DERIVE_P1_SOURCE_PARENT);
+      response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, (byte) i}, KeycardApplet.DERIVE_P1_SOURCE_PARENT);
       deriveParent += System.currentTimeMillis() - time;
       assertEquals(0x9000, response.getSW());
     }
@@ -1193,7 +1192,7 @@ public class WalletAppletTest {
 
     for (int i = 0; i < SAMPLE_COUNT; i++) {
       time = System.currentTimeMillis();
-      response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, (byte) i}, WalletApplet.DERIVE_P1_SOURCE_PARENT);
+      response = cmdSet.deriveKey(new byte[] {(byte) 0x80, 0x00, 0x00, (byte) i}, KeycardApplet.DERIVE_P1_SOURCE_PARENT);
       deriveParentHardened += System.currentTimeMillis() - time;
       assertEquals(0x9000, response.getSW());
     }
@@ -1219,17 +1218,17 @@ public class WalletAppletTest {
   }
 
   private byte[] extractPublicKeyFromSignature(byte[] sig) {
-    assertEquals(WalletApplet.TLV_SIGNATURE_TEMPLATE, sig[0]);
+    assertEquals(KeycardApplet.TLV_SIGNATURE_TEMPLATE, sig[0]);
     assertEquals((byte) 0x81, sig[1]);
-    assertEquals(WalletApplet.TLV_PUB_KEY, sig[3]);
+    assertEquals(KeycardApplet.TLV_PUB_KEY, sig[3]);
 
     return Arrays.copyOfRange(sig, 5, 5 + sig[4]);
   }
 
   private byte[] extractPublicKeyFromSelect(byte[] select) {
-    assertEquals(WalletApplet.TLV_APPLICATION_INFO_TEMPLATE, select[0]);
-    assertEquals(WalletApplet.TLV_UID, select[2]);
-    assertEquals(WalletApplet.TLV_PUB_KEY, select[20]);
+    assertEquals(KeycardApplet.TLV_APPLICATION_INFO_TEMPLATE, select[0]);
+    assertEquals(KeycardApplet.TLV_UID, select[2]);
+    assertEquals(KeycardApplet.TLV_PUB_KEY, select[20]);
 
     return Arrays.copyOfRange(select, 22, 22 + select[21]);
   }
@@ -1291,7 +1290,7 @@ public class WalletAppletTest {
     assertTrue(key.verify(hash, sig));
     assertArrayEquals(key.getPubKeyPoint().getEncoded(false), publicKey);
 
-    resp = cmdSet.getStatus(WalletApplet.GET_STATUS_P1_KEY_PATH);
+    resp = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_KEY_PATH);
     assertEquals(0x9000, resp.getSW());
     byte[] rawPath = resp.getData();
 
@@ -1306,11 +1305,11 @@ public class WalletAppletTest {
 
   private void verifyExportedKey(byte[] keyTemplate, KeyPair keyPair, byte[] chainCode, int[] path, boolean publicOnly, boolean noPubKey) {
     ECKey key = deriveKey(keyPair, chainCode, path).decompress();
-    assertEquals(WalletApplet.TLV_KEY_TEMPLATE, keyTemplate[0]);
+    assertEquals(KeycardApplet.TLV_KEY_TEMPLATE, keyTemplate[0]);
     int pubKeyLen = 0;
 
     if (!noPubKey) {
-      assertEquals(WalletApplet.TLV_PUB_KEY, keyTemplate[2]);
+      assertEquals(KeycardApplet.TLV_PUB_KEY, keyTemplate[2]);
       byte[] pubKey = Arrays.copyOfRange(keyTemplate, 4, 4 + keyTemplate[3]);
       assertArrayEquals(key.getPubKey(), pubKey);
       pubKeyLen = 2 + pubKey.length;
@@ -1320,7 +1319,7 @@ public class WalletAppletTest {
       assertEquals(pubKeyLen, keyTemplate[1]);
       assertEquals(pubKeyLen + 2, keyTemplate.length);
     } else {
-      assertEquals(WalletApplet.TLV_PRIV_KEY, keyTemplate[2 + pubKeyLen]);
+      assertEquals(KeycardApplet.TLV_PRIV_KEY, keyTemplate[2 + pubKeyLen]);
       byte[] privateKey = Arrays.copyOfRange(keyTemplate, 4 + pubKeyLen, 4 + pubKeyLen + keyTemplate[3 + pubKeyLen]);
 
       byte[] tPrivKey = key.getPrivKey().toByteArray();

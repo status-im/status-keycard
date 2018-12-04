@@ -1,4 +1,4 @@
-package im.status.wallet;
+package im.status.keycard;
 
 /**
  * Keep references to data structures shared across applet instances of this package.

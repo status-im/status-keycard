@@ -1,4 +1,4 @@
-package im.status.wallet;
+package im.status.keycard;
 
 import javacard.framework.*;
 import javacard.security.*;
@@ -7,7 +7,7 @@ import javacardx.crypto.Cipher;
 /**
  * The applet's main class. All incoming commands a processed by this class.
  */
-public class WalletApplet extends Applet {
+public class KeycardApplet extends Applet {
   static final short APPLICATION_VERSION = (short) 0x0200;
 
   static final byte INS_GET_STATUS = (byte) 0xF2;
@@ -132,7 +132,7 @@ public class WalletApplet extends Applet {
    * @param bLength length of the installation parameters
    */
   public static void install(byte[] bArray, short bOffset, byte bLength) {
-    new WalletApplet(bArray, bOffset, bLength);
+    new KeycardApplet(bArray, bOffset, bLength);
   }
 
   /**
@@ -146,7 +146,7 @@ public class WalletApplet extends Applet {
    * @param bOffset offset where the installation parameters begin
    * @param bLength length of the installation parameters
    */
-  public WalletApplet(byte[] bArray, short bOffset, byte bLength) {
+  public KeycardApplet(byte[] bArray, short bOffset, byte bLength) {
     crypto = new Crypto();
     secp256k1 = new SECP256k1(crypto);
 

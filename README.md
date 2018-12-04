@@ -1,6 +1,4 @@
-# JavaCard Hardware Wallet
-
-The status.im Hardware Wallet. At the moment Secure Channel and PIN management/verification are implemented.
+# Status Keycard
 
 The project is built using Gradle with the [Fidesmo Javacard Gradle plugin](https://github.com/fidesmo/gradle-javacard).
 You can set the JavaCard HOME not only through the environment but also creating a gradle.properties file with the 
@@ -15,7 +13,7 @@ installed on the system. The gradle.properties file must contain the following p
 * im.status.gradle.gpshell.enc_key = the ENC key for the ISD
 * im.status.gradle.gpshell.kek_key = the KEK key for the ISD
 * im.status.gradle.gpshell.kvn = the Key Version Number for the ISD
-* im.status.wallet.test.simulated = true if the test should run on the simulator, false (or anything else) otherwise
+* im.status.keycard.test.simulated = true if the test should run on the simulator, false (or anything else) otherwise
 
 Testing is done with JUnit and performed either on a real card or on [jCardSim](https://github.com/status-im/jcardsim). 
 Although the tests are comprehensive, debugging on the real card is not easy because raw APDUs are not shown in the test 
@@ -23,7 +21,7 @@ log and there is no way to set breakpoints in the applet.
 
 In order to test with the simulator with an IDE, you need to pass these additional parameters to the JVM
 
-```-noverify -Dim.status.wallet.test.simulated=true```
+```-noverify -Dim.status.keycard.test.simulated=true```
 
 ## Compilation
 1. Download and install the JavaCard 3.0.4 SDK from [Oracle](http://www.oracle.com/technetwork/java/javasebusiness/downloads/java-archive-downloads-javame-419430.html#java_card_kit-classic-3_0_4-rr-bin-do)
@@ -52,7 +50,7 @@ im.status.gradle.gpshell.mac_key=404142434445464748494a4b4c4d4e4f
 im.status.gradle.gpshell.enc_key=404142434445464748494a4b4c4d4e4f
 im.status.gradle.gpshell.kek_key=404142434445464748494a4b4c4d4e4f
 im.status.gradle.gpshell.kvn=0
-im.status.wallet.test.simulated=false
+im.status.keycard.test.simulated=false
 ```
 
 ## Implementation notes
