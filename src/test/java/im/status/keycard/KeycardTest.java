@@ -43,8 +43,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Test the Keycard Applet")
 public class KeycardTest {
-  // Psiring key is WalletAppletTest
-  public static final byte[] SHARED_SECRET = new byte[] { (byte) 0xe9, (byte) 0x29, (byte) 0xd4, (byte) 0x25, (byte) 0xd7, (byte) 0xf7, (byte) 0x3c, (byte) 0x2a, (byte) 0x0a, (byte) 0x24, (byte) 0xff, (byte) 0xef, (byte) 0xad, (byte) 0x87, (byte) 0xb6, (byte) 0x5e, (byte) 0x9b, (byte) 0x2e, (byte) 0xe9, (byte) 0x66, (byte) 0x03, (byte) 0xea, (byte) 0xb3, (byte) 0x4d, (byte) 0x64, (byte) 0x08, (byte) 0x8b, (byte) 0x5a, (byte) 0xae, (byte) 0x2a, (byte) 0x02, (byte) 0x6f };
+  // Psiring key is KeycardTest
+  public static final byte[] SHARED_SECRET = Hex.decode("2194524CF8A99C34B9F6C6894D07245AA2D5CFE6327C27D5ACDCC95DA203ED28");
   private static CardTerminal cardTerminal;
   private static CardChannel apduChannel;
   private static CardSimulator simulator;

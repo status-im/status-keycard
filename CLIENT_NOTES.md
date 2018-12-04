@@ -135,5 +135,5 @@ must use DERIVE KEY before exporting the desired key.
    key derivation, but you shouldn't use it because, as explained above, it wouldn't work on the card.
 5. If using jCardSim, only use our fork, since some of the needed algorithms are unsupported in the upstream version.
 6. The pairing code is a randomly generated password (using whatever password generation algorithm is desired). This
-password must be converted to a 256-bit key using PBKDF2 with the salt "Status Hardware Wallet Lite" and 50000 iterations.
+password must be converted to a 256-bit key using PBKDF2 with the salt "Keycard Pairing Password Salt" and 50000 iterations.
 
