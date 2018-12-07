@@ -18,10 +18,10 @@ javacard {
 
   cap {
     aid = '0x53:0x74:0x61:0x74:0x75:0x73:0x57:0x61:0x6c:0x6c:0x65:0x74'
-    packageName = 'im.status.wallet'
+    packageName = 'im.status.keycard'
     applet {
       aid = '0x53:0x74:0x61:0x74:0x75:0x73:0x57:0x61:0x6c:0x6c:0x65:0x74:0x41:0x70:0x70'
-      className = 'WalletApplet'
+      className = 'KeycardApplet'
     }
     applet {
       aid = '0x53:0x74:0x61:0x74:0x75:0x73:0x57:0x61:0x6c:0x6c:0x65:0x74:0x4e:0x46:0x43'
@@ -42,7 +42,7 @@ dependencies {
   testCompile('org.web3j:core:2.3.1')
   testCompile('org.bitcoinj:bitcoinj-core:0.14.5')
   testCompile("org.bouncycastle:bcprov-jdk15on:1.58")
-  testCompile("com.github.status-im:hardwallet-lite-sdk:482e32c")
+  testCompile("com.github.status-im:status-keycard-desktop:42086f6")
   testCompile("org.junit.jupiter:junit-jupiter-api:5.1.1")
   testRuntime("org.junit.jupiter:junit-jupiter-engine:5.1.1")
 }
@@ -69,7 +69,7 @@ task install(type: Exec) {
   open_sc -security 1 -keyind 0 -keyver ${project.properties['im.status.gradle.gpshell.kvn']} -mac_key ${project.properties['im.status.gradle.gpshell.mac_key']} -enc_key ${project.properties['im.status.gradle.gpshell.enc_key']} -kek_key ${project.properties['im.status.gradle.gpshell.kek_key']}
   send_apdu_nostop -sc 1 -APDU 80E400800E4F0C53746174757357616C6C6574
   install_for_load -pkgAID 53746174757357616C6C6574
-  load -file build/javacard/im/status/wallet/javacard/wallet.cap
+  load -file build/javacard/im/status/keycard/javacard/keycard.cap
   install_for_install -AID 53746174757357616C6C6574417070 -pkgAID 53746174757357616C6C6574 -instAID 53746174757357616C6C6574417070
   install_for_install -AID 53746174757357616C6C65744e4643 -pkgAID 53746174757357616C6C6574 -instAID D2760000850101
   card_disconnect
@@ -80,7 +80,7 @@ task install(type: Exec) {
   standardInput new ByteArrayInputStream(gpShellScript.getBytes("UTF-8"))
 }
 
-if (project.properties['im.status.wallet.test.simulated'] != 'true') {
+if (project.properties['im.status.keycard.test.simulated'] != 'true') {
   tasks.install.dependsOn(convertJavacard)
   tasks.test.dependsOn(install)
 }
@@ -96,8 +96,8 @@ compileTestJava {
 }
 
 afterEvaluate {
-  if (project.properties['im.status.wallet.test.simulated'] == 'true') {
+  if (project.properties['im.status.keycard.test.simulated'] == 'true') {
     def junitPlatformTestTask = tasks.getByName('junitPlatformTest')
-    junitPlatformTestTask.jvmArgs(['-noverify', '-Dim.status.wallet.test.simulated=true'])
+    junitPlatformTestTask.jvmArgs(['-noverify', '-Dim.status.keycard.test.simulated=true'])
   }
 }

@@ -1,11 +1,10 @@
 # Notes for client implementation
 
-This document should help client application developers to integrate support for the hardware wallet in their 
-applications.
+This document should help client application developers to integrate support for the Status Keycard in their applications.
 
 ## Low-level communication
 
-The hardware wallet is a JavaCard application and as such is deployed on ISO7816 compatible SmartCards. Communication 
+The Status Keycard is a JavaCard application and as such is deployed on ISO7816 compatible SmartCards. Communication 
 will happen exchanging APDUs using either the T=0 or preferably the T=1 protocol. Most operating systems use an 
 implementation of [this Microsoft API](https://msdn.microsoft.com/en-us/library/windows/desktop/aa374731(v=vs.85).aspx#smart_card_functions)
 like [PCSC lite](http://pcsclite.alioth.debian.org/pcsclite.html). Your language of choice might provide bindings for
@@ -18,18 +17,18 @@ A few things to keep in mind when communicating with SmartCards
    messing with the card while you are using it.
 3. A SmartCard can have multiple applications installed. If using only the basic channel (recommended for our use-case)
    only a single application can be selected at the time. This must be done explicitly on each reset by issuing the
-   SELECT command with the AID of the wallet application.
+   SELECT command with the AID of the keycard application.
 4. Since we are not using extended APDUs, the maximum size of the data field of the APDU is 255 bytes.
 
 ## Wallet management and security
 
-Before thinking about the application-specific communication (i.e: actually using the wallet applet to derive keys and
+Before thinking about the application-specific communication (i.e: actually using the Keycard applet to derive keys and
 sign transactions) the client must be able to actually talk with the card using its [Secure Channel protocol](SECURE_CHANNEL.MD).
 
-The first step, after an APDU channel is available is to [SELECT](APPLICATION.MD) the wallet application on the card.
-The wallet will return its Instance UID and public key for Secure Channel establishment. Although both values are unique,
-only use the Instance UID to identify the wallet since only this value is guaranteed not to change over the lifetime of
-the card. If your application has already performed pairing with the wallet with this Instance UID, you can establish
+The first step, after an APDU channel is available is to [SELECT](APPLICATION.MD) the Keycard application on the card.
+The Keycard will return its Instance UID and public key for Secure Channel establishment. Although both values are unique,
+only use the Instance UID to identify the Keycard since only this value is guaranteed not to change over the lifetime of
+the card. If your application has already performed pairing with the Keycard with this Instance UID, you can establish
 a Secure Channel session (described later). Otherwise you should proceed with pairing.
 
 For pairing, the client must show that it knows the pairing code. For this reason the user must be prompted
@@ -71,10 +70,10 @@ the user has been authenticated or not in order to avoid repeatedly asking for t
 error to any APDU requiring user authentication if the user has not been authenticated in the current application 
 session.
 
-## Wallet features and workflow
+## Keycard features and workflow
 
 Now that the client can finally talk with the applet and provide user authentication facilities, it is time to look on
-how to actually use the wallet. The wallet applet allows management of a single HD wallet as described in the 
+how to actually use the Keycard. The Keycard applet allows management of a single HD wallet as described in the 
 [BIP32](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki) specifications. It provides the following features
 
 1. Source of entropy to generate master seeds (GENERATE MNEMONIC). No PIN required (has no effect on card state).
@@ -136,5 +135,5 @@ must use DERIVE KEY before exporting the desired key.
    key derivation, but you shouldn't use it because, as explained above, it wouldn't work on the card.
 5. If using jCardSim, only use our fork, since some of the needed algorithms are unsupported in the upstream version.
 6. The pairing code is a randomly generated password (using whatever password generation algorithm is desired). This
-password must be converted to a 256-bit key using PBKDF2 with the salt "Status Hardware Wallet Lite" and 50000 iterations.
+password must be converted to a 256-bit key using PBKDF2 with the salt "Keycard Pairing Password Salt" and 50000 iterations.
 

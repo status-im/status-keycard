@@ -1,14 +1,13 @@
-package im.status.wallet;
+package im.status.keycard;
 
-import im.status.hardwallet.lite.WalletAppletCommandSet;
 import org.web3j.crypto.ECKeyPair;
 
 import javax.smartcardio.CardChannel;
 import javax.smartcardio.CardException;
 import javax.smartcardio.ResponseAPDU;
 
-public class TestWalletAppletCommandSet extends WalletAppletCommandSet {
-  public TestWalletAppletCommandSet(CardChannel apduChannel) {
+public class TestKeycardCommandSet extends KeycardCommandSet {
+  public TestKeycardCommandSet(CardChannel apduChannel) {
     super(apduChannel);
   }
 

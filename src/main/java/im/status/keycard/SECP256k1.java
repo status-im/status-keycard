@@ -1,4 +1,4 @@
-package im.status.wallet;
+package im.status.keycard;
 
 import javacard.security.ECKey;
 import javacard.security.ECPrivateKey;

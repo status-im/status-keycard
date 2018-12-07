@@ -1,6 +1,4 @@
-package im.status.wallet;
-
-import im.status.hardwallet.lite.SecureChannelSession;
+package im.status.keycard;
 
 public class TestSecureChannelSession extends SecureChannelSession {
   public void setOpen() {
