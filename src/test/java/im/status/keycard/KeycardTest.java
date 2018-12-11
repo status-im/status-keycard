@@ -27,7 +27,6 @@ import org.web3j.utils.Convert;
 import org.web3j.utils.Numeric;
 
 import javax.smartcardio.*;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -39,7 +38,7 @@ import java.nio.ByteOrder;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Signature;
-import java.security.interfaces.ECPublicKey;
+import org.bouncycastle.jce.interfaces.ECPublicKey;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -1430,13 +1429,8 @@ public class KeycardTest {
     return new Sign.SignatureData(v, rB, sB);
   }
 
-  private void verifyKeyUID(byte[] keyUID, ECPublicKey pubKey) throws Exception {
-    ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    bos.write(0x04);
-    bos.write(pubKey.getW().getAffineX().toByteArray());
-    bos.write(pubKey.getW().getAffineY().toByteArray());
-
-    verifyKeyUID(keyUID, bos.toByteArray());
+  private void verifyKeyUID(byte[] keyUID, ECPublicKey pubKey) {
+    verifyKeyUID(keyUID, pubKey.getQ().getEncoded(false));
   }
 
   private void verifyKeyUID(byte[] keyUID, byte[] pubKey) {
