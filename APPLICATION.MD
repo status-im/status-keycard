@@ -3,9 +3,10 @@
 ## Version
 
 Version numbers are in the form major.minor. An major revision increment indicates the presence of breaking changes as
-compared to the previous released version. This is version 2.0 of the specs (unreleased). 
+compared to the previous released version. This is version 2.0 of the specs. 
 
 ### Changes since 1.2
+* **BREAKING** Changed application AID
 * **BREAKING** Completely redefined the EXPORT KEY command
 * **BREAKING** Removed assisted key derivation
 * **BREAKING** Removed plain data signing, now only 32-byte long hashes can be signed
@@ -65,7 +66,7 @@ SW 0x6985 is returned. All tagged data structures are encoded in the [BER-TLV fo
 * INS = 0xA4
 * P1 = 0x04
 * P2 = 0x00
-* Data = 53746174757357616C6C6574417070 (hex)
+* Data = the instance AID
 * Response = Application Info Template or ECC public key.
 
 Response Data format:

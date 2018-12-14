@@ -11,7 +11,7 @@ buildscript {
   dependencies {
     classpath 'com.fidesmo:gradle-javacard:0.2.7'
     classpath 'org.junit.platform:junit-platform-gradle-plugin:1.1.1'
-    classpath 'com.github.status-im.status-keycard-java:desktop:2.0rc1'
+    classpath 'com.github.status-im.status-keycard-java:desktop:2.0.0'
   }
 }
 
@@ -19,14 +19,14 @@ javacard {
   sdkVersion = "3.0.4"
 
   cap {
-    aid = '0x53:0x74:0x61:0x74:0x75:0x73:0x57:0x61:0x6c:0x6c:0x65:0x74'
+    aid = '0xA0:0x00:0x00:0x08:0x04:0x00:0x01'
     packageName = 'im.status.keycard'
     applet {
-      aid = '0x53:0x74:0x61:0x74:0x75:0x73:0x57:0x61:0x6c:0x6c:0x65:0x74:0x41:0x70:0x70'
+      aid = '0xA0:0x00:0x00:0x08:0x04:0x00:0x01:0x01'
       className = 'KeycardApplet'
     }
     applet {
-      aid = '0x53:0x74:0x61:0x74:0x75:0x73:0x57:0x61:0x6c:0x6c:0x65:0x74:0x4e:0x46:0x43'
+      aid = '0xA0:0x00:0x00:0x08:0x04:0x00:0x01:0x02'
       className = 'NDEFApplet'
     }
     
@@ -43,7 +43,7 @@ dependencies {
   testCompile(files("../jcardsim/jcardsim-3.0.5-SNAPSHOT.jar"))
   testCompile('org.web3j:core:2.3.1')
   testCompile('org.bitcoinj:bitcoinj-core:0.14.5')
-  testCompile('com.github.status-im.status-keycard-java:desktop:2.0rc1')
+  testCompile('com.github.status-im.status-keycard-java:desktop:2.0.0')
   testCompile('org.bouncycastle:bcprov-jdk15on:1.60')
   testCompile("org.junit.jupiter:junit-jupiter-api:5.1.1")
   testRuntime("org.junit.jupiter:junit-jupiter-engine:5.1.1")
