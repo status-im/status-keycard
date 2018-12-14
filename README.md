@@ -4,17 +4,6 @@ The project is built using Gradle with the [Fidesmo Javacard Gradle plugin](http
 You can set the JavaCard HOME not only through the environment but also creating a gradle.properties file with the 
 property "com.fidesmo.gradle.javacard.home" set to the correct path.
 
-Loading and installing the applet requires [gpshell](https://sourceforge.net/p/globalplatform/wiki/GPShell/) to be 
-installed on the system. The gradle.properties file must contain the following properties
-
-* im.status.gradle.gpshell = the path to the gpshell executable
-* im.status.gradle.gpshell.isd = the AID of the issuer security domain
-* im.status.gradle.gpshell.mac_key = the MAC key for the ISD
-* im.status.gradle.gpshell.enc_key = the ENC key for the ISD
-* im.status.gradle.gpshell.kek_key = the KEK key for the ISD
-* im.status.gradle.gpshell.kvn = the Key Version Number for the ISD
-* im.status.keycard.test.simulated = true if the test should run on the simulator, false (or anything else) otherwise
-
 Testing is done with JUnit and performed either on a real card or on [jCardSim](https://github.com/status-im/jcardsim). 
 Although the tests are comprehensive, debugging on the real card is not easy because raw APDUs are not shown in the test 
 log and there is no way to set breakpoints in the applet. 
@@ -39,19 +28,6 @@ In order to test with the simulator with an IDE, you need to pass these addition
 2. Make sure your JRE has the [JCE Unlimited Strength Jurisdiction Policy Files](http://www.oracle.com/technetwork/java/javase/downloads/jce8-download-2133166.html)
    installed. For more information check [here](https://stackoverflow.com/questions/41580489/how-to-install-unlimited-strength-jurisdiction-policy-files).
 3. Run `./gradlew test`
-
-## Example gradle.properties file
-
-```
-com.fidesmo.gradle.javacard.home=/home/username/javacard-3_0_4
-im.status.gradle.gpshell=/usr/local/bin/gpshell
-im.status.gradle.gpshell.isd=A000000151000000
-im.status.gradle.gpshell.mac_key=404142434445464748494a4b4c4d4e4f
-im.status.gradle.gpshell.enc_key=404142434445464748494a4b4c4d4e4f
-im.status.gradle.gpshell.kek_key=404142434445464748494a4b4c4d4e4f
-im.status.gradle.gpshell.kvn=0
-im.status.keycard.test.simulated=false
-```
 
 ## Implementation notes
 

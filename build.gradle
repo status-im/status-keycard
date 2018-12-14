@@ -5,11 +5,13 @@ buildscript {
   repositories {
     maven { url 'http://releases.marmeladburk.fidesmo.com/' }
     mavenCentral()
+    maven { url 'https://jitpack.io' }
   }
 
   dependencies {
     classpath 'com.fidesmo:gradle-javacard:0.2.7'
     classpath 'org.junit.platform:junit-platform-gradle-plugin:1.1.1'
+    classpath 'com.github.status-im.status-keycard-java:desktop:2.0rc1'
   }
 }
 
@@ -59,26 +61,7 @@ task wrapper(type: Wrapper) {
   gradleVersion = '4.7'
 }
 
-task install(type: Exec) {
-  def gpShellScript = """
-  mode_211
-  enable_trace
-  establish_context
-  card_connect
-  select -AID ${project.properties['im.status.gradle.gpshell.isd']}
-  open_sc -security 1 -keyind 0 -keyver ${project.properties['im.status.gradle.gpshell.kvn']} -mac_key ${project.properties['im.status.gradle.gpshell.mac_key']} -enc_key ${project.properties['im.status.gradle.gpshell.enc_key']} -kek_key ${project.properties['im.status.gradle.gpshell.kek_key']}
-  send_apdu_nostop -sc 1 -APDU 80E400800E4F0C53746174757357616C6C6574
-  install_for_load -pkgAID 53746174757357616C6C6574
-  load -file build/javacard/im/status/keycard/javacard/keycard.cap
-  install_for_install -AID 53746174757357616C6C6574417070 -pkgAID 53746174757357616C6C6574 -instAID 53746174757357616C6C6574417070
-  install_for_install -AID 53746174757357616C6C65744e4643 -pkgAID 53746174757357616C6C6574 -instAID D2760000850101
-  card_disconnect
-  release_context
-  """
-
-  executable project.properties['im.status.gradle.gpshell']
-  standardInput new ByteArrayInputStream(gpShellScript.getBytes("UTF-8"))
-}
+task install (type: im.status.keycard.build.InstallTask)
 
 if (project.properties['im.status.keycard.test.simulated'] != 'true') {
   tasks.install.dependsOn(convertJavacard)
