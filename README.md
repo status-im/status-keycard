@@ -1,4 +1,32 @@
-# Status Keycard
+# What is Keycard?
+
+Keycard is a an implementation of a BIP-32 HD wallet running on Javacard 3.0.4+ (see implementation notes)
+
+It supports among others
+- key generation, derivation and signing
+- exporting keys defined in the context of EIP-1581 https://eips.ethereum.org/EIPS/eip-1581
+- card duplication
+- setting up a NFC NDEF tag
+
+Communication with the Keycard happens through a simple APDU interface, together with a Secure Channel guaranteeing confidentiality, authentication and integrity of all commands. It supports both NFC and ISO7816 physical interfaces, meaning that it is compatible with any Android phone equipped with NFC, and all USB Smartcard readers.
+
+The most obvious case for integration of Keycard is crypto wallets (ETH, BTC, etc), however it can be used in other systems where a BIP-32 key tree is used and/or you perform authentication/identification.
+
+# Where to start?
+
+A good place to start is our documentation site https://keycard.status.im/api/
+
+You can also join the dicussion about this project on Status channel: https://get.status.im/chat/public/status-keycard
+
+# How to contribute? 
+
+Anyone is welcome to contribute to Keycard! 
+
+Most of our communication about the project is going on here: https://get.status.im/chat/public/status-keycard
+
+Should you wish to work on an issue, please claim it first by commenting on the GitHub issue that you want to work on it. This is to prevent duplicated efforts from contributors on the same issue.
+
+# How to build the project?
 
 The project is built using Gradle with the [Fidesmo Javacard Gradle plugin](https://github.com/fidesmo/gradle-javacard).
 You can set the JavaCard HOME not only through the environment but also creating a gradle.properties file with the 
@@ -29,7 +57,7 @@ In order to test with the simulator with an IDE, you need to pass these addition
    installed. For more information check [here](https://stackoverflow.com/questions/41580489/how-to-install-unlimited-strength-jurisdiction-policy-files).
 3. Run `./gradlew test`
 
-## Implementation notes
+# What kind of smartcards can I use? 
 
 * The applet requires JavaCard 3.0.4 (with the addition of KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY
 ) or later.
@@ -49,3 +77,9 @@ The algorithms the card must support are at least:
 
 Best performance is achieved if the card supports:
 * Signature.ALG_HMAC_SHA_512
+
+# Other related repositories
+
+Android installer https://github.com/status-im/keycard-installer-android/
+
+Java SDK for Android and Desktop https://github.com/status-im/status-keycard-java
