@@ -3,6 +3,7 @@ package im.status.keycard;
 import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.smartcardio.CardTerminalSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
+import im.status.keycard.applet.ApplicationInfo;
 import im.status.keycard.applet.Identifiers;
 import im.status.keycard.applet.KeycardCommandSet;
 import im.status.keycard.desktop.PCSCCardChannel;
@@ -168,10 +169,10 @@ public class KeycardTest {
 
     // Verify that the keys are changed correctly. Since we do not know the internal counter we just iterate until that
     // happens for a maximum of SC_COUNTER_MAX times
-    byte[] initialKey = extractPublicKeyFromSelect(cmdSet.select().getData());
+    byte[] initialKey = new ApplicationInfo(cmdSet.select().getData()).getSecureChannelPubKey();
 
     for (int i = 0; i < SecureChannel.SC_COUNTER_MAX; i++) {
-      byte[] otherKey = extractPublicKeyFromSelect(cmdSet.select().getData());
+      byte[] otherKey = new ApplicationInfo(cmdSet.select().getData()).getSecureChannelPubKey();
 
       if (!Arrays.equals(initialKey, otherKey)) {
         secureChannel.generateSecret(otherKey);
@@ -697,9 +698,8 @@ public class KeycardTest {
 
     response = cmdSet.select();
     assertEquals(0x9000, response.getSw());
-    byte[] data = response.getData();
-    assertEquals(32, data[30 + data[21]]);
-    verifyKeyUID(Arrays.copyOfRange(data, (31 + data[21]), (63 + data[21])), (ECPublicKey) keyPair.getPublic());
+    ApplicationInfo info = new ApplicationInfo(response.getData());
+    verifyKeyUID(info.getKeyUID(), (ECPublicKey) keyPair.getPublic());
 
     cmdSet.autoOpenSecureChannel();
     response = cmdSet.verifyPIN("000000");
@@ -715,8 +715,8 @@ public class KeycardTest {
 
     response = cmdSet.select();
     assertEquals(0x9000, response.getSw());
-    data = response.getData();
-    assertEquals(0, data[30 + data[21]]);
+    info = new ApplicationInfo(response.getData());
+    assertEquals(0, info.getKeyUID().length);
   }
 
   @Test
@@ -1227,14 +1227,6 @@ public class KeycardTest {
     assertEquals(KeycardApplet.TLV_PUB_KEY, sig[3]);
 
     return Arrays.copyOfRange(sig, 5, 5 + sig[4]);
-  }
-
-  private byte[] extractPublicKeyFromSelect(byte[] select) {
-    assertEquals(KeycardApplet.TLV_APPLICATION_INFO_TEMPLATE, select[0]);
-    assertEquals(KeycardApplet.TLV_UID, select[2]);
-    assertEquals(KeycardApplet.TLV_PUB_KEY, select[20]);
-
-    return Arrays.copyOfRange(select, 22, 22 + select[21]);
   }
 
   private void reset() {

@@ -8,7 +8,7 @@ import javacardx.crypto.Cipher;
  * The applet's main class. All incoming commands a processed by this class.
  */
 public class KeycardApplet extends Applet {
-  static final short APPLICATION_VERSION = (short) 0x0200;
+  static final short APPLICATION_VERSION = (short) 0x0201;
 
   static final byte INS_GET_STATUS = (byte) 0xF2;
   static final byte INS_SET_NDEF = (byte) 0xF3;
@@ -84,6 +84,14 @@ public class KeycardApplet extends Applet {
   static final byte TLV_APPLICATION_INFO_TEMPLATE = (byte) 0xA4;
   static final byte TLV_UID = (byte) 0x8F;
   static final byte TLV_KEY_UID = (byte) 0x8E;
+  static final byte TLV_CAPABILITIES = (byte) 0x8D;
+
+  static final byte CAPABILITY_SECURE_CHANNEL = (byte) 0x01;
+  static final byte CAPABILITY_KEY_MANAGEMENT = (byte) 0x02;
+  static final byte CAPABILITY_CREDENTIALS_MANAGEMENT = (byte) 0x04;
+  static final byte CAPABILITY_NDEF = (byte) 0x08;
+
+  static final byte APPLICATION_CAPABILITIES = (byte)(CAPABILITY_SECURE_CHANNEL | CAPABILITY_KEY_MANAGEMENT | CAPABILITY_CREDENTIALS_MANAGEMENT | CAPABILITY_NDEF);
 
   static final byte[] EIP_1581_PREFIX = { (byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D};
 
@@ -357,31 +365,50 @@ public class KeycardApplet extends Applet {
 
     byte[] apduBuffer = apdu.getBuffer();
 
-    apduBuffer[0] = TLV_APPLICATION_INFO_TEMPLATE;
-    apduBuffer[2] = TLV_UID;
-    apduBuffer[3] = UID_LENGTH;
-    Util.arrayCopyNonAtomic(uid, (short) 0, apduBuffer, (short) 4, UID_LENGTH);
-    apduBuffer[(short)(UID_LENGTH + 4)] = TLV_PUB_KEY;
-    short keyLength = secureChannel.copyPublicKey(apduBuffer, (short) (UID_LENGTH + 6));
-    apduBuffer[(short)(UID_LENGTH + 5)] = (byte) keyLength;
-    apduBuffer[(short)(UID_LENGTH + keyLength + 6)] = TLV_INT;
-    apduBuffer[(short)(UID_LENGTH + keyLength + 7)] = 2;
-    Util.setShort(apduBuffer, (short)(UID_LENGTH + keyLength + 8), APPLICATION_VERSION);
-    apduBuffer[(short)(UID_LENGTH + keyLength + 10)] = TLV_INT;
-    apduBuffer[(short)(UID_LENGTH + keyLength + 11)] = 1;
-    apduBuffer[(short)(UID_LENGTH + keyLength + 12)] = secureChannel.getRemainingPairingSlots();
-    apduBuffer[(short)(UID_LENGTH + keyLength + 13)] = TLV_KEY_UID;
+    short off = 0;
+
+    apduBuffer[off++] = TLV_APPLICATION_INFO_TEMPLATE;
 
     if (privateKey.isInitialized()) {
-      apduBuffer[(short)(UID_LENGTH + keyLength + 14)] = KEY_UID_LENGTH;
-      Util.arrayCopyNonAtomic(keyUID, (short) 0, apduBuffer, (short)(UID_LENGTH + keyLength + 15), KEY_UID_LENGTH);
-      keyLength += KEY_UID_LENGTH;
-    } else {
-      apduBuffer[(short)(UID_LENGTH + keyLength + 14)] = 0;
+      apduBuffer[off++] = (byte) 0x81;
     }
 
-    apduBuffer[1] = (byte)(keyLength + UID_LENGTH + 13);
-    apdu.setOutgoingAndSend((short) 0, (short)(apduBuffer[1] + 2));
+    short lenoff = off++;
+
+    apduBuffer[off++] = TLV_UID;
+    apduBuffer[off++] = UID_LENGTH;
+    Util.arrayCopyNonAtomic(uid, (short) 0, apduBuffer, off, UID_LENGTH);
+    off += UID_LENGTH;
+
+    apduBuffer[off++] = TLV_PUB_KEY;
+    short keyLength = secureChannel.copyPublicKey(apduBuffer, (short) (off + 1));
+    apduBuffer[off++] = (byte) keyLength;
+    off += keyLength;
+
+    apduBuffer[off++] = TLV_INT;
+    apduBuffer[off++] = 2;
+    Util.setShort(apduBuffer, off, APPLICATION_VERSION);
+    off += 2;
+
+    apduBuffer[off++] = TLV_INT;
+    apduBuffer[off++] = 1;
+    apduBuffer[off++] = secureChannel.getRemainingPairingSlots();
+    apduBuffer[off++] = TLV_KEY_UID;
+
+    if (privateKey.isInitialized()) {
+      apduBuffer[off++] = KEY_UID_LENGTH;
+      Util.arrayCopyNonAtomic(keyUID, (short) 0, apduBuffer, off, KEY_UID_LENGTH);
+      off += KEY_UID_LENGTH;
+    } else {
+      apduBuffer[off++] = 0;
+    }
+
+    apduBuffer[off++] = TLV_CAPABILITIES;
+    apduBuffer[off++] = 1;
+    apduBuffer[off++] = APPLICATION_CAPABILITIES;
+
+    apduBuffer[lenoff] = (byte)(off - lenoff - 1);
+    apdu.setOutgoingAndSend((short) 0, off);
   }
 
   /**
