@@ -38,7 +38,7 @@ log and there is no way to set breakpoints in the applet.
 
 In order to test with the simulator with an IDE, you need to pass these additional parameters to the JVM
 
-```-noverify -Dim.status.keycard.test.simulated=true```
+```-noverify -Dim.status.keycard.test.target=simulator```
 
 ## Compilation
 1. Download and install the JavaCard 3.0.4 SDK from [Oracle](http://www.oracle.com/technetwork/java/javasebusiness/downloads/java-archive-downloads-javame-419430.html#java_card_kit-classic-3_0_4-rr-bin-do)

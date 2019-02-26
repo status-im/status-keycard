@@ -34,6 +34,12 @@ javacard {
   }
 }
 
+def testTarget = project.properties['im.status.keycard.test.target']
+if (!testTarget) {
+  testTarget = 'card'
+}
+
+
 repositories {
   mavenCentral()
   maven { url 'https://jitpack.io' }
@@ -43,7 +49,7 @@ dependencies {
   testCompile(files("../jcardsim/jcardsim-3.0.5-SNAPSHOT.jar"))
   testCompile('org.web3j:core:2.3.1')
   testCompile('org.bitcoinj:bitcoinj-core:0.14.5')
-  testCompile('com.github.status-im.status-keycard-java:desktop:2.0.0')
+  testCompile('com.github.status-im.status-keycard-java:desktop:f9df2be')
   testCompile('org.bouncycastle:bcprov-jdk15on:1.60')
   testCompile("org.junit.jupiter:junit-jupiter-api:5.1.1")
   testRuntime("org.junit.jupiter:junit-jupiter-engine:5.1.1")
@@ -63,7 +69,7 @@ task wrapper(type: Wrapper) {
 
 task install (type: im.status.keycard.build.InstallTask)
 
-if (project.properties['im.status.keycard.test.simulated'] != 'true') {
+if (testTarget == 'card') {
   tasks.install.dependsOn(convertJavacard)
   tasks.test.dependsOn(install)
 }
@@ -79,8 +85,11 @@ compileTestJava {
 }
 
 afterEvaluate {
-  if (project.properties['im.status.keycard.test.simulated'] == 'true') {
-    def junitPlatformTestTask = tasks.getByName('junitPlatformTest')
-    junitPlatformTestTask.jvmArgs(['-noverify', '-Dim.status.keycard.test.simulated=true'])
+  def jvmArgs = ["-Dim.status.keycard.test.target=${testTarget}"]
+  if (testTarget == 'simulator') {
+    jvmArgs.push('-noverify')
   }
+
+  def junitPlatformTestTask = tasks.getByName('junitPlatformTest')
+  junitPlatformTestTask.jvmArgs(jvmArgs)
 }

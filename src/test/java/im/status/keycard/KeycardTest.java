@@ -6,8 +6,10 @@ import com.licel.jcardsim.utils.AIDUtil;
 import im.status.keycard.applet.ApplicationInfo;
 import im.status.keycard.applet.Identifiers;
 import im.status.keycard.applet.KeycardCommandSet;
+import im.status.keycard.desktop.LedgerUSBManager;
 import im.status.keycard.desktop.PCSCCardChannel;
 import im.status.keycard.io.APDUResponse;
+import im.status.keycard.io.CardListener;
 import javacard.framework.AID;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.crypto.ChildNumber;
@@ -52,41 +54,97 @@ public class KeycardTest {
   public static final byte[] SHARED_SECRET = Hex.decode("2194524CF8A99C34B9F6C6894D07245AA2D5CFE6327C27D5ACDCC95DA203ED28");
   private static CardTerminal cardTerminal;
   private static CardChannel apduChannel;
-  private static PCSCCardChannel sdkChannel;
+  private static im.status.keycard.io.CardChannel sdkChannel;
   private static CardSimulator simulator;
+
+  private static LedgerUSBManager usbManager;
 
   private TestSecureChannelSession secureChannel;
   private TestKeycardCommandSet cmdSet;
 
-  private static final boolean USE_SIMULATOR;
+  private static final int TARGET_SIMULATOR = 0;
+  private static final int TARGET_CARD = 1;
+  private static final int TARGET_LEDGERUSB = 2;
+
+  private static final int TARGET;
 
   static {
-    USE_SIMULATOR = !System.getProperty("im.status.keycard.test.simulated", "false").equals("false");
+    switch(System.getProperty("im.status.keycard.test.target", "card")) {
+      case "simulator":
+        TARGET = TARGET_SIMULATOR;
+        break;
+      case "card":
+        TARGET = TARGET_CARD;
+        break;
+      case "ledgerusb":
+        TARGET = TARGET_LEDGERUSB;
+        break;
+      default:
+        throw new RuntimeException("Unknown target");
+    }
   }
 
   @BeforeAll
   static void initAll() throws Exception {
-    if (USE_SIMULATOR) {
-      simulator = new CardSimulator();
-      AID appletAID = AIDUtil.create(Identifiers.getKeycardInstanceAID());
-      simulator.installApplet(appletAID, KeycardApplet.class);
-      cardTerminal = CardTerminalSimulator.terminal(simulator);
-    } else {
-      TerminalFactory tf = TerminalFactory.getDefault();
+    switch(TARGET) {
+      case TARGET_SIMULATOR:
+        openSimulatorChannel();
+        break;
+      case TARGET_CARD:
+        openCardChannel();
+        break;
+      case TARGET_LEDGERUSB:
+        openLedgerUSBChannel();
+        break;
+      default:
+        throw new IllegalStateException("Unknown target");
+    }
 
-      for (CardTerminal t : tf.terminals().list()) {
-        if (t.isCardPresent()) {
-          cardTerminal = t;
-          break;
-        }
+    initIfNeeded();
+  }
+
+  private static void openSimulatorChannel() throws Exception {
+    simulator = new CardSimulator();
+    AID appletAID = AIDUtil.create(Identifiers.getKeycardInstanceAID());
+    simulator.installApplet(appletAID, KeycardApplet.class);
+    cardTerminal = CardTerminalSimulator.terminal(simulator);
+
+    openPCSCChannel();
+  }
+
+  private static void openCardChannel() throws Exception {
+    TerminalFactory tf = TerminalFactory.getDefault();
+
+    for (CardTerminal t : tf.terminals().list()) {
+      if (t.isCardPresent()) {
+        cardTerminal = t;
+        break;
       }
     }
 
+    openPCSCChannel();
+  }
+
+  private static void openPCSCChannel() throws Exception {
     Card apduCard = cardTerminal.connect("*");
     apduChannel = apduCard.getBasicChannel();
     sdkChannel = new PCSCCardChannel(apduChannel);
+  }
 
-    initIfNeeded();
+  private static void openLedgerUSBChannel() {
+    usbManager = new LedgerUSBManager(new CardListener() {
+      @Override
+      public void onConnected(im.status.keycard.io.CardChannel channel) {
+        sdkChannel = channel;
+      }
+
+      @Override
+      public void onDisconnected() {
+        throw new RuntimeException("Ledger was disconnected during test run!");
+      }
+    });
+
+    usbManager.start();
   }
 
   private static void initIfNeeded() throws IOException {
@@ -104,19 +162,31 @@ public class KeycardTest {
     cmdSet.setSecureChannel(secureChannel);
     cmdSet.select().checkOK();
     cmdSet.setSecureChannel(secureChannel);
-    cmdSet.autoPair(SHARED_SECRET);
+
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      cmdSet.autoPair(SHARED_SECRET);
+    }
   }
 
   @AfterEach
   void tearDown() throws Exception {
     resetAndSelectAndOpenSC();
-    APDUResponse response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
-    cmdSet.autoUnpair();
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      APDUResponse response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      cmdSet.autoUnpair();
+    }
   }
 
   @AfterAll
   static void tearDownAll() {
+    if (usbManager != null) {
+      usbManager.stop();
+    }
   }
 
   @Test
@@ -137,6 +207,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("OPEN SECURE CHANNEL command")
+  @Tag("secureChannel")
   void openSecureChannelTest() throws Exception {
     // Wrong P1
     APDUResponse response = cmdSet.openSecureChannel((byte)(secureChannel.getPairingIndex() + 1), new byte[65]);
@@ -184,6 +255,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("MUTUALLY AUTHENTICATE command")
+  @Tag("secureChannel")
   void mutuallyAuthenticateTest() throws Exception {
     // Mutual authentication before opening a Secure Channel
     APDUResponse response = cmdSet.mutuallyAuthenticate();
@@ -227,6 +299,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("PAIR command")
+  @Tag("secureChannel")
   void pairTest() throws Exception {
     // Wrong data length
     APDUResponse response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, new byte[31]);
@@ -285,6 +358,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("UNPAIR command")
+  @Tag("secureChannel")
   void unpairTest() throws Exception {
     // Add a spare keyset
     byte sparePairingIndex = secureChannel.getPairingIndex();
@@ -356,6 +430,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("SET NDEF command")
+  @Tag("ndef")
   void setNDEFTest() throws Exception {
     byte[] ndefData = {
         (byte) 0x00, (byte) 0x24, (byte) 0xd4, (byte) 0x0f, (byte) 0x12, (byte) 0x61, (byte) 0x6e, (byte) 0x64,
@@ -390,6 +465,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("VERIFY PIN command")
+  @Tag("credentialsManagement")
   void verifyPinTest() throws Exception {
     // Security condition violation: SecureChannel not open
     APDUResponse response = cmdSet.verifyPIN("000000");
@@ -425,6 +501,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("CHANGE PIN command")
+  @Tag("credentialsManagement")
   void changePinTest() throws Exception {
     // Security condition violation: SecureChannel not open
     APDUResponse response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "123456");
@@ -528,6 +605,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("UNBLOCK PIN command")
+  @Tag("credentialsManagement")
   void unblockPinTest() throws Exception {
     // Security condition violation: SecureChannel not open
     APDUResponse response = cmdSet.unblockPIN("123456789012", "000000");
@@ -577,6 +655,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("LOAD KEY command")
+  @Tag("keyManagement")
   void loadKeyTest() throws Exception {
     KeyPairGenerator g = keypairGenerator();
     KeyPair keyPair = g.generateKeyPair();
@@ -605,7 +684,7 @@ public class KeycardTest {
     response = cmdSet.loadKey(new byte[]{(byte) 0xA1, 0x02, (byte) 0x80, 0x00}, KeycardApplet.LOAD_KEY_P1_EC);
     assertEquals(0x6A80, response.getSw());
 
-    if (!USE_SIMULATOR) { // the simulator does not check the key format
+    if (TARGET != TARGET_SIMULATOR) { // the simulator does not check the key format
       response = cmdSet.loadKey(new byte[]{(byte) 0xA1, 0x06, (byte) 0x80, 0x01, 0x01, (byte) 0x81, 0x01, 0x02}, KeycardApplet.LOAD_KEY_P1_EC);
       assertEquals(0x6A80, response.getSw());
     }
@@ -640,6 +719,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("GENERATE MNEMONIC command")
+  @Tag("keyManagement")
   void generateMnemonicTest() throws Exception {
     // Security condition violation: SecureChannel not open
     APDUResponse response = cmdSet.generateMnemonic(4);
@@ -677,6 +757,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("REMOVE KEY command")
+  @Tag("keyManagement")
   void removeKeyTest() throws Exception {
     KeyPairGenerator g = keypairGenerator();
     KeyPair keyPair = g.generateKeyPair();
@@ -721,6 +802,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("GENERATE KEY command")
+  @Tag("keyManagement")
   void generateKeyTest() throws Exception {
     // Security condition violation: SecureChannel not open
     APDUResponse response = cmdSet.generateKey();
@@ -750,32 +832,40 @@ public class KeycardTest {
   @Test
   @DisplayName("DERIVE KEY command")
   void deriveKeyTest() throws Exception {
-    // Security condition violation: SecureChannel not open
-    APDUResponse response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00});
-    assertEquals(0x6985, response.getSw());
+    APDUResponse response;
 
-    cmdSet.autoOpenSecureChannel();
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      // Security condition violation: SecureChannel not open
+      response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x00});
+      assertEquals(0x6985, response.getSw());
 
-    // Security condition violation: PIN is not verified
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00});
-    assertEquals(0x6985, response.getSw());
+      cmdSet.autoOpenSecureChannel();
+    }
 
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      // Security condition violation: PIN is not verified
+      response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x00});
+      assertEquals(0x6985, response.getSw());
+
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
 
     KeyPairGenerator g = keypairGenerator();
     KeyPair keyPair = g.generateKeyPair();
     byte[] chainCode = new byte[32];
     new Random().nextBytes(chainCode);
 
-    // Condition violation: keyset is not extended
-    response = cmdSet.loadKey(keyPair);
-    assertEquals(0x9000, response.getSw());
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x00});
-    assertEquals(0x6985, response.getSw());
+    if (cmdSet.getApplicationInfo().hasKeyManagementCapability()) {
+      // Condition violation: keyset is not extended
+      response = cmdSet.loadKey(keyPair);
+      assertEquals(0x9000, response.getSw());
+      response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x00});
+      assertEquals(0x6985, response.getSw());
 
-    response = cmdSet.loadKey(keyPair, false, chainCode);
-    assertEquals(0x9000, response.getSw());
+      response = cmdSet.loadKey(keyPair, false, chainCode);
+      assertEquals(0x9000, response.getSw());
+    }
 
     // Wrong data format
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00});
@@ -828,25 +918,33 @@ public class KeycardTest {
     byte[] data = "some data to be hashed".getBytes();
     byte[] hash = sha256(data);
 
-    // Security condition violation: SecureChannel not open
-    APDUResponse response = cmdSet.sign(hash);
-    assertEquals(0x6985, response.getSw());
+    APDUResponse response;
 
-    cmdSet.autoOpenSecureChannel();
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      // Security condition violation: SecureChannel not open
+      response = cmdSet.sign(hash);
+      assertEquals(0x6985, response.getSw());
 
-    // Security condition violation: PIN not verified
-    response = cmdSet.sign(hash);
-    assertEquals(0x6985, response.getSw());
+      cmdSet.autoOpenSecureChannel();
+    }
 
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      // Security condition violation: PIN not verified
+      response = cmdSet.sign(hash);
+      assertEquals(0x6985, response.getSw());
 
-    KeyPair keyPair = keypairGenerator().generateKeyPair();
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
     Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
-    signature.initVerify(keyPair.getPublic());
 
-    response = cmdSet.loadKey(keyPair);
-    assertEquals(0x9000, response.getSw());
+    if (cmdSet.getApplicationInfo().hasKeyManagementCapability()) {
+      KeyPair keyPair = keypairGenerator().generateKeyPair();
+      signature.initVerify(keyPair.getPublic());
+      response = cmdSet.loadKey(keyPair);
+      assertEquals(0x9000, response.getSw());
+    }
 
     // Wrong Data length
     response = cmdSet.sign(data);
@@ -1011,6 +1109,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("DUPLICATE KEY command")
+  @Tag("keyManagement")
   void duplicateTest() throws Exception {
     int secretCount = 5;
     Random random = new Random();
@@ -1230,17 +1329,24 @@ public class KeycardTest {
   }
 
   private void reset() {
-    if (USE_SIMULATOR) {
-      simulator.reset();
-    } else {
-      apduChannel.getCard().getATR();
+    switch(TARGET) {
+      case TARGET_SIMULATOR:
+        simulator.reset();
+        break;
+      case TARGET_CARD:
+        apduChannel.getCard().getATR();
+        break;
+      default:
+        break;
     }
   }
 
   private void resetAndSelectAndOpenSC() throws Exception {
-    reset();
-    cmdSet.select();
-    cmdSet.autoOpenSecureChannel();
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      reset();
+      cmdSet.select();
+      cmdSet.autoOpenSecureChannel();
+    }
   }
 
   private void assertMnemonic(int expectedLength, byte[] data) {
@@ -1274,6 +1380,10 @@ public class KeycardTest {
   }
 
   private void verifyKeyDerivation(KeyPair keyPair, byte[] chainCode, int[] path) throws Exception {
+    if (!cmdSet.getApplicationInfo().hasKeyManagementCapability()) {
+      return;
+    }
+
     DeterministicKey key = deriveKey(keyPair, chainCode, path);
 
     byte[] hash = Hash.sha3(new byte[8]);
