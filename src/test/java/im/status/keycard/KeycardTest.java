@@ -17,6 +17,7 @@ import org.bitcoinj.crypto.DeterministicKey;
 import org.bitcoinj.crypto.HDKeyDerivation;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
+import org.bouncycastle.jce.spec.ECPublicKeySpec;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.*;
 import org.web3j.crypto.*;
@@ -38,6 +39,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Signature;
@@ -939,9 +941,8 @@ public class KeycardTest {
 
     Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
 
-    if (cmdSet.getApplicationInfo().hasKeyManagementCapability()) {
+    if (!cmdSet.getApplicationInfo().hasMasterKey()) {
       KeyPair keyPair = keypairGenerator().generateKeyPair();
-      signature.initVerify(keyPair.getPublic());
       response = cmdSet.loadKey(keyPair);
       assertEquals(0x9000, response.getSw());
     }
@@ -956,6 +957,12 @@ public class KeycardTest {
     byte[] sig = response.getData();
     byte[] keyData = extractPublicKeyFromSignature(sig);
     sig = extractSignature(sig);
+
+    ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
+    ECPublicKeySpec cardKeySpec = new ECPublicKeySpec(ecSpec.getCurve().decodePoint(keyData), ecSpec);
+    ECPublicKey cardKey = (ECPublicKey) KeyFactory.getInstance("ECDSA", "BC").generatePublic(cardKeySpec);
+
+    signature.initVerify(cardKey);
     assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, keyData.length);
     signature.update(data);
     assertTrue(signature.verify(sig));
@@ -1045,19 +1052,31 @@ public class KeycardTest {
     byte[] chainCode = new byte[32];
     new Random().nextBytes(chainCode);
 
-    // Security condition violation: SecureChannel not open
-    APDUResponse response = cmdSet.exportCurrentKey(true);
-    assertEquals(0x6985, response.getSw());
+    APDUResponse response;
 
-    cmdSet.autoOpenSecureChannel();
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      // Security condition violation: SecureChannel not open
+      response = cmdSet.exportCurrentKey(true);
+      assertEquals(0x6985, response.getSw());
 
-    // Security condition violation: PIN not verified
-    response = cmdSet.exportCurrentKey(true);
-    assertEquals(0x6985, response.getSw());
+      cmdSet.autoOpenSecureChannel();
+    }
 
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
-    response = cmdSet.loadKey(keyPair, false, chainCode);
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      // Security condition violation: PIN not verified
+      response = cmdSet.exportCurrentKey(true);
+      assertEquals(0x6985, response.getSw());
+
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
+    if (cmdSet.getApplicationInfo().hasKeyManagementCapability()) {
+      response = cmdSet.loadKey(keyPair, false, chainCode);
+      assertEquals(0x9000, response.getSw());
+    }
+
+    response = cmdSet.deriveKey(new byte[0], KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSw());
 
     // Security condition violation: current key is not exportable
@@ -1073,7 +1092,6 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
     response = cmdSet.exportCurrentKey(false);
     assertEquals(0x6985, response.getSw());
-
 
     // Export current public key
     response = cmdSet.exportCurrentKey(true);
@@ -1410,6 +1428,10 @@ public class KeycardTest {
   }
 
   private void verifyExportedKey(byte[] keyTemplate, KeyPair keyPair, byte[] chainCode, int[] path, boolean publicOnly, boolean noPubKey) {
+    if (!cmdSet.getApplicationInfo().hasKeyManagementCapability()) {
+      return;
+    }
+
     ECKey key = deriveKey(keyPair, chainCode, path).decompress();
     assertEquals(KeycardApplet.TLV_KEY_TEMPLATE, keyTemplate[0]);
     int pubKeyLen = 0;
