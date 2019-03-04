@@ -3,10 +3,7 @@ package im.status.keycard;
 import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.smartcardio.CardTerminalSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
-import im.status.keycard.applet.ApplicationInfo;
-import im.status.keycard.applet.ApplicationStatus;
-import im.status.keycard.applet.Identifiers;
-import im.status.keycard.applet.KeycardCommandSet;
+import im.status.keycard.applet.*;
 import im.status.keycard.desktop.LedgerUSBManager;
 import im.status.keycard.desktop.PCSCCardChannel;
 import im.status.keycard.io.APDUResponse;
@@ -46,6 +43,7 @@ import java.security.KeyPairGenerator;
 import java.security.Signature;
 import org.bouncycastle.jce.interfaces.ECPublicKey;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Random;
 
 import static org.apache.commons.codec.digest.DigestUtils.sha256;
@@ -106,6 +104,28 @@ public class KeycardTest {
     initIfNeeded();
   }
 
+  private static void initCapabilities(ApplicationInfo info) {
+    HashSet<String> capabilities = new HashSet<>();
+
+    if (info.hasSecureChannelCapability()) {
+      capabilities.add("secureChannel");
+    }
+
+    if (info.hasCredentialsManagementCapability()) {
+      capabilities.add("credentialsManagement");
+    }
+
+    if (info.hasKeyManagementCapability()) {
+      capabilities.add("keyManagement");
+    }
+
+    if (info.hasNDEFCapability()) {
+      capabilities.add("ndef");
+    }
+
+    CapabilityCondition.availableCapabilities = capabilities;
+  }
+
   private static void openSimulatorChannel() throws Exception {
     simulator = new CardSimulator();
     AID appletAID = AIDUtil.create(Identifiers.getKeycardInstanceAID());
@@ -150,11 +170,15 @@ public class KeycardTest {
     usbManager.start();
   }
 
-  private static void initIfNeeded() throws IOException {
+  private static void initIfNeeded() throws Exception {
     KeycardCommandSet cmdSet = new KeycardCommandSet(sdkChannel);
-    byte[] data = cmdSet.select().getData();
-    if (data[0] == KeycardApplet.TLV_APPLICATION_INFO_TEMPLATE) return;
-    assertEquals(0x9000, cmdSet.init("000000", "123456789012", SHARED_SECRET).getSw());
+    byte[] data = cmdSet.select().checkOK().getData();
+
+    initCapabilities(cmdSet.getApplicationInfo());
+
+    if (!cmdSet.getApplicationInfo().isInitializedCard()) {
+      assertEquals(0x9000, cmdSet.init("000000", "123456789012", SHARED_SECRET).getSw());
+    }
   }
 
   @BeforeEach
@@ -210,7 +234,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("OPEN SECURE CHANNEL command")
-  @Tag("secureChannel")
+  @Capabilities("secureChannel")
   void openSecureChannelTest() throws Exception {
     // Wrong P1
     APDUResponse response = cmdSet.openSecureChannel((byte)(secureChannel.getPairingIndex() + 1), new byte[65]);
@@ -258,7 +282,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("MUTUALLY AUTHENTICATE command")
-  @Tag("secureChannel")
+  @Capabilities("secureChannel")
   void mutuallyAuthenticateTest() throws Exception {
     // Mutual authentication before opening a Secure Channel
     APDUResponse response = cmdSet.mutuallyAuthenticate();
@@ -302,7 +326,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("PAIR command")
-  @Tag("secureChannel")
+  @Capabilities("secureChannel")
   void pairTest() throws Exception {
     // Wrong data length
     APDUResponse response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, new byte[31]);
@@ -361,7 +385,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("UNPAIR command")
-  @Tag("secureChannel")
+  @Capabilities("secureChannel")
   void unpairTest() throws Exception {
     // Add a spare keyset
     byte sparePairingIndex = secureChannel.getPairingIndex();
@@ -437,15 +461,16 @@ public class KeycardTest {
       assertEquals((byte) 0xff, status.getPUKRetryCount());
     }
 
-    // Check that key path is empty
+    // Check that key path is valid
     response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_KEY_PATH);
     assertEquals(0x9000, response.getSw());
-    assertEquals(0, response.getData().length);
+    KeyPath path = new KeyPath(response.getData());
+    assertNotEquals(null, path);
   }
 
   @Test
   @DisplayName("SET NDEF command")
-  @Tag("ndef")
+  @Capabilities("ndef")
   void setNDEFTest() throws Exception {
     byte[] ndefData = {
         (byte) 0x00, (byte) 0x24, (byte) 0xd4, (byte) 0x0f, (byte) 0x12, (byte) 0x61, (byte) 0x6e, (byte) 0x64,
@@ -480,7 +505,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("VERIFY PIN command")
-  @Tag("credentialsManagement")
+  @Capabilities("credentialsManagement")
   void verifyPinTest() throws Exception {
     // Security condition violation: SecureChannel not open
     APDUResponse response = cmdSet.verifyPIN("000000");
@@ -516,7 +541,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("CHANGE PIN command")
-  @Tag("credentialsManagement")
+  @Capabilities("credentialsManagement")
   void changePinTest() throws Exception {
     // Security condition violation: SecureChannel not open
     APDUResponse response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "123456");
@@ -620,7 +645,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("UNBLOCK PIN command")
-  @Tag("credentialsManagement")
+  @Capabilities("credentialsManagement")
   void unblockPinTest() throws Exception {
     // Security condition violation: SecureChannel not open
     APDUResponse response = cmdSet.unblockPIN("123456789012", "000000");
@@ -670,7 +695,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("LOAD KEY command")
-  @Tag("keyManagement")
+  @Capabilities("keyManagement")
   void loadKeyTest() throws Exception {
     KeyPairGenerator g = keypairGenerator();
     KeyPair keyPair = g.generateKeyPair();
@@ -739,7 +764,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("GENERATE MNEMONIC command")
-  @Tag("keyManagement")
+  @Capabilities("keyManagement")
   void generateMnemonicTest() throws Exception {
     // Security condition violation: SecureChannel not open
     APDUResponse response;
@@ -781,7 +806,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("REMOVE KEY command")
-  @Tag("keyManagement")
+  @Capabilities("keyManagement")
   void removeKeyTest() throws Exception {
     KeyPairGenerator g = keypairGenerator();
     KeyPair keyPair = g.generateKeyPair();
@@ -836,7 +861,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("GENERATE KEY command")
-  @Tag("keyManagement")
+  @Capabilities("keyManagement")
   void generateKeyTest() throws Exception {
     APDUResponse response;
 
@@ -1008,6 +1033,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("SET PINLESS PATH command")
+  @Capabilities("credentialsManagement") // The current test is not adapted to run automatically on devices without credentials management, since the tester must know what button to press
   void setPinlessPathTest() throws Exception {
     byte[] data = "some data to be hashed".getBytes();
     byte[] hash = sha256(data);
@@ -1181,7 +1207,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("DUPLICATE KEY command")
-  @Tag("keyManagement")
+  @Capabilities("keyManagement")
   void duplicateTest() throws Exception {
     int secretCount = 5;
     Random random = new Random();
@@ -1281,7 +1307,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("Sign actual Ethereum transaction")
-  @Tag("manual")
+  @Capabilities("manual")
   void signTransactionTest() throws Exception {
     // Initialize credentials
     Web3j web3j = Web3j.build(new HttpService());
