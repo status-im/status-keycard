@@ -1027,14 +1027,19 @@ public class KeycardTest {
       cmdSet.autoOpenSecureChannel();
     }
 
-    // Security condition violation: PIN not verified
-    response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02});
-    assertEquals(0x6985, response.getSw());
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      // Security condition violation: PIN not verified
+      response = cmdSet.setPinlessPath(new byte[]{0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02});
+      assertEquals(0x6985, response.getSw());
 
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
-    response = cmdSet.loadKey(keyPair, false, chainCode);
-    assertEquals(0x9000, response.getSw());
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
+    if (!cmdSet.getApplicationInfo().hasMasterKey()) {
+      response = cmdSet.loadKey(keyPair, false, chainCode);
+      assertEquals(0x9000, response.getSw());
+    }
 
     // Wrong data
     response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00});
@@ -1060,13 +1065,15 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
 
     // Verify changing path
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
     response = cmdSet.setPinlessPath(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01});
     assertEquals(0x9000, response.getSw());
     resetAndSelectAndOpenSC();
     response = cmdSet.sign(hash);
-    assertEquals(0x6985, response.getSw());
     assertEquals(0x6985, response.getSw());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSw());
@@ -1074,15 +1081,21 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
 
     // Reset
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
     response = cmdSet.setPinlessPath(new byte[] {});
     assertEquals(0x9000, response.getSw());
     resetAndSelectAndOpenSC();
     response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSw());
-    response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
-    assertEquals(0x6985, response.getSw());
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.deriveKey(new byte[]{0x00, 0x00, 0x00, 0x02}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
+      assertEquals(0x6985, response.getSw());
+    }
   }
 
   @Test
