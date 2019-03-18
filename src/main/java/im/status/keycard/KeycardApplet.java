@@ -471,7 +471,7 @@ public class KeycardApplet extends Applet {
    */
   private short getApplicationStatus(byte[] apduBuffer, short off) {
     apduBuffer[off++] = TLV_APPLICATION_STATUS_TEMPLATE;
-    apduBuffer[off++] = 12;
+    apduBuffer[off++] = 9;
     apduBuffer[off++] = TLV_INT;
     apduBuffer[off++] = 1;
     apduBuffer[off++] = pin.getTriesRemaining();
