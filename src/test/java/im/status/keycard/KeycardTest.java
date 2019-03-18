@@ -6,6 +6,7 @@ import com.licel.jcardsim.utils.AIDUtil;
 import im.status.keycard.applet.*;
 import im.status.keycard.desktop.LedgerUSBManager;
 import im.status.keycard.desktop.PCSCCardChannel;
+import im.status.keycard.io.APDUCommand;
 import im.status.keycard.io.APDUResponse;
 import im.status.keycard.io.CardListener;
 import javacard.framework.AID;
@@ -28,8 +29,10 @@ import org.web3j.tx.Transfer;
 import org.web3j.utils.Convert;
 import org.web3j.utils.Numeric;
 
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 import javax.smartcardio.*;
-import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -83,6 +86,19 @@ public class KeycardTest {
       default:
         throw new RuntimeException("Unknown target");
     }
+/*
+    im.status.keycard.globalplatform.Crypto.addBouncyCastleProvider();
+    SecretKey key;
+
+    try {
+      SecretKeyFactory skf = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256", "BC");
+      PBEKeySpec spec = new PBEKeySpec("331345".toCharArray(), "Keycard Pairing Password Salt".getBytes(), 256, 32 * 8);
+      key = skf.generateSecret(spec);
+    } catch (Exception e) {
+      throw new RuntimeException("Is Bouncycastle correctly initialized?");
+    }
+
+    SHARED_SECRET = key.getEncoded();*/
   }
 
   @BeforeAll
@@ -188,7 +204,6 @@ public class KeycardTest {
     secureChannel = new TestSecureChannelSession();
     cmdSet.setSecureChannel(secureChannel);
     cmdSet.select().checkOK();
-    cmdSet.setSecureChannel(secureChannel);
 
     if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
       cmdSet.autoPair(SHARED_SECRET);
@@ -222,14 +237,7 @@ public class KeycardTest {
     APDUResponse response = cmdSet.select();
     assertEquals(0x9000, response.getSw());
     byte[] data = response.getData();
-    assertEquals(KeycardApplet.TLV_APPLICATION_INFO_TEMPLATE, data[0]);
-    assertEquals(KeycardApplet.TLV_UID, data[2]);
-    assertEquals(KeycardApplet.TLV_PUB_KEY, data[20]);
-    assertEquals(KeycardApplet.TLV_INT, data[22 + data[21]]);
-    assertEquals(KeycardApplet.APPLICATION_VERSION >> 8, data[24 + data[21]]);
-    assertEquals(KeycardApplet.APPLICATION_VERSION & 0xFF, data[25 + data[21]]);
-    assertEquals(KeycardApplet.TLV_INT, data[26 + data[21]]);
-    assertEquals(KeycardApplet.TLV_KEY_UID, data[29 + data[21]]);
+    assertTrue(new ApplicationInfo(data).isInitializedCard());
   }
 
   @Test
@@ -304,8 +312,8 @@ public class KeycardTest {
     response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
     assertEquals(0x9000, response.getSw());
     secureChannel.processOpenSecureChannelResponse(response);
-    ResponseAPDU resp2 = apduChannel.transmit(new CommandAPDU(0x80, SecureChannel.INS_MUTUALLY_AUTHENTICATE, 0, 0, new byte[48]));
-    assertEquals(0x6982, resp2.getSW());
+    APDUResponse resp2 = sdkChannel.send(new APDUCommand(0x80, SecureChannel.INS_MUTUALLY_AUTHENTICATE, 0, 0, new byte[48]));
+    assertEquals(0x6982, resp2.getSw());
     secureChannel.reset();
     response = cmdSet.mutuallyAuthenticate();
     assertEquals(0x6985, response.getSw());
@@ -356,9 +364,8 @@ public class KeycardTest {
     // Open secure channel
     cmdSet.autoOpenSecureChannel();
     response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, challenge);
-    assertEquals(0x6985, response.getSw());
+    assertTrue((0x6985 == response.getSw()) || (0x6982 == response.getSw()));
     cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
-
 
     // Pair multiple indexes
     for (int i = 1; i < 5; i++) {
@@ -374,8 +381,11 @@ public class KeycardTest {
 
     // Unpair all (except the last, which will be unpaired in the tearDown phase)
     cmdSet.autoOpenSecureChannel();
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
 
     for (byte i = 0; i < 4; i++) {
       response = cmdSet.unpair(i);
@@ -401,12 +411,16 @@ public class KeycardTest {
 
     // Not authenticated
     cmdSet.autoOpenSecureChannel();
-    response = cmdSet.unpair(sparePairingIndex);
-    assertEquals(0x6985, response.getSw());
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.unpair(sparePairingIndex);
+      assertEquals(0x6985, response.getSw());
+
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
 
     // Wrong P1
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
     response = cmdSet.unpair((byte) 5);
     assertEquals(0x6A86, response.getSw());
 
@@ -1307,7 +1321,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("Sign actual Ethereum transaction")
-  @Capabilities("manual")
+  @Tag("manual")
   void signTransactionTest() throws Exception {
     // Initialize credentials
     Web3j web3j = Web3j.build(new HttpService());
