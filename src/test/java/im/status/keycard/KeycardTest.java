@@ -29,9 +29,6 @@ import org.web3j.tx.Transfer;
 import org.web3j.utils.Convert;
 import org.web3j.utils.Numeric;
 
-import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
 import javax.smartcardio.*;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -55,13 +52,14 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("Test the Keycard Applet")
 public class KeycardTest {
   // Psiring key is KeycardTest
-  public static final byte[] SHARED_SECRET = Hex.decode("2194524CF8A99C34B9F6C6894D07245AA2D5CFE6327C27D5ACDCC95DA203ED28");
   private static CardTerminal cardTerminal;
   private static CardChannel apduChannel;
   private static im.status.keycard.io.CardChannel sdkChannel;
   private static CardSimulator simulator;
 
   private static LedgerUSBManager usbManager;
+
+  private static byte[] sharedSecret;
 
   private TestSecureChannelSession secureChannel;
   private TestKeycardCommandSet cmdSet;
@@ -86,19 +84,6 @@ public class KeycardTest {
       default:
         throw new RuntimeException("Unknown target");
     }
-/*
-    im.status.keycard.globalplatform.Crypto.addBouncyCastleProvider();
-    SecretKey key;
-
-    try {
-      SecretKeyFactory skf = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256", "BC");
-      PBEKeySpec spec = new PBEKeySpec("331345".toCharArray(), "Keycard Pairing Password Salt".getBytes(), 256, 32 * 8);
-      key = skf.generateSecret(spec);
-    } catch (Exception e) {
-      throw new RuntimeException("Is Bouncycastle correctly initialized?");
-    }
-
-    SHARED_SECRET = key.getEncoded();*/
   }
 
   @BeforeAll
@@ -192,8 +177,10 @@ public class KeycardTest {
 
     initCapabilities(cmdSet.getApplicationInfo());
 
+    sharedSecret = cmdSet.pairingPasswordToSecret(System.getProperty("im.status.keycard.test.pairing", "KeycardTest"));
+
     if (!cmdSet.getApplicationInfo().isInitializedCard()) {
-      assertEquals(0x9000, cmdSet.init("000000", "123456789012", SHARED_SECRET).getSw());
+      assertEquals(0x9000, cmdSet.init("000000", "123456789012", sharedSecret).getSw());
     }
   }
 
@@ -206,7 +193,7 @@ public class KeycardTest {
     cmdSet.select().checkOK();
 
     if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
-      cmdSet.autoPair(SHARED_SECRET);
+      cmdSet.autoPair(sharedSecret);
     }
   }
 
@@ -369,7 +356,7 @@ public class KeycardTest {
 
     // Pair multiple indexes
     for (int i = 1; i < 5; i++) {
-      cmdSet.autoPair(SHARED_SECRET);
+      cmdSet.autoPair(sharedSecret);
       assertEquals(i, secureChannel.getPairingIndex());
       cmdSet.autoOpenSecureChannel();
       cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
@@ -399,7 +386,7 @@ public class KeycardTest {
   void unpairTest() throws Exception {
     // Add a spare keyset
     byte sparePairingIndex = secureChannel.getPairingIndex();
-    cmdSet.autoPair(SHARED_SECRET);
+    cmdSet.autoPair(sharedSecret);
 
     // Proof that the old keyset is still usable
     APDUResponse response = cmdSet.openSecureChannel(sparePairingIndex, secureChannel.getPublicKey());
@@ -653,7 +640,7 @@ public class KeycardTest {
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSw());
 
-    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PAIRING_SECRET, SHARED_SECRET);
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PAIRING_SECRET, sharedSecret);
     assertEquals(0x9000, response.getSw());
   }
 
