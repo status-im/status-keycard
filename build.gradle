@@ -39,6 +39,11 @@ if (!testTarget) {
   testTarget = 'card'
 }
 
+def pairingPass = project.properties['im.status.keycard.test.pairing']
+if (!pairingPass) {
+  pairingPass = 'KeycardTest'
+}
+
 
 repositories {
   mavenCentral()
@@ -85,7 +90,8 @@ compileTestJava {
 }
 
 afterEvaluate {
-  def jvmArgs = ["-Dim.status.keycard.test.target=${testTarget}"]
+  def jvmArgs = ["-Dim.status.keycard.test.target=${testTarget}", "-Dim.status.keycard.test.pairing=${pairingPass}"]
+
   if (testTarget == 'simulator') {
     jvmArgs.push('-noverify')
   }
