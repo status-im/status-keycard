@@ -1082,12 +1082,19 @@ public class KeycardTest {
     resetAndSelectAndOpenSC();
     response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSw());
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSw());
-    response = cmdSet.sign(hash);
-    assertEquals(0x6985, response.getSw());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, KeycardApplet.DERIVE_P1_SOURCE_CURRENT);
     assertEquals(0x9000, response.getSw());
+
+    resetAndSelectAndOpenSC();
+
     response = cmdSet.sign(hash);
     assertEquals(0x9000, response.getSw());
 
@@ -1102,8 +1109,16 @@ public class KeycardTest {
     resetAndSelectAndOpenSC();
     response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSw());
+
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSw());
+    resetAndSelectAndOpenSC();
     response = cmdSet.sign(hash);
     assertEquals(0x9000, response.getSw());
 
