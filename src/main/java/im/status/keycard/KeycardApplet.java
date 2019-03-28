@@ -26,6 +26,8 @@ public class KeycardApplet extends Applet {
   static final byte INS_SET_PINLESS_PATH = (byte) 0xC1;
   static final byte INS_EXPORT_KEY = (byte) 0xC2;
 
+  static final short SW_REFERENCED_DATA_NOT_FOUND = (short) 0x6A88;
+
   static final byte PUK_LENGTH = 12;
   static final byte PUK_MAX_RETRIES = 5;
   static final byte PIN_LENGTH = 6;
@@ -62,6 +64,11 @@ public class KeycardApplet extends Applet {
   static final byte DUPLICATE_KEY_P1_ADD_ENTROPY = 0x01;
   static final byte DUPLICATE_KEY_P1_EXPORT = 0x02;
   static final byte DUPLICATE_KEY_P1_IMPORT = 0x03;
+
+  static final byte SIGN_P1_CURRENT_KEY = 0x00;
+  static final byte SIGN_P1_DERIVE = 0x01;
+  static final byte SIGN_P1_DERIVE_AND_MAKE_CURRENT = 0x02;
+  static final byte SIGN_P1_PINLESS = 0x03;
 
   static final byte EXPORT_KEY_P1_CURRENT = 0x00;
   static final byte EXPORT_KEY_P1_DERIVE = 0x01;
@@ -1191,9 +1198,17 @@ public class KeycardApplet extends Applet {
    */
   private void sign(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
-    short len = secureChannel.preprocessAPDU(apduBuffer);
+    boolean usePinless = apduBuffer[ISO7816.OFFSET_P1] == SIGN_P1_PINLESS;
 
-    if (!((pin.isValidated() || isPinless()) && privateKey.isInitialized())) {
+    short len;
+
+    if (usePinless && !secureChannel.isOpen()) {
+      len = (short) (apduBuffer[ISO7816.OFFSET_LC] & (short) 0xff);
+    } else {
+      len = secureChannel.preprocessAPDU(apduBuffer);
+    }
+
+    if (!((pin.isValidated() || usePinless || isPinless()) && privateKey.isInitialized())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
@@ -1201,11 +1216,26 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
-    signature.init(privateKey, Signature.MODE_SIGN);
+    ECPrivateKey signingKey;
+    ECPublicKey outputKey;
+
+    if (usePinless) {
+      if (pinlessPathLen == 0) {
+        ISOException.throwIt(SW_REFERENCED_DATA_NOT_FOUND);
+      }
+
+      signingKey = pinlessPrivateKey;
+      outputKey = pinlessPublicKey;
+    } else {
+      signingKey = privateKey;
+      outputKey = publicKey;
+    }
+
+    signature.init(signingKey, Signature.MODE_SIGN);
 
     apduBuffer[SecureChannel.SC_OUT_OFFSET] = TLV_SIGNATURE_TEMPLATE;
     apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 3)] = TLV_PUB_KEY;
-    short outLen = apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 4)] = (byte) publicKey.getW(apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
+    short outLen = apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 4)] = (byte) outputKey.getW(apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
 
     outLen += 5;
     short sigOff = (short) (SecureChannel.SC_OUT_OFFSET + outLen);
