@@ -807,17 +807,18 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    doDerive(apduBuffer, len, apduBuffer[ISO7816.OFFSET_P1], true);
+    doDerive(apduBuffer, (short) 0, len, apduBuffer[ISO7816.OFFSET_P1], true);
   }
 
   /**
    * Internal derivation function, called by DERIVE KEY and EXPORT KEY
    * @param apduBuffer the APDU buffer
-   * @param len the APDU len
+   * @param off the offset in the APDU buffer relative to the data field
+   * @param len the len of the path
    * @param source derivation source
    * @param makeCurrent whether the results should be saved or not
    */
-  private void doDerive(byte[] apduBuffer, short len, byte source, boolean makeCurrent) {
+  private void doDerive(byte[] apduBuffer, short off, short len, byte source, boolean makeCurrent) {
     if (!isExtended) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
@@ -876,7 +877,8 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
-    short scratchOff = (short) (ISO7816.OFFSET_CDATA + len);
+    short pathOff = (short) (ISO7816.OFFSET_CDATA + off);
+    short scratchOff = (short) (pathOff + len);
     short dataOff = (short) (scratchOff + Crypto.KEY_DERIVATION_SCRATCH_SIZE);
 
     short pubKeyOff = (short) (dataOff + sourcePriv.getS(apduBuffer, dataOff));
@@ -888,8 +890,8 @@ public class KeycardApplet extends Applet {
       apduBuffer[pubKeyOff] = 0;
     }
 
-    for (short i = ISO7816.OFFSET_CDATA; i < scratchOff; i += 4) {
-      if (i > ISO7816.OFFSET_CDATA) {
+    for (short i = pathOff; i < scratchOff; i += 4) {
+      if (i > pathOff) {
         Util.arrayCopyNonAtomic(derivationOutput, (short) 0, apduBuffer, dataOff, (short) (Crypto.KEY_SECRET_SIZE + CHAIN_CODE_SIZE));
 
         if (!crypto.bip32IsHardened(apduBuffer, i)) {
@@ -1198,7 +1200,41 @@ public class KeycardApplet extends Applet {
    */
   private void sign(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
-    boolean usePinless = apduBuffer[ISO7816.OFFSET_P1] == SIGN_P1_PINLESS;
+    boolean usePinless = false;
+    boolean derive = false;
+    boolean makeCurrent = false;
+
+    ECPrivateKey signingKey;
+    ECPublicKey outputKey;
+
+    switch((byte) (apduBuffer[ISO7816.OFFSET_P1] & ~DERIVE_P1_SOURCE_MASK)) {
+      case SIGN_P1_CURRENT_KEY:
+        signingKey = privateKey;
+        outputKey = publicKey;
+        break;
+      case SIGN_P1_DERIVE:
+        signingKey = secp256k1.tmpECPrivateKey;
+        outputKey = null;
+        derive = true;
+        break;
+      case SIGN_P1_DERIVE_AND_MAKE_CURRENT:
+        signingKey = privateKey;
+        outputKey = publicKey;
+        derive = true;
+        makeCurrent = true;
+        break;
+      case SIGN_P1_PINLESS:
+        if (pinlessPathLen == 0) {
+          ISOException.throwIt(SW_REFERENCED_DATA_NOT_FOUND);
+        }
+        usePinless = true;
+        signingKey = pinlessPrivateKey;
+        outputKey = pinlessPublicKey;
+        break;
+      default:
+        ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
+        return;
+    }
 
     short len;
 
@@ -1212,35 +1248,36 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    if (len != MessageDigest.LENGTH_SHA_256) {
-      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-    }
+    if (derive) {
+      short pathLen = (short) (len - MessageDigest.LENGTH_SHA_256);
 
-    ECPrivateKey signingKey;
-    ECPublicKey outputKey;
-
-    if (usePinless) {
-      if (pinlessPathLen == 0) {
-        ISOException.throwIt(SW_REFERENCED_DATA_NOT_FOUND);
+      if (pathLen <= 0) {
+        ISOException.throwIt(ISO7816.SW_WRONG_DATA);
       }
 
-      signingKey = pinlessPrivateKey;
-      outputKey = pinlessPublicKey;
+      doDerive(apduBuffer, MessageDigest.LENGTH_SHA_256, pathLen, apduBuffer[ISO7816.OFFSET_P1], makeCurrent);
     } else {
-      signingKey = privateKey;
-      outputKey = publicKey;
+      if (len != MessageDigest.LENGTH_SHA_256) {
+        ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      }
     }
-
-    signature.init(signingKey, Signature.MODE_SIGN);
 
     apduBuffer[SecureChannel.SC_OUT_OFFSET] = TLV_SIGNATURE_TEMPLATE;
     apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 3)] = TLV_PUB_KEY;
-    short outLen = apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 4)] = (byte) outputKey.getW(apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
+    short outLen = apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 4)] = Crypto.KEY_PUB_SIZE;
+
+    if (outputKey != null) {
+      outputKey.getW(apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
+    } else {
+      secp256k1.derivePublicKey(derivationOutput, (short) 0, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
+    }
 
     outLen += 5;
     short sigOff = (short) (SecureChannel.SC_OUT_OFFSET + outLen);
 
-    outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, len, apduBuffer, sigOff);
+    signature.init(signingKey, Signature.MODE_SIGN);
+
+    outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
     outLen += crypto.fixS(apduBuffer, sigOff);
 
     apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) 0x81;
@@ -1274,7 +1311,7 @@ public class KeycardApplet extends Applet {
     Util.arrayCopy(apduBuffer, ISO7816.OFFSET_CDATA, pinlessPath, (short) 0, len);
 
     if (pinlessPathLen > 0) {
-      doDerive(apduBuffer, len, DERIVE_P1_SOURCE_MASTER, false);
+      doDerive(apduBuffer, (short) 0, len, DERIVE_P1_SOURCE_MASTER, false);
       pinlessPrivateKey.setS(derivationOutput, (short) 0, Crypto.KEY_SECRET_SIZE);
       secp256k1.derivePublicKey(pinlessPrivateKey, apduBuffer, (short) 0);
       pinlessPublicKey.setW(apduBuffer, (short) 0, Crypto.KEY_PUB_SIZE);
@@ -1341,7 +1378,7 @@ public class KeycardApplet extends Applet {
     }
 
     if (derive) {
-      doDerive(apduBuffer, dataLen, derivationSource, makeCurrent);
+      doDerive(apduBuffer, (short) 0, dataLen, derivationSource, makeCurrent);
     }
 
     short off = SecureChannel.SC_OUT_OFFSET;
