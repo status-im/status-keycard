@@ -924,7 +924,7 @@ public class KeycardApplet extends Applet {
       secp256k1.derivePublicKey(privateKey, apduBuffer, scratchOff);
       publicKey.setW(apduBuffer, scratchOff, Crypto.KEY_PUB_SIZE);
 
-      Util.arrayCopy(apduBuffer, ISO7816.OFFSET_CDATA, keyPath, pathLenOff, len);
+      Util.arrayCopy(apduBuffer, pathOff, keyPath, pathLenOff, len);
       keyPathLen = newPathLen;
       JCSystem.commitTransaction();
     }
@@ -1255,7 +1255,8 @@ public class KeycardApplet extends Applet {
         ISOException.throwIt(ISO7816.SW_WRONG_DATA);
       }
 
-      doDerive(apduBuffer, MessageDigest.LENGTH_SHA_256, pathLen, apduBuffer[ISO7816.OFFSET_P1], makeCurrent);
+      byte derivationSource = (byte) (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_SOURCE_MASK);
+      doDerive(apduBuffer, MessageDigest.LENGTH_SHA_256, pathLen, derivationSource, makeCurrent);
     } else {
       if (len != MessageDigest.LENGTH_SHA_256) {
         ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -1466,7 +1467,7 @@ public class KeycardApplet extends Applet {
     secp256k1.setCurveParameters(publicKey);
     secp256k1.setCurveParameters(privateKey);
 
-    secp256k1.setCurveParameters(pinlessPrivateKey);
     secp256k1.setCurveParameters(pinlessPublicKey);
+    secp256k1.setCurveParameters(pinlessPrivateKey);
   }
 }
