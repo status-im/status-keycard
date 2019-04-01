@@ -1031,7 +1031,6 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
 
     // No secure channel or PIN auth
-    reset();
     response = cmdSet.select();
     assertEquals(0x9000, response.getSw());
 
@@ -1055,7 +1054,7 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
 
     response = cmdSet.signPinless(hash);
-    assertEquals(0x6985, response.getSw());
+    assertEquals(0x6A88, response.getSw());
   }
 
   private void verifySignResp(byte[] data, APDUResponse response) throws Exception {

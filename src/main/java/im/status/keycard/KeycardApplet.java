@@ -1224,9 +1224,6 @@ public class KeycardApplet extends Applet {
         makeCurrent = true;
         break;
       case SIGN_P1_PINLESS:
-        if (pinlessPathLen == 0) {
-          ISOException.throwIt(SW_REFERENCED_DATA_NOT_FOUND);
-        }
         usePinless = true;
         signingKey = pinlessPrivateKey;
         outputKey = pinlessPublicKey;
@@ -1242,6 +1239,10 @@ public class KeycardApplet extends Applet {
       len = (short) (apduBuffer[ISO7816.OFFSET_LC] & (short) 0xff);
     } else {
       len = secureChannel.preprocessAPDU(apduBuffer);
+    }
+
+    if (usePinless && pinlessPathLen == 0) {
+      ISOException.throwIt(SW_REFERENCED_DATA_NOT_FOUND);
     }
 
     if (!((pin.isValidated() || usePinless || isPinless()) && privateKey.isInitialized())) {
@@ -1284,7 +1285,11 @@ public class KeycardApplet extends Applet {
     apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) 0x81;
     apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 2)] = (byte) (outLen - 3);
 
-    secureChannel.respond(apdu, outLen, ISO7816.SW_NO_ERROR);
+    if (secureChannel.isOpen()) {
+      secureChannel.respond(apdu, outLen, ISO7816.SW_NO_ERROR);
+    } else {
+      apdu.setOutgoingAndSend(SecureChannel.SC_OUT_OFFSET, outLen);
+    }
   }
 
   /**
