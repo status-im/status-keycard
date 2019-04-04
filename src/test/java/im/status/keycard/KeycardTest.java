@@ -37,11 +37,11 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.security.KeyFactory;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.Signature;
+import java.security.*;
+
 import org.bouncycastle.jce.interfaces.ECPublicKey;
+
+import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Random;
@@ -1002,11 +1002,8 @@ public class KeycardTest {
       assertEquals(0x9000, response.getSw());
     }
 
-    Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
-
     if (!cmdSet.getApplicationInfo().hasMasterKey()) {
-      KeyPair keyPair = keypairGenerator().generateKeyPair();
-      response = cmdSet.loadKey(keyPair);
+      response = cmdSet.generateKey();
       assertEquals(0x9000, response.getSw());
     }
 
@@ -1016,6 +1013,52 @@ public class KeycardTest {
 
     // Correctly sign a precomputed hash
     response = cmdSet.sign(hash);
+    verifySignResp(data, response);
+
+    // Sign and derive
+    String currentPath = new KeyPath(cmdSet.getStatus(KeycardCommandSet.GET_STATUS_P1_KEY_PATH).checkOK().getData()).toString();
+    String updatedPath = new KeyPath(currentPath + "/2").toString();
+    response = cmdSet.signWithPath(hash, updatedPath, false);
+    verifySignResp(data, response);
+    assertEquals(currentPath, new KeyPath(cmdSet.getStatus(KeycardCommandSet.GET_STATUS_P1_KEY_PATH).checkOK().getData()).toString());
+    response = cmdSet.signWithPath(hash, updatedPath, true);
+    verifySignResp(data, response);
+    assertEquals(updatedPath, new KeyPath(cmdSet.getStatus(KeycardCommandSet.GET_STATUS_P1_KEY_PATH).checkOK().getData()).toString());
+
+    // Sign with PINless
+    String pinlessPath = currentPath + "/3";
+    response = cmdSet.setPinlessPath(pinlessPath);
+    assertEquals(0x9000, response.getSw());
+
+    // No secure channel or PIN auth
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSw());
+
+    response = cmdSet.signPinless(hash);
+    verifySignResp(data, response);
+
+    // With secure channel
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      cmdSet.autoOpenSecureChannel();
+      response = cmdSet.signPinless(hash);
+      verifySignResp(data, response);
+    }
+
+    // No pinless path
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
+    response = cmdSet.resetPinlessPath();
+    assertEquals(0x9000, response.getSw());
+
+    response = cmdSet.signPinless(hash);
+    assertEquals(0x6A88, response.getSw());
+  }
+
+  private void verifySignResp(byte[] data, APDUResponse response) throws Exception {
+    Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
     assertEquals(0x9000, response.getSw());
     byte[] sig = response.getData();
     byte[] keyData = extractPublicKeyFromSignature(sig);
@@ -1082,12 +1125,19 @@ public class KeycardTest {
     resetAndSelectAndOpenSC();
     response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSw());
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSw());
-    response = cmdSet.sign(hash);
-    assertEquals(0x6985, response.getSw());
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02}, KeycardApplet.DERIVE_P1_SOURCE_CURRENT);
     assertEquals(0x9000, response.getSw());
+
+    resetAndSelectAndOpenSC();
+
     response = cmdSet.sign(hash);
     assertEquals(0x9000, response.getSw());
 
@@ -1102,8 +1152,16 @@ public class KeycardTest {
     resetAndSelectAndOpenSC();
     response = cmdSet.sign(hash);
     assertEquals(0x6985, response.getSw());
+
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
     response = cmdSet.deriveKey(new byte[] {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSw());
+    resetAndSelectAndOpenSC();
     response = cmdSet.sign(hash);
     assertEquals(0x9000, response.getSw());
 
