@@ -498,10 +498,9 @@ public class KeycardTest {
     response = cmdSet.setNDEF(ndefData);
     assertEquals(0x9000, response.getSw());
 
-    // Wrong length
-    ndefData[1]++;
-    response = cmdSet.setNDEF(ndefData);
-    assertEquals(0x6A80, response.getSw());
+    // Good case with no length.
+    response = cmdSet.setNDEF(Arrays.copyOfRange(ndefData, 2, ndefData.length));
+    assertEquals(0x9000, response.getSw());
   }
 
   @Test

@@ -463,13 +463,17 @@ public class KeycardApplet extends Applet {
     }
 
     short dataLen = Util.makeShort((byte) 0x00, apduBuffer[ISO7816.OFFSET_LC]);
+    short offset;
 
     if (Util.makeShort(apduBuffer[ISO7816.OFFSET_CDATA], apduBuffer[(short)(ISO7816.OFFSET_CDATA + 1)]) != (short)(dataLen - 2)) {
-      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      offset = ISO7816.OFFSET_P2;
+      apduBuffer[ISO7816.OFFSET_P2] = 0;
+    } else {
+      offset = ISO7816.OFFSET_CDATA;
     }
 
     JCSystem.beginTransaction();
-    Util.arrayCopy(apduBuffer, ISO7816.OFFSET_CDATA, SharedMemory.ndefDataFile, (short) 0, dataLen);
+    Util.arrayCopy(apduBuffer, offset, SharedMemory.ndefDataFile, (short) 0, dataLen);
     JCSystem.commitTransaction();
   }
 
