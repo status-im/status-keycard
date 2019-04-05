@@ -4,5 +4,5 @@ repositories {
 }
 
 dependencies {
-  compile 'com.github.status-im.status-keycard-java:desktop:2.0.0'
+  compile 'com.github.status-im.status-keycard-java:desktop:7ce0136'
 }
