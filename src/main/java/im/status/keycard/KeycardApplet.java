@@ -468,6 +468,7 @@ public class KeycardApplet extends Applet {
     if (Util.makeShort(apduBuffer[ISO7816.OFFSET_CDATA], apduBuffer[(short)(ISO7816.OFFSET_CDATA + 1)]) != (short)(dataLen - 2)) {
       offset = ISO7816.OFFSET_P2;
       apduBuffer[ISO7816.OFFSET_P2] = 0;
+      dataLen += 2;
     } else {
       offset = ISO7816.OFFSET_CDATA;
     }
