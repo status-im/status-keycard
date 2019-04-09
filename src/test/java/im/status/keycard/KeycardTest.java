@@ -1264,6 +1264,68 @@ public class KeycardTest {
   }
 
   @Test
+  @DisplayName("STORE/GET DATA")
+  void storeGetData() throws Exception {
+    APDUResponse response;
+
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      // Security condition violation: SecureChannel not open
+      response = cmdSet.storePublicData(new byte[20]);
+      assertEquals(0x6985, response.getSw());
+
+      cmdSet.autoOpenSecureChannel();
+    }
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      // Security condition violation: PIN not verified
+      response = cmdSet.storePublicData(new byte[20]);
+      assertEquals(0x6985, response.getSw());
+
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
+    // Data too long
+    response = cmdSet.storePublicData(new byte[128]);
+    assertEquals(0x6A80, response.getSw());
+
+    byte[] data = new byte[127];
+
+    for (int i = 0; i < 127; i++) {
+      data[i] = (byte) i;
+    }
+
+    // Correct data
+    response = cmdSet.storePublicData(data);
+    assertEquals(0x9000, response.getSw());
+
+    // Read data back with secure channel
+    response = cmdSet.getPublicData();
+    assertEquals(0x9000, response.getSw());
+    assertArrayEquals(data, response.getData());
+
+    // Empty data
+    response = cmdSet.storePublicData(new byte[0]);
+    assertEquals(0x9000, response.getSw());
+
+    response = cmdSet.getPublicData();
+    assertEquals(0x9000, response.getSw());
+    assertEquals(0, response.getData().length);
+
+    // Shorter data
+    data = Arrays.copyOf(data, 20);
+    response = cmdSet.storePublicData(data);
+    assertEquals(0x9000, response.getSw());
+
+    // GET DATA without Secure Channel
+    cmdSet.select().checkOK();
+
+    response = cmdSet.getPublicData();
+    assertEquals(0x9000, response.getSw());
+    assertArrayEquals(data, response.getData());
+  }
+
+  @Test
   @DisplayName("DUPLICATE KEY command")
   @Capabilities("keyManagement")
   void duplicateTest() throws Exception {

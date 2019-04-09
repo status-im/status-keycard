@@ -8,7 +8,7 @@ import javacardx.crypto.Cipher;
  * The applet's main class. All incoming commands a processed by this class.
  */
 public class KeycardApplet extends Applet {
-  static final short APPLICATION_VERSION = (short) 0x0202;
+  static final short APPLICATION_VERSION = (short) 0x0203;
 
   static final byte INS_GET_STATUS = (byte) 0xF2;
   static final byte INS_SET_NDEF = (byte) 0xF3;
