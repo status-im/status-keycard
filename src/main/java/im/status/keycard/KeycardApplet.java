@@ -107,6 +107,7 @@ public class KeycardApplet extends Applet {
   private byte[] uid;
   private SecureChannel secureChannel;
 
+  private HMACKey masterSeed;
   private ECPublicKey masterPublic;
   private ECPrivateKey masterPrivate;
   private byte[] masterChainCode;
@@ -172,6 +173,7 @@ public class KeycardApplet extends Applet {
     uid = new byte[UID_LENGTH];
     crypto.random.generateData(uid, (short) 0, UID_LENGTH);
 
+    masterSeed = (HMACKey) KeyBuilder.buildKey(KeyBuilder.TYPE_HMAC, BIP39_SEED_SIZE, false);
     masterPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
     masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
 
@@ -767,6 +769,7 @@ public class KeycardApplet extends Applet {
     JCSystem.beginTransaction();
     isExtended = true;
 
+    masterSeed.setKey(apduBuffer, (short) ISO7816.OFFSET_CDATA, BIP39_SEED_SIZE);
     masterPrivate.setS(apduBuffer, (short) ISO7816.OFFSET_CDATA, CHAIN_CODE_SIZE);
     privateKey.setS(apduBuffer, (short) ISO7816.OFFSET_CDATA, CHAIN_CODE_SIZE);
 
