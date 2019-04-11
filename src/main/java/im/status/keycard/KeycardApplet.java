@@ -25,6 +25,7 @@ public class KeycardApplet extends Applet {
   static final byte INS_SIGN = (byte) 0xC0;
   static final byte INS_SET_PINLESS_PATH = (byte) 0xC1;
   static final byte INS_EXPORT_KEY = (byte) 0xC2;
+  static final byte INS_EXPORT_SEED = (byte) 0xC3;
   static final byte INS_GET_DATA = (byte) 0xCA;
   static final byte INS_STORE_DATA = (byte) 0xE2;
 
@@ -292,6 +293,9 @@ public class KeycardApplet extends Applet {
           break;
         case INS_EXPORT_KEY:
           exportKey(apdu);
+          break;
+        case INS_EXPORT_SEED:
+          exportSeed(apdu);
           break;
         case INS_GET_DATA:
           getData(apdu);
@@ -1348,6 +1352,24 @@ public class KeycardApplet extends Applet {
     }
 
     JCSystem.commitTransaction();
+  }
+
+  /**
+   * Processes the EXPORT SEED command. Requires an open secure channel and the PIN to be verified.
+   *
+   * @param apdu the JCRE-owned APDU object.
+   */
+  private void exportSeed(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    secureChannel.preprocessAPDU(apduBuffer);
+
+    // TODO: Also ensure masterSeed isn't empty
+    if (!pin.isValidated() || masterSeed.length < 1) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    short len = Util.arrayCopy(masterSeed, (short) 0, apduBuffer, SecureChannel.SC_OUT_OFFSET, BIP39_SEED_SIZE);    
+    secureChannel.respond(apdu, len, ISO7816.SW_NO_ERROR);
   }
 
   /**
