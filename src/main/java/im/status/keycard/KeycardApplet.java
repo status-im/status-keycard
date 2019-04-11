@@ -110,6 +110,7 @@ public class KeycardApplet extends Applet {
   private byte[] uid;
   private SecureChannel secureChannel;
 
+  private byte[] masterSeed;
   private ECPublicKey masterPublic;
   private ECPrivateKey masterPrivate;
   private byte[] masterChainCode;
@@ -176,6 +177,8 @@ public class KeycardApplet extends Applet {
 
     uid = new byte[UID_LENGTH];
     crypto.random.generateData(uid, (short) 0, UID_LENGTH);
+
+    masterSeed = new byte[BIP39_SEED_SIZE];
 
     masterPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
     masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
@@ -1067,6 +1070,7 @@ public class KeycardApplet extends Applet {
     pinlessPrivateKey.clearKey();
     pinlessPublicKey.clearKey();
     resetCurveParameters();
+    Util.arrayFillNonAtomic(masterSeed, (short) 0, (short) masterSeed.length, (byte) 0);
     Util.arrayFillNonAtomic(chainCode, (short) 0, (short) chainCode.length, (byte) 0);
     Util.arrayFillNonAtomic(parentChainCode, (short) 0, (short) parentChainCode.length, (byte) 0);
     Util.arrayFillNonAtomic(masterChainCode, (short) 0, (short) masterChainCode.length, (byte) 0);
@@ -1091,6 +1095,8 @@ public class KeycardApplet extends Applet {
 
     apduBuffer[ISO7816.OFFSET_LC] = BIP39_SEED_SIZE;
     crypto.random.generateData(apduBuffer, ISO7816.OFFSET_CDATA, BIP39_SEED_SIZE);
+    
+    Util.arrayCopy(apduBuffer, (short) 0, masterSeed, (short) 0, BIP39_SEED_SIZE);
 
     loadSeed(apduBuffer);
     pinlessPathLen = 0;
