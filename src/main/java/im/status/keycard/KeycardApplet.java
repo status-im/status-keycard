@@ -782,6 +782,9 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
+    // Save the seed before turning it into a master key
+    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, masterSeed, (short) 0, BIP39_SEED_SIZE);
+
     crypto.bip32MasterFromSeed(apduBuffer, (short) ISO7816.OFFSET_CDATA, BIP39_SEED_SIZE, apduBuffer, (short) ISO7816.OFFSET_CDATA);
 
     JCSystem.beginTransaction();
@@ -1099,8 +1102,6 @@ public class KeycardApplet extends Applet {
 
     apduBuffer[ISO7816.OFFSET_LC] = BIP39_SEED_SIZE;
     crypto.random.generateData(apduBuffer, ISO7816.OFFSET_CDATA, BIP39_SEED_SIZE);
-    
-    Util.arrayCopy(apduBuffer, (short) 0, masterSeed, (short) 0, BIP39_SEED_SIZE);
 
     loadSeed(apduBuffer);
     pinlessPathLen = 0;
@@ -1368,8 +1369,10 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    short len = Util.arrayCopy(masterSeed, (short) 0, apduBuffer, SecureChannel.SC_OUT_OFFSET, BIP39_SEED_SIZE);    
-    secureChannel.respond(apdu, len, ISO7816.SW_NO_ERROR);
+    short off = SecureChannel.SC_OUT_OFFSET;
+    Util.arrayCopyNonAtomic(masterSeed, (short) 0, apduBuffer, off , BIP39_SEED_SIZE);
+    
+    secureChannel.respond(apdu, BIP39_SEED_SIZE, ISO7816.SW_NO_ERROR);
   }
 
   /**
