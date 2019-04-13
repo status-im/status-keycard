@@ -1,0 +1,6 @@
+[submodule "dependencies/jcardsim"]
+	path = dependencies/jcardsim
+	url = https://github.com/status-im/jcardsim.git
+[submodule "dependencies/oracle_javacard_sdks"]
+	path = dependencies/oracle_javacard_sdks
+	url = https://github.com/martinpaljak/oracle_javacard_sdks.git

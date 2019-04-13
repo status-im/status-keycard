@@ -1,0 +1,20 @@
+
+machine:
+  java:
+    version: oraclejdk8
+
+test:
+  override:
+    - cp gradle.circleci.properties gradle.properties
+    - ./gradlew convertJavacard
+    - ./gradlew test
+  post:
+    - mkdir $CIRCLE_ARTIFACTS/cap
+    - mv build/javacard/im/status/keycard/javacard/*.cap $CIRCLE_ARTIFACTS/cap
+
+dependencies:
+  pre:
+    - git submodule update --init --recursive
+  cache_directories:
+    - ~/.m2
+    - ~/.gradle
