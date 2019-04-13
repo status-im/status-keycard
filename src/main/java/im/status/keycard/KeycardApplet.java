@@ -238,8 +238,21 @@ public class KeycardApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     byte code = apduBuffer[ISO7816.OFFSET_INS];
     
+    // Cert loading should happen before init
+    if (code == INS_LOAD_CERTS) {
+      loadCerts(apdu);
+      return;
+    }
+
+    // Cert reading can happen either at init or before it,
+    // so we should check it here
+    if (code == INS_EXPORT_CERTS) {
+      exportCerts(apdu);
+      return;
+    }
+
     // If we have no PIN it means we still have to initialize the applet.
-    if (pin == null && code != INS_LOAD_CERTS && code != INS_EXPORT_CERTS) {
+    if (pin == null) {
       processInit(apdu);
       return;
     }
@@ -265,12 +278,6 @@ public class KeycardApplet extends Applet {
           break;
         case SecureChannel.INS_UNPAIR:
           unpair(apdu);
-          break;
-        case INS_LOAD_CERTS:
-          loadCerts(apdu);
-          break;
-        case INS_EXPORT_CERTS:
-          exportCerts(apdu);
           break;
         case INS_GET_STATUS:
           getStatus(apdu);
@@ -754,16 +761,25 @@ public class KeycardApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void loadCerts(APDU apdu) {
-    /*byte[] apduBuffer = apdu.getBuffer();
-    if (certsLoaded > 0 || apduBuffer.length > CERTS_LEN) {
+    byte[] apduBuffer = apdu.getBuffer();
+    apdu.setIncomingAndReceive();    
+
+    if (certsLoaded > 0) {
       // Only allow this to happen once and make sure it's an appropriate size
       ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
-    }*/
+    }
 
     JCSystem.beginTransaction();
-    // Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, certs, (short) 0, (short) apduBuffer.length);
-    certs[0] = 5;
+
+    // Don't allow loads >CERTS_LEN, but do allow loads <CERTS_LEN
+    short len = CERTS_LEN;
+    if (apduBuffer.length < len) {
+      len = (short) apduBuffer.length;
+    }
+    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, certs, (short) 0, len);
+    // Prevent any future calls of this function
     certsLoaded = 1;
+
     JCSystem.commitTransaction();
   } 
 
