@@ -29,13 +29,18 @@ jobs:
             - v1-dependencies-
 
       - run:
-          - cp gradle.circleci.properties gradle.properties
-          - ./gradlew convertJavacard
+          name: "Copy config"
+          command: cp gradle.circleci.properties gradle.properties
+
+      - run:
+          name: "Build card"
+          command: ./gradlew convertJavacard
 
       - save_cache:
           paths:
             - ~/.gradle
           key: v1-dependencies-{{ checksum "build.gradle" }}
 
-      # run tests!
-      - run: gradle test
+      - run:
+          name: "Run tests"
+          command: ./gradlew test
