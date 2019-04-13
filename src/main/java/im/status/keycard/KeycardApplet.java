@@ -355,9 +355,26 @@ public class KeycardApplet extends Applet {
     apdu.setIncomingAndReceive();
 
     if (selectingApplet()) {
+      short off = 0;
+
+      // Add the secure channel public key to the output info
       apduBuffer[0] = TLV_PUB_KEY;
       apduBuffer[1] = (byte) secureChannel.copyPublicKey(apduBuffer, (short) 2);
-      apdu.setOutgoingAndSend((short) 0, (short)(apduBuffer[1] + 2));
+      off += 2;
+      off += apduBuffer[1];
+
+      // Also get the instance UID. This is a unique identifier for the installation and
+      // cannot be updated after the app is installed. It is used to make the certificates.
+      apduBuffer[off] = TLV_UID;
+      off += 1;
+      apduBuffer[off] = UID_LENGTH;
+      off += 1;
+      Util.arrayCopyNonAtomic(uid, (short) 0, apduBuffer, off, UID_LENGTH);
+      off += UID_LENGTH;
+
+      // Send the APDU buffer
+      apdu.setOutgoingAndSend((short) 0, (short) off);
+
     } else if (apduBuffer[ISO7816.OFFSET_INS] == INS_INIT) {
       secureChannel.oneShotDecrypt(apduBuffer);
 
