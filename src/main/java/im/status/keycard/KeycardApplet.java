@@ -115,6 +115,7 @@ public class KeycardApplet extends Applet {
 
   static final short CERT_LEN = 71;
   static final short NUM_CERTS = 3;
+  static final short CERTS_LEN = CERT_LEN * NUM_CERTS;
   private byte[] certs;
   private byte certsLoaded;
 
@@ -187,7 +188,7 @@ public class KeycardApplet extends Applet {
     crypto.random.generateData(uid, (short) 0, UID_LENGTH);
 
     // Room for 3 certs
-    certs = new byte[CERT_LEN * NUM_CERTS];
+    certs = new byte[CERTS_LEN];
     certsLoaded = 0;
 
     masterSeed = new byte[BIP39_SEED_SIZE];
@@ -234,8 +235,11 @@ public class KeycardApplet extends Applet {
    * @throws ISOException any processing error
    */
   public void process(APDU apdu) throws ISOException {
+    byte[] apduBuffer = apdu.getBuffer();
+    byte code = apduBuffer[ISO7816.OFFSET_INS];
+    
     // If we have no PIN it means we still have to initialize the applet.
-    if (pin == null) {
+    if (pin == null && code != INS_LOAD_CERTS && code != INS_EXPORT_CERTS) {
       processInit(apdu);
       return;
     }
@@ -247,10 +251,9 @@ public class KeycardApplet extends Applet {
     }
 
     apdu.setIncomingAndReceive();
-    byte[] apduBuffer = apdu.getBuffer();
 
     try {
-      switch (apduBuffer[ISO7816.OFFSET_INS]) {
+      switch (code) {
         case SecureChannel.INS_OPEN_SECURE_CHANNEL:
           secureChannel.openSecureChannel(apdu);
           break;
@@ -363,7 +366,7 @@ public class KeycardApplet extends Applet {
       off += 2;
       off += apduBuffer[1];
 
-      // Also get the instance UID. This is a unique identifier for the installation and
+      // Get the instance UID. This is a unique identifier for the installation and
       // cannot be updated after the app is installed. It is used to make the certificates.
       apduBuffer[off] = TLV_UID;
       off += 1;
@@ -751,35 +754,28 @@ public class KeycardApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void loadCerts(APDU apdu) {
-    byte[] apduBuffer = apdu.getBuffer();
-    if (certsLoaded > 0 || apduBuffer.length > CERT_LEN * NUM_CERTS) {
+    /*byte[] apduBuffer = apdu.getBuffer();
+    if (certsLoaded > 0 || apduBuffer.length > CERTS_LEN) {
       // Only allow this to happen once and make sure it's an appropriate size
       ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
-    }
+    }*/
 
     JCSystem.beginTransaction();
-    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, certs, (short) 0, (short) apduBuffer.length);
+    // Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, certs, (short) 0, (short) apduBuffer.length);
+    certs[0] = 5;
     certsLoaded = 1;
     JCSystem.commitTransaction();
   } 
 
   /**
-   * Processes the EXPORT_CERTS command. Requires an open secure channel and verified PIN.
+   * Processes the EXPORT_CERTS command.
    * Exports the certs stored in `certs`. This exports the entire byte array, even if some of it is empty.
    * @param apdu the JCRE-owned APDU object.
    */
   private void exportCerts(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
-    secureChannel.preprocessAPDU(apduBuffer);
-
-    if (!pin.isValidated()) {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-    }
-
-    short off = SecureChannel.SC_OUT_OFFSET;
-    Util.arrayCopyNonAtomic(certs, (short) 0, apduBuffer, off, (short) certs.length);
-    
-    secureChannel.respond(apdu, (short) certs.length, ISO7816.SW_NO_ERROR);
+    Util.arrayCopyNonAtomic(certs, (short) 0, apduBuffer, (short) 0, CERTS_LEN);
+    apdu.setOutgoingAndSend((short) 0, CERTS_LEN);
   }
 
   /**
