@@ -13,6 +13,8 @@ public class KeycardApplet extends Applet {
   static final byte INS_GET_STATUS = (byte) 0xF2;
   static final byte INS_SET_NDEF = (byte) 0xF3;
   static final byte INS_INIT = (byte) 0xFE;
+  static final byte INS_LOAD_CERTS = (byte) 0xFA;
+  static final byte INS_EXPORT_CERTS = (byte) 0xFB;
   static final byte INS_VERIFY_PIN = (byte) 0x20;
   static final byte INS_CHANGE_PIN = (byte) 0x21;
   static final byte INS_UNBLOCK_PIN = (byte) 0x22;
@@ -111,6 +113,11 @@ public class KeycardApplet extends Applet {
   private byte[] uid;
   private SecureChannel secureChannel;
 
+  static final short CERT_LEN = 71;
+  static final short NUM_CERTS = 3;
+  private byte[] certs;
+  private byte certsLoaded;
+
   private byte[] masterSeed;
   private ECPublicKey masterPublic;
   private ECPrivateKey masterPrivate;
@@ -178,6 +185,10 @@ public class KeycardApplet extends Applet {
 
     uid = new byte[UID_LENGTH];
     crypto.random.generateData(uid, (short) 0, UID_LENGTH);
+
+    // Room for 3 certs
+    certs = new byte[CERT_LEN * NUM_CERTS];
+    certsLoaded = 0;
 
     masterSeed = new byte[BIP39_SEED_SIZE];
 
@@ -251,6 +262,12 @@ public class KeycardApplet extends Applet {
           break;
         case SecureChannel.INS_UNPAIR:
           unpair(apdu);
+          break;
+        case INS_LOAD_CERTS:
+          loadCerts(apdu);
+          break;
+        case INS_EXPORT_CERTS:
+          exportCerts(apdu);
           break;
         case INS_GET_STATUS:
           getStatus(apdu);
@@ -709,6 +726,43 @@ public class KeycardApplet extends Applet {
     parentPrivateKey.clearKey();
     secp256k1.setCurveParameters(parentPrivateKey);
     keyPathLen = 0;
+  }
+
+  /**
+   * Processes the LOAD_CERTS command. Copies the APDU buffer into `certs`.
+   * This function may only be called once.
+   * @param apdu the JCRE-owned APDU object.
+   */
+  private void loadCerts(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    if (certsLoaded > 0 || apduBuffer.length > CERT_LEN * NUM_CERTS) {
+      // Only allow this to happen once and make sure it's an appropriate size
+      ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+    }
+
+    JCSystem.beginTransaction();
+    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, certs, (short) 0, (short) apduBuffer.length);
+    certsLoaded = 1;
+    JCSystem.commitTransaction();
+  } 
+
+  /**
+   * Processes the EXPORT_CERTS command. Requires an open secure channel and verified PIN.
+   * Exports the certs stored in `certs`. This exports the entire byte array, even if some of it is empty.
+   * @param apdu the JCRE-owned APDU object.
+   */
+  private void exportCerts(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    secureChannel.preprocessAPDU(apduBuffer);
+
+    if (!pin.isValidated()) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    short off = SecureChannel.SC_OUT_OFFSET;
+    Util.arrayCopyNonAtomic(certs, (short) 0, apduBuffer, off, (short) certs.length);
+    
+    secureChannel.respond(apdu, (short) certs.length, ISO7816.SW_NO_ERROR);
   }
 
   /**
