@@ -685,7 +685,9 @@ public class KeycardApplet extends Applet {
         loadKeyPair(apduBuffer);
         break;
       case LOAD_KEY_P1_SEED:
+        // If you load a seed this way, it will NOT be exportable
         loadSeed(apduBuffer);
+        masterSeedFlag = SFLAG_NONE;
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
