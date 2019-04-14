@@ -90,6 +90,9 @@ public class KeycardApplet extends Applet {
   static final byte TLV_PRIV_KEY = (byte) 0x81;
   static final byte TLV_CHAIN_CODE = (byte) 0x82;
 
+  static final byte TLV_SEED = (byte) 0x90;
+  static final byte TLV_CERTS = (byte) 0x91;
+
   static final byte TLV_APPLICATION_STATUS_TEMPLATE = (byte) 0xA3;
   static final byte TLV_INT = (byte) 0x02;
   static final byte TLV_BOOL = (byte) 0x01;
@@ -790,8 +793,10 @@ public class KeycardApplet extends Applet {
    */
   private void exportCerts(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
-    Util.arrayCopyNonAtomic(certs, (short) 0, apduBuffer, (short) 0, CERTS_LEN);
-    apdu.setOutgoingAndSend((short) 0, CERTS_LEN);
+    apduBuffer[0] = TLV_CERTS;
+    apduBuffer[1] = (byte) (CERTS_LEN);
+    Util.arrayCopyNonAtomic(certs, (short) 0, apduBuffer, (short) 2, CERTS_LEN);
+    apdu.setOutgoingAndSend((short) 0, (short) (CERTS_LEN + 2));
   }
 
   /**
@@ -1447,15 +1452,16 @@ public class KeycardApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     secureChannel.preprocessAPDU(apduBuffer);
 
-    // TODO: Also ensure masterSeed isn't empty
     if (!pin.isValidated() || masterSeed.length < 1) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
     short off = SecureChannel.SC_OUT_OFFSET;
-    Util.arrayCopyNonAtomic(masterSeed, (short) 0, apduBuffer, off , BIP39_SEED_SIZE);
+    apduBuffer[off++] = TLV_SEED;
+    apduBuffer[off++] = (byte) BIP39_SEED_SIZE;
+    Util.arrayCopyNonAtomic(masterSeed, (short) 0, apduBuffer, off++, BIP39_SEED_SIZE);
     
-    secureChannel.respond(apdu, BIP39_SEED_SIZE, ISO7816.SW_NO_ERROR);
+    secureChannel.respond(apdu, (short) (2 + BIP39_SEED_SIZE), ISO7816.SW_NO_ERROR);
   }
 
   /**
