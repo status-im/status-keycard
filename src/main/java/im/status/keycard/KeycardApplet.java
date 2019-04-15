@@ -111,6 +111,10 @@ public class KeycardApplet extends Applet {
 
   static final byte[] EIP_1581_PREFIX = { (byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D};
 
+  static final byte SFLAG_NONE = 0;
+  static final byte SFLAG_EXPORTABLE = 1;
+  static final byte SFLAG_MAX = 1;
+
   private OwnerPIN pin;
   private OwnerPIN puk;
   private byte[] uid;
@@ -123,6 +127,7 @@ public class KeycardApplet extends Applet {
   private byte certsLoaded;
 
   private byte[] masterSeed;
+  private byte masterSeedFlag;
   private ECPublicKey masterPublic;
   private ECPrivateKey masterPrivate;
   private byte[] masterChainCode;
@@ -195,6 +200,7 @@ public class KeycardApplet extends Applet {
     certsLoaded = 0;
 
     masterSeed = new byte[BIP39_SEED_SIZE];
+    masterSeedFlag = SFLAG_NONE;
 
     masterPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
     masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
@@ -717,6 +723,7 @@ public class KeycardApplet extends Applet {
     if (!pin.isValidated()) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
+    byte flag = apduBuffer[ISO7816.OFFSET_P2];
 
     switch (apduBuffer[ISO7816.OFFSET_P1])  {
       case LOAD_KEY_P1_EC:
@@ -725,6 +732,8 @@ public class KeycardApplet extends Applet {
         break;
       case LOAD_KEY_P1_SEED:
         loadSeed(apduBuffer);
+        // Set the flag 
+        setSeedFlag(flag);
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -733,6 +742,16 @@ public class KeycardApplet extends Applet {
 
     pinlessPathLen = 0;
     generateKeyUIDAndRespond(apdu, apduBuffer);
+  }
+
+  private void setSeedFlag(byte flag) {
+    JCSystem.beginTransaction();
+    if (flag > SFLAG_MAX || flag < 0) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
+    masterSeedFlag = flag;
+    JCSystem.commitTransaction();
+    return;
   }
 
   /**
@@ -1165,6 +1184,7 @@ public class KeycardApplet extends Applet {
     pinlessPrivateKey.clearKey();
     pinlessPublicKey.clearKey();
     resetCurveParameters();
+    masterSeedFlag = SFLAG_NONE;
     Util.arrayFillNonAtomic(masterSeed, (short) 0, (short) masterSeed.length, (byte) 0);
     Util.arrayFillNonAtomic(chainCode, (short) 0, (short) chainCode.length, (byte) 0);
     Util.arrayFillNonAtomic(parentChainCode, (short) 0, (short) parentChainCode.length, (byte) 0);
@@ -1188,10 +1208,14 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
+    byte flag = apduBuffer[ISO7816.OFFSET_P1];
+
     apduBuffer[ISO7816.OFFSET_LC] = BIP39_SEED_SIZE;
     crypto.random.generateData(apduBuffer, ISO7816.OFFSET_CDATA, BIP39_SEED_SIZE);
 
     loadSeed(apduBuffer);
+    setSeedFlag(flag);
+    
     pinlessPathLen = 0;
     generateKeyUIDAndRespond(apdu, apduBuffer);
   }
@@ -1454,6 +1478,10 @@ public class KeycardApplet extends Applet {
 
     if (!pin.isValidated() || masterSeed.length < 1) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    if (masterSeedFlag == SFLAG_NONE) {
+      ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
     }
 
     short off = SecureChannel.SC_OUT_OFFSET;
