@@ -22,7 +22,6 @@ public class KeycardApplet extends Applet {
   static final byte INS_REMOVE_KEY = (byte) 0xD3;
   static final byte INS_GENERATE_KEY = (byte) 0xD4;
   static final byte INS_DUPLICATE_KEY = (byte) 0xD5;
-  static final byte INS_LOAD_SEED_WITH_FLAG = (byte) 0xDF;
   static final byte INS_SIGN = (byte) 0xC0;
   static final byte INS_SET_PINLESS_PATH = (byte) 0xC1;
   static final byte INS_EXPORT_KEY = (byte) 0xC2;
@@ -109,6 +108,7 @@ public class KeycardApplet extends Applet {
 
   static final byte SFLAG_NONE = 0;
   static final byte SFLAG_EXPORTABLE = 1;
+  static final byte SFLAG_MAX = 1;
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -276,8 +276,6 @@ public class KeycardApplet extends Applet {
         case INS_LOAD_KEY:
           loadKey(apdu);
           break;
-        case INS_LOAD_SEED_WITH_FLAG:
-          loadSeedWithFlag(apdu);
         case INS_DERIVE_KEY:
           deriveKey(apdu);
           break;
@@ -685,9 +683,9 @@ public class KeycardApplet extends Applet {
         loadKeyPair(apduBuffer);
         break;
       case LOAD_KEY_P1_SEED:
-        // If you load a seed this way, it will NOT be exportable
         loadSeed(apduBuffer);
-        masterSeedFlag = SFLAG_NONE;
+        // Set the flag 
+        setSeedFlag(apduBuffer);
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -696,6 +694,18 @@ public class KeycardApplet extends Applet {
 
     pinlessPathLen = 0;
     generateKeyUIDAndRespond(apdu, apduBuffer);
+  }
+
+  private void setSeedFlag(byte[] apduBuffer) {
+    JCSystem.beginTransaction();
+    byte flag = apduBuffer[ISO7816.OFFSET_P2];
+    if (flag > SFLAG_MAX || flag < 0) {
+      masterSeedFlag = SFLAG_NONE;
+    } else {
+      masterSeedFlag = flag;
+    }
+    JCSystem.commitTransaction();
+    return;
   }
 
   /**
@@ -777,22 +787,6 @@ public class KeycardApplet extends Applet {
 
     resetKeyStatus();
     JCSystem.commitTransaction();
-  }
-
-  private void loadSeedWithFlag(APDU apdu) {
-    byte[] apduBuffer = apdu.getBuffer();
-    secureChannel.preprocessAPDU(apduBuffer);
-
-    if (!pin.isValidated()) {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-    }
-
-    // Flag to store the seed with
-    byte flag = apduBuffer[ISO7816.OFFSET_P1];
-    masterSeedFlag = flag;
-
-    // Store the seed normally
-    loadSeed(apduBuffer);
   }
 
   /**
@@ -1130,6 +1124,8 @@ public class KeycardApplet extends Applet {
     crypto.random.generateData(apduBuffer, ISO7816.OFFSET_CDATA, BIP39_SEED_SIZE);
 
     loadSeed(apduBuffer);
+    setSeedFlag(apduBuffer);
+    
     pinlessPathLen = 0;
     generateKeyUIDAndRespond(apdu, apduBuffer);
   }
