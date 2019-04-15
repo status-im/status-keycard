@@ -700,10 +700,9 @@ public class KeycardApplet extends Applet {
   private void setSeedFlag(byte flag) {
     JCSystem.beginTransaction();
     if (flag > SFLAG_MAX || flag < 0) {
-      masterSeedFlag = SFLAG_NONE;
-    } else {
-      masterSeedFlag = flag;
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
     }
+    masterSeedFlag = flag;
     JCSystem.commitTransaction();
     return;
   }
