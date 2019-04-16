@@ -54,7 +54,7 @@ public class KeycardTest {
   // Psiring key is KeycardTest
   private static CardTerminal cardTerminal;
   private static CardChannel apduChannel;
-  private static im.status.keycard.io.CardChannel sdkChannel;
+  private static io.gridplus.safecard.io.CardChannel sdkChannel;
   private static CardSimulator simulator;
 
   private static LedgerUSBManager usbManager;
@@ -71,7 +71,7 @@ public class KeycardTest {
   private static final int TARGET;
 
   static {
-    switch(System.getProperty("im.status.keycard.test.target", "card")) {
+    switch(System.getProperty("io.gridplus.safecard.test.target", "card")) {
       case "simulator":
         TARGET = TARGET_SIMULATOR;
         break;
@@ -225,6 +225,18 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
     byte[] data = response.getData();
     assertTrue(new ApplicationInfo(data).isInitializedCard());
+  }
+
+  @Test
+  @DisplayName("LOAD_CERTS command")
+  void loadCertsTest() throws Exception {
+    // byte[] certs = new byte[KeycardApplet.CERTS_LEN];
+    // Random random = new Random();
+    // random.nextBytes(certs);
+    // APDUResponse response = cmdSet.loadCerts(certs);
+    // assertEquals(0x9000, response.getSw());
+    APDUResponse response = cmdSet.exportCerts();
+    assertEquals(0x9000, response.getSW());
   }
 
   @Test
