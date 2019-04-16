@@ -54,7 +54,7 @@ public class KeycardTest {
   // Psiring key is KeycardTest
   private static CardTerminal cardTerminal;
   private static CardChannel apduChannel;
-  private static io.gridplus.safecard.io.CardChannel sdkChannel;
+  private static im.status.keycard.io.CardChannel sdkChannel;
   private static CardSimulator simulator;
 
   private static LedgerUSBManager usbManager;
@@ -71,7 +71,7 @@ public class KeycardTest {
   private static final int TARGET;
 
   static {
-    switch(System.getProperty("io.gridplus.safecard.test.target", "card")) {
+    switch(System.getProperty("im.status.keycard.test.target", "card")) {
       case "simulator":
         TARGET = TARGET_SIMULATOR;
         break;
@@ -235,8 +235,12 @@ public class KeycardTest {
     // random.nextBytes(certs);
     // APDUResponse response = cmdSet.loadCerts(certs);
     // assertEquals(0x9000, response.getSw());
-    APDUResponse response = cmdSet.exportCerts();
-    assertEquals(0x9000, response.getSW());
+    // APDUResponse response = cmdSet.select();//.foo();
+    // assertEquals(0x9000, response.getSW());
+    APDUResponse response = cmdSet.foo();//cmdSet.select();
+    assertEquals(0x9000, response.getSw());
+    byte[] data = response.getData();
+    assertTrue(new ApplicationInfo(data).isInitializedCard());
   }
 
   @Test
@@ -1275,67 +1279,67 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
   }
 
-  @Test
-  @DisplayName("STORE/GET DATA")
-  void storeGetData() throws Exception {
-    APDUResponse response;
+  // @Test
+  // @DisplayName("STORE/GET DATA")
+  // void storeGetData() throws Exception {
+  //   APDUResponse response;
 
-    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
-      // Security condition violation: SecureChannel not open
-      response = cmdSet.storePublicData(new byte[20]);
-      assertEquals(0x6985, response.getSw());
+  //   if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+  //     // Security condition violation: SecureChannel not open
+  //     response = cmdSet.storePublicData(new byte[20]);
+  //     assertEquals(0x6985, response.getSw());
 
-      cmdSet.autoOpenSecureChannel();
-    }
+  //     cmdSet.autoOpenSecureChannel();
+  //   }
 
-    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
-      // Security condition violation: PIN not verified
-      response = cmdSet.storePublicData(new byte[20]);
-      assertEquals(0x6985, response.getSw());
+  //   if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+  //     // Security condition violation: PIN not verified
+  //     response = cmdSet.storePublicData(new byte[20]);
+  //     assertEquals(0x6985, response.getSw());
 
-      response = cmdSet.verifyPIN("000000");
-      assertEquals(0x9000, response.getSw());
-    }
+  //     response = cmdSet.verifyPIN("000000");
+  //     assertEquals(0x9000, response.getSw());
+  //   }
 
-    // Data too long
-    response = cmdSet.storePublicData(new byte[128]);
-    assertEquals(0x6A80, response.getSw());
+  //   // Data too long
+  //   response = cmdSet.storePublicData(new byte[128]);
+  //   assertEquals(0x6A80, response.getSw());
 
-    byte[] data = new byte[127];
+  //   byte[] data = new byte[127];
 
-    for (int i = 0; i < 127; i++) {
-      data[i] = (byte) i;
-    }
+  //   for (int i = 0; i < 127; i++) {
+  //     data[i] = (byte) i;
+  //   }
 
-    // Correct data
-    response = cmdSet.storePublicData(data);
-    assertEquals(0x9000, response.getSw());
+  //   // Correct data
+  //   response = cmdSet.storePublicData(data);
+  //   assertEquals(0x9000, response.getSw());
 
-    // Read data back with secure channel
-    response = cmdSet.getPublicData();
-    assertEquals(0x9000, response.getSw());
-    assertArrayEquals(data, response.getData());
+  //   // Read data back with secure channel
+  //   response = cmdSet.getPublicData();
+  //   assertEquals(0x9000, response.getSw());
+  //   assertArrayEquals(data, response.getData());
 
-    // Empty data
-    response = cmdSet.storePublicData(new byte[0]);
-    assertEquals(0x9000, response.getSw());
+  //   // Empty data
+  //   response = cmdSet.storePublicData(new byte[0]);
+  //   assertEquals(0x9000, response.getSw());
 
-    response = cmdSet.getPublicData();
-    assertEquals(0x9000, response.getSw());
-    assertEquals(0, response.getData().length);
+  //   response = cmdSet.getPublicData();
+  //   assertEquals(0x9000, response.getSw());
+  //   assertEquals(0, response.getData().length);
 
-    // Shorter data
-    data = Arrays.copyOf(data, 20);
-    response = cmdSet.storePublicData(data);
-    assertEquals(0x9000, response.getSw());
+  //   // Shorter data
+  //   data = Arrays.copyOf(data, 20);
+  //   response = cmdSet.storePublicData(data);
+  //   assertEquals(0x9000, response.getSw());
 
-    // GET DATA without Secure Channel
-    cmdSet.select().checkOK();
+  //   // GET DATA without Secure Channel
+  //   cmdSet.select().checkOK();
 
-    response = cmdSet.getPublicData();
-    assertEquals(0x9000, response.getSw());
-    assertArrayEquals(data, response.getData());
-  }
+  //   response = cmdSet.getPublicData();
+  //   assertEquals(0x9000, response.getSw());
+  //   assertArrayEquals(data, response.getData());
+  // }
 
   @Test
   @DisplayName("DUPLICATE KEY command")

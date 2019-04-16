@@ -1,9 +1,9 @@
-package io.gridplus.safecard;
+package im.status.keycard;
 
-import io.gridplus.safecard.applet.ApplicationStatus;
-import io.gridplus.safecard.applet.KeycardCommandSet;
-import io.gridplus.safecard.io.APDUResponse;
-import io.gridplus.safecard.io.CardChannel;
+import im.status.keycard.applet.ApplicationStatus;
+import im.status.keycard.applet.KeycardCommandSet;
+import im.status.keycard.io.APDUResponse;
+import im.status.keycard.io.CardChannel;
 import org.web3j.crypto.ECKeyPair;
 
 import java.io.IOException;
@@ -90,7 +90,7 @@ public class TestKeycardCommandSet extends KeycardCommandSet {
   }
 
   public APDUResponse foo() throws IOException {
-    return exportCerts();
+    return this.exportCerts();
   }
 }
 

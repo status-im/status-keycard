@@ -1,6 +1,6 @@
-package io.gridplus.safecard;
+package im.status.keycard;
 
-import io.gridplus.safecard.applet.SecureChannelSession;
+import im.status.keycard.applet.SecureChannelSession;
 
 public class TestSecureChannelSession extends SecureChannelSession {
   public void setOpen() {
