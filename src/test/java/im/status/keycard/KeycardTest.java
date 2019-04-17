@@ -864,10 +864,18 @@ public class KeycardTest {
     assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeedSlice.length);
     assertArrayEquals(exportedSeedSlice, inSeed);
 
-    // Reset all keys
-    response = cmdSet.removeKey();
+    // Load a keypair and make sure the seed is no longer there
+    KeyPairGenerator g = keypairGenerator();
+    KeyPair keyPair = g.generateKeyPair();
+    response = cmdSet.loadKey(keyPair);
     assertEquals(0x9000, response.getSw());
+    // You should not be able to export a seed when the flag is set to non-exportable.
+    // Whenever you import a keypair, the flag gets set to non-exportable
+    response = cmdSet.exportSeed();
+    assertEquals(0x27014, response.getSw());
   }
+
+  
   /*
   @Test
   @DisplayName("GENERATE MNEMONIC command")
@@ -1631,7 +1639,11 @@ public class KeycardTest {
     System.out.println("Time to switch m/44'/60'/0'/0/0': " + deriveParentHardened);
     System.out.println("Time to switch back to m/44'/60'/0'/0/0: " + deriveParent);
   }
-*/
+
+
+
+  */
+
   private KeyPairGenerator keypairGenerator() throws Exception {
     ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
     KeyPairGenerator g = KeyPairGenerator.getInstance("ECDH", "BC");

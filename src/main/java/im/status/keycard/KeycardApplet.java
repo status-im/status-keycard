@@ -729,6 +729,14 @@ public class KeycardApplet extends Applet {
       case LOAD_KEY_P1_EC:
       case LOAD_KEY_P1_EXT_EC:
         loadKeyPair(apduBuffer);
+        // Remove the seed to avoid a disconnect between it and the new
+        // master key
+        // We really shouldn't be using loadKeyPair at all, but we will
+        // keep it for compatibility with Status.
+        JCSystem.beginTransaction();
+        masterSeedFlag = SFLAG_NONE;
+        Util.arrayFillNonAtomic(masterSeed, (short) 0, (short) masterSeed.length, (byte) 0);
+        JCSystem.commitTransaction();
         break;
       case LOAD_KEY_P1_SEED:
         loadSeed(apduBuffer);
