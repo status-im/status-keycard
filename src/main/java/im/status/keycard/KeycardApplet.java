@@ -82,6 +82,7 @@ public class KeycardApplet extends Applet {
 
   static final byte EXPORT_KEY_P2_PRIVATE_AND_PUBLIC = 0x00;
   static final byte EXPORT_KEY_P2_PUBLIC_ONLY = 0x01;
+  static final byte EXPORT_KEY_P2_PUBLIC_AND_CHAINCODE = 0x02;
 
   static final byte TLV_SIGNATURE_TEMPLATE = (byte) 0xA0;
 
@@ -1514,13 +1515,18 @@ public class KeycardApplet extends Applet {
     }
 
     boolean publicOnly;
-
+    boolean withChaincode;
     switch (apduBuffer[ISO7816.OFFSET_P2]) {
-      case EXPORT_KEY_P2_PRIVATE_AND_PUBLIC:
-        publicOnly = false;
-        break;
+      // case EXPORT_KEY_P2_PRIVATE_AND_PUBLIC:
+        // publicOnly = false;
+        // break;
       case EXPORT_KEY_P2_PUBLIC_ONLY:
         publicOnly = true;
+        withChaincode = false;
+        break;
+      case EXPORT_KEY_P2_PUBLIC_AND_CHAINCODE:
+        publicOnly = true;
+        withChaincode = true;
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -1593,6 +1599,15 @@ public class KeycardApplet extends Applet {
         len = Crypto.KEY_SECRET_SIZE;
       }
 
+      apduBuffer[(short) (off - 1)] = (byte) len;
+      off += len;
+    }
+
+    if (withChaincode) {
+      apduBuffer[off++] = TLV_CHAIN_CODE;
+      off++;
+      Util.arrayCopyNonAtomic(chainCode, (short) 0, apduBuffer, off, CHAIN_CODE_SIZE);
+      len = CHAIN_CODE_SIZE;
       apduBuffer[(short) (off - 1)] = (byte) len;
       off += len;
     }
