@@ -88,9 +88,5 @@ public class TestKeycardCommandSet extends KeycardCommandSet {
     APDUResponse resp = getStatus(GET_STATUS_P1_APPLICATION);
     return new ApplicationStatus(resp.getData()).hasMasterKey();
   }
-
-  public APDUResponse foo() throws IOException {
-    return this.exportCerts();
-  }
 }
 

@@ -3,6 +3,8 @@ package im.status.keycard;
 import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.smartcardio.CardTerminalSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
+
+import im.status.keycard.KeycardApplet;
 import im.status.keycard.applet.*;
 import im.status.keycard.desktop.LedgerUSBManager;
 import im.status.keycard.desktop.PCSCCardChannel;
@@ -234,7 +236,8 @@ public class KeycardTest {
     byte[] certs = new byte[KeycardApplet.CERTS_LEN];
     Random random = new Random();
     random.nextBytes(certs);
-    APDUResponse response = cmdSet.loadCerts(certs);
+    APDUResponse response;
+    response = cmdSet.loadCerts(certs);
     assertEquals(0x9000, response.getSw());
 
     // Export the certs
@@ -250,11 +253,11 @@ public class KeycardTest {
 
     // Should fail to re-load certs
     random.nextBytes(certs);
-    APDUResponse response2 = cmdSet.loadCerts(certs);
-    assertEquals(0x6986, response2.getSw());
+    response = cmdSet.loadCerts(certs);
+    assertEquals(0x6986, response.getSw());
 
   }
-/*
+
   @Test
   @DisplayName("OPEN SECURE CHANNEL command")
   @Capabilities("secureChannel")
@@ -790,6 +793,82 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
   }
 
+  @Test
+  @DisplayName("Master Seeds")
+  void masterSeedsTest() throws Exception {
+    APDUResponse response;
+    Random random = new Random();
+
+    // Verify pin
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSw());
+
+    // Reset all keys
+    response = cmdSet.removeKey();
+    assertEquals(0x9000, response.getSw());
+
+    // Generate a non-exportable seed
+    byte empty = (byte) 0;
+    byte flag = (byte) 0;
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
+    assertEquals(0x9000, response.getSw());
+
+    // Fail to export the seed
+    response = cmdSet.exportSeed();
+    assertEquals(0x6986, response.getSw());
+
+    // Generate an exportable seed
+    flag = (byte) 1;
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
+    assertEquals(0x9000, response.getSw());
+
+    // Export the seed
+    response = cmdSet.exportSeed();
+    assertEquals(0x9000, response.getSw());
+    byte[] exportedSeed = response.getData();
+    assertEquals(KeycardApplet.TLV_SEED, exportedSeed[0]);
+    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeed[1]);
+    byte[] exportedSeedSlice = Arrays.copyOfRange(exportedSeed, 2, exportedSeed.length);
+    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeedSlice.length);
+
+    // Fail to load a seed of the wrong size
+    byte[] inSeed = new byte[KeycardApplet.BIP39_SEED_SIZE - 1];
+    random.nextBytes(inSeed);
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
+    assertEquals(0x6A80, response.getSw());
+
+    // Load a non-exportable seed
+    inSeed = new byte[KeycardApplet.BIP39_SEED_SIZE];
+    random.nextBytes(inSeed);
+    flag = (byte) 0;
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
+    assertEquals(0x9000, response.getSw());
+
+    // Fail to export the non-exportable seed
+    response = cmdSet.exportSeed();
+    assertEquals(0x6986, response.getSw());
+
+    // Load an exportable seed
+    flag = (byte) 1;
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
+    assertEquals(0x9000, response.getSw());
+
+    // Export the seed and verify it is the same that got loaded
+    response = cmdSet.exportSeed();
+    assertEquals(0x9000, response.getSw());
+    exportedSeed = response.getData();
+    assertEquals(KeycardApplet.TLV_SEED, exportedSeed[0]);
+    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeed[1]);
+    exportedSeedSlice = Arrays.copyOfRange(exportedSeed, 2, exportedSeed.length);
+    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeedSlice.length);
+    assertArrayEquals(exportedSeedSlice, inSeed);
+
+    // Reset all keys
+    response = cmdSet.removeKey();
+    assertEquals(0x9000, response.getSw());
+  }
+  /*
   @Test
   @DisplayName("GENERATE MNEMONIC command")
   @Capabilities("keyManagement")
