@@ -228,21 +228,33 @@ public class KeycardTest {
   }
 
   @Test
-  @DisplayName("LOAD_CERTS command")
+  @DisplayName("Certs")
   void loadCertsTest() throws Exception {
-    // byte[] certs = new byte[KeycardApplet.CERTS_LEN];
-    // Random random = new Random();
-    // random.nextBytes(certs);
-    // APDUResponse response = cmdSet.loadCerts(certs);
-    // assertEquals(0x9000, response.getSw());
-    // APDUResponse response = cmdSet.select();//.foo();
-    // assertEquals(0x9000, response.getSW());
-    APDUResponse response = cmdSet.foo();//cmdSet.select();
+    // Load certs into the card
+    byte[] certs = new byte[KeycardApplet.CERTS_LEN];
+    Random random = new Random();
+    random.nextBytes(certs);
+    APDUResponse response = cmdSet.loadCerts(certs);
     assertEquals(0x9000, response.getSw());
-    byte[] data = response.getData();
-    assertTrue(new ApplicationInfo(data).isInitializedCard());
-  }
 
+    // Export the certs
+    APDUResponse exportResponse = cmdSet.exportCerts();
+    assertEquals(0x9000, response.getSw());
+    byte[] exportedCerts = exportResponse.getData();
+    // System.out.println(Arrays.toString(exportedCerts));
+    assertEquals(exportedCerts[0] & 0xff, KeycardApplet.TLV_CERTS & 0xff);
+    assertEquals(exportedCerts[1] & 0xff, certs.length & 0xff);
+
+    byte[] exportedCertsSlice = Arrays.copyOfRange(exportedCerts, 2, exportedCerts.length);
+    assertArrayEquals(exportedCertsSlice, certs);
+
+    // Should fail to re-load certs
+    random.nextBytes(certs);
+    APDUResponse response2 = cmdSet.loadCerts(certs);
+    assertEquals(0x6986, response2.getSw());
+
+  }
+/*
   @Test
   @DisplayName("OPEN SECURE CHANNEL command")
   @Capabilities("secureChannel")
@@ -1540,7 +1552,7 @@ public class KeycardTest {
     System.out.println("Time to switch m/44'/60'/0'/0/0': " + deriveParentHardened);
     System.out.println("Time to switch back to m/44'/60'/0'/0/0: " + deriveParent);
   }
-
+*/
   private KeyPairGenerator keypairGenerator() throws Exception {
     ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
     KeyPairGenerator g = KeyPairGenerator.getInstance("ECDH", "BC");
