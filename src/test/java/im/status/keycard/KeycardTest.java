@@ -11,7 +11,10 @@ import im.status.keycard.desktop.PCSCCardChannel;
 import im.status.keycard.io.APDUCommand;
 import im.status.keycard.io.APDUResponse;
 import im.status.keycard.io.CardListener;
+import im.status.keycard.Crypto;
 import javacard.framework.AID;
+import javacard.framework.ISO7816;
+// import javacard.security.*;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.crypto.ChildNumber;
 import org.bitcoinj.crypto.DeterministicKey;
@@ -872,10 +875,122 @@ public class KeycardTest {
     // You should not be able to export a seed when the flag is set to non-exportable.
     // Whenever you import a keypair, the flag gets set to non-exportable
     response = cmdSet.exportSeed();
-    assertEquals(0x27014, response.getSw());
+    assertEquals(0x6986, response.getSw());
   }
 
-  
+  @Test
+  @DisplayName("Public Key Derivation")
+  void pubKeyDerivationTest() throws Exception {
+    APDUResponse response;
+    Random random = new Random();
+    byte[] seed = new byte[KeycardApplet.BIP39_SEED_SIZE];
+    byte[] data;
+    byte[] chainCode;
+    random.nextBytes(seed);
+    DeterministicKey masterPriv = HDKeyDerivation.createMasterPrivateKey(seed);
+    DeterministicKey intPub;
+    DeterministicKey fullPub;
+    byte[] fullPubFromCard;
+    byte[] intPubFromCard;
+
+    // Do 5 random derivations
+    for (int j = 0; j < 5; j++) {
+      int i = random.nextInt(100000);
+
+      // m/44'
+      ChildNumber cnD1 = new ChildNumber(44, true);
+      DeterministicKey privD1 = HDKeyDerivation.deriveChildKey(masterPriv, cnD1);
+      byte[] pub = privD1.getPubKey();
+      // m/44'/0'
+      ChildNumber cnD2 = new ChildNumber(0, true);
+      DeterministicKey privD2 = HDKeyDerivation.deriveChildKey(privD1, cnD2);
+      // m/44'/0'/0'
+      ChildNumber cnD3 = new ChildNumber(0, true);
+      DeterministicKey privD3 = HDKeyDerivation.deriveChildKey(privD2, cnD3);
+      // m/44'/0'/0'/0
+      ChildNumber cnD4 = new ChildNumber(0, false);
+      DeterministicKey privD4 = HDKeyDerivation.deriveChildKey(privD3, cnD4);
+      // m/44'/0'/0'/0/i
+      ChildNumber cnD5 = new ChildNumber(i, false);
+      DeterministicKey privD5 = HDKeyDerivation.deriveChildKey(privD4, cnD5);
+
+      // Verify pin
+      cmdSet.autoOpenSecureChannel();
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+
+      // Reset all keys
+      response = cmdSet.removeKey();
+      assertEquals(0x9000, response.getSw());
+
+      byte flag = (byte) 1;
+      response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, seed);
+      assertEquals(0x9000, response.getSw());
+
+      // Define paths
+      String intPathStr = "m/44'/0'/0'/0";
+      String fullPathStr = String.format("%s/%d", intPathStr, i);
+      KeyPath intPath = new KeyPath(intPathStr);
+      KeyPath fullPath = new KeyPath(fullPathStr);
+
+      // Derive intermediate key + chaincode
+      response = cmdSet.deriveKey(intPath.getData());
+      assertEquals(0x9000, response.getSw());
+      response = cmdSet.sendSecureCommand(
+        KeycardApplet.INS_EXPORT_KEY,
+        KeycardApplet.EXPORT_KEY_P1_DERIVE,
+        KeycardApplet.EXPORT_KEY_P2_PUBLIC_AND_CHAINCODE,
+        intPath.getData()
+      );
+      assertEquals(0x9000, response.getSw());
+      data = response.getData();
+      // First byte indicates it's a key return
+      assertEquals(data[0], KeycardApplet.TLV_KEY_TEMPLATE);
+      // Second byte denotes the length of the remaining payload
+      assertEquals(data[1], 4 + Crypto.KEY_PUB_SIZE + KeycardApplet.CHAIN_CODE_SIZE);
+      // Third byte indicates the pubkey is the next item
+      assertEquals(data[2], KeycardApplet.TLV_PUB_KEY);
+      // Fourth byte is the length of the pubkey
+      assertEquals(data[3], Crypto.KEY_PUB_SIZE);
+
+      int off = 4;
+      
+      intPubFromCard =  Arrays.copyOfRange(data, off, off + Crypto.KEY_PUB_SIZE);
+      assertArrayEquals(privD4.decompress().getPubKey(), intPubFromCard);
+      off += Crypto.KEY_PUB_SIZE;
+
+      // Next byte indicates the chain code is next
+      assertEquals(data[off++], KeycardApplet.TLV_CHAIN_CODE);
+      // Next byte is the length of the chain code
+      assertEquals(data[off++], KeycardApplet.CHAIN_CODE_SIZE);
+      chainCode = Arrays.copyOfRange(data, off, off + KeycardApplet.CHAIN_CODE_SIZE);
+
+      // Derive full key
+      response = cmdSet.deriveKey(fullPath.getData());
+      assertEquals(0x9000, response.getSw());
+      response = cmdSet.sendSecureCommand(
+        KeycardApplet.INS_EXPORT_KEY,
+        KeycardApplet.EXPORT_KEY_P1_CURRENT,
+        KeycardApplet.EXPORT_KEY_P2_PUBLIC_ONLY,
+        fullPath.getData()
+      );
+      assertEquals(0x9000, response.getSw());
+      data = response.getData();
+      assertEquals(data[0], KeycardApplet.TLV_KEY_TEMPLATE);
+      assertEquals(data[1], 2 + Crypto.KEY_PUB_SIZE);
+      assertEquals(data[2], KeycardApplet.TLV_PUB_KEY);
+      assertEquals(data[3], Crypto.KEY_PUB_SIZE);
+      fullPubFromCard = Arrays.copyOfRange(data, 4, data.length);
+
+      // Create a bitcoinj deterministic key from the intermediate pubkey bytes + chaincode
+      // Derive a child and check it against the full child derived from the card
+      intPub = HDKeyDerivation.createMasterPubKeyFromBytes(intPubFromCard, chainCode);
+      fullPub = HDKeyDerivation.deriveChildKey(intPub, cnD5);
+
+
+      assertArrayEquals(fullPub.decompress().getPubKey(), fullPubFromCard);
+    }
+  }
   /*
   @Test
   @DisplayName("GENERATE MNEMONIC command")
