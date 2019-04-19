@@ -795,206 +795,6 @@ public class KeycardTest {
     response = cmdSet.loadKey(keyPair.getPrivate(), chainCode);
     assertEquals(0x9000, response.getSw());
   }
-
-  @Test
-  @DisplayName("Master Seeds")
-  void masterSeedsTest() throws Exception {
-    APDUResponse response;
-    Random random = new Random();
-
-    // Verify pin
-    cmdSet.autoOpenSecureChannel();
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
-
-    // Reset all keys
-    response = cmdSet.removeKey();
-    assertEquals(0x9000, response.getSw());
-
-    // Generate a non-exportable seed
-    byte empty = (byte) 0;
-    byte flag = (byte) 0;
-    response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
-    assertEquals(0x9000, response.getSw());
-
-    // Fail to export the seed
-    response = cmdSet.exportSeed();
-    assertEquals(0x6986, response.getSw());
-
-    // Generate an exportable seed
-    flag = (byte) 1;
-    response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
-    assertEquals(0x9000, response.getSw());
-
-    // Export the seed
-    response = cmdSet.exportSeed();
-    assertEquals(0x9000, response.getSw());
-    byte[] exportedSeed = response.getData();
-    assertEquals(KeycardApplet.TLV_SEED, exportedSeed[0]);
-    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeed[1]);
-    byte[] exportedSeedSlice = Arrays.copyOfRange(exportedSeed, 2, exportedSeed.length);
-    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeedSlice.length);
-
-    // Fail to load a seed of the wrong size
-    byte[] inSeed = new byte[KeycardApplet.BIP39_SEED_SIZE - 1];
-    random.nextBytes(inSeed);
-    response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
-    assertEquals(0x6A80, response.getSw());
-
-    // Load a non-exportable seed
-    inSeed = new byte[KeycardApplet.BIP39_SEED_SIZE];
-    random.nextBytes(inSeed);
-    flag = (byte) 0;
-    response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
-    assertEquals(0x9000, response.getSw());
-
-    // Fail to export the non-exportable seed
-    response = cmdSet.exportSeed();
-    assertEquals(0x6986, response.getSw());
-
-    // Load an exportable seed
-    flag = (byte) 1;
-    response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
-    assertEquals(0x9000, response.getSw());
-
-    // Export the seed and verify it is the same that got loaded
-    response = cmdSet.exportSeed();
-    assertEquals(0x9000, response.getSw());
-    exportedSeed = response.getData();
-    assertEquals(KeycardApplet.TLV_SEED, exportedSeed[0]);
-    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeed[1]);
-    exportedSeedSlice = Arrays.copyOfRange(exportedSeed, 2, exportedSeed.length);
-    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeedSlice.length);
-    assertArrayEquals(exportedSeedSlice, inSeed);
-/*
-THIS IS BREAKING SIGNING TESTS
-NEED TO FIGURE OUT WHY
-
-    // Load a keypair and make sure the seed is no longer there
-    KeyPairGenerator g = keypairGenerator();
-    KeyPair keyPair = g.generateKeyPair();
-    response = cmdSet.loadKey(keyPair);
-    assertEquals(0x9000, response.getSw());
-    // You should not be able to export a seed when the flag is set to non-exportable.
-    // Whenever you import a keypair, the flag gets set to non-exportable
-    response = cmdSet.exportSeed();
-    assertEquals(0x6986, response.getSw());
- */
-  }
-
-  @Test
-  @DisplayName("Public Key Derivation")
-  void pubKeyDerivationTest() throws Exception {
-    APDUResponse response;
-    Random random = new Random();
-    byte[] seed = new byte[KeycardApplet.BIP39_SEED_SIZE];
-    byte[] data;
-    byte[] chainCode;
-    random.nextBytes(seed);
-    DeterministicKey masterPriv = HDKeyDerivation.createMasterPrivateKey(seed);
-    DeterministicKey intPub;
-    DeterministicKey fullPub;
-    byte[] fullPubFromCard;
-    byte[] intPubFromCard;
-
-    // Do 5 random derivations
-    for (int j = 0; j < 5; j++) {
-      int i = random.nextInt(100000);
-
-      // m/44'
-      ChildNumber cnD1 = new ChildNumber(44, true);
-      DeterministicKey privD1 = HDKeyDerivation.deriveChildKey(masterPriv, cnD1);
-      byte[] pub = privD1.getPubKey();
-      // m/44'/0'
-      ChildNumber cnD2 = new ChildNumber(0, true);
-      DeterministicKey privD2 = HDKeyDerivation.deriveChildKey(privD1, cnD2);
-      // m/44'/0'/0'
-      ChildNumber cnD3 = new ChildNumber(0, true);
-      DeterministicKey privD3 = HDKeyDerivation.deriveChildKey(privD2, cnD3);
-      // m/44'/0'/0'/0
-      ChildNumber cnD4 = new ChildNumber(0, false);
-      DeterministicKey privD4 = HDKeyDerivation.deriveChildKey(privD3, cnD4);
-      // m/44'/0'/0'/0/i
-      ChildNumber cnD5 = new ChildNumber(i, false);
-      DeterministicKey privD5 = HDKeyDerivation.deriveChildKey(privD4, cnD5);
-
-      // Verify pin
-      cmdSet.autoOpenSecureChannel();
-      response = cmdSet.verifyPIN("000000");
-      assertEquals(0x9000, response.getSw());
-
-      // Reset all keys
-      response = cmdSet.removeKey();
-      assertEquals(0x9000, response.getSw());
-
-      byte flag = (byte) 1;
-      response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, seed);
-      assertEquals(0x9000, response.getSw());
-
-      // Define paths
-      String intPathStr = "m/44'/0'/0'/0";
-      String fullPathStr = String.format("%s/%d", intPathStr, i);
-      KeyPath intPath = new KeyPath(intPathStr);
-      KeyPath fullPath = new KeyPath(fullPathStr);
-
-      // Derive intermediate key + chaincode
-      response = cmdSet.deriveKey(intPath.getData());
-      assertEquals(0x9000, response.getSw());
-      response = cmdSet.sendSecureCommand(
-        KeycardApplet.INS_EXPORT_KEY,
-        KeycardApplet.EXPORT_KEY_P1_DERIVE,
-        KeycardApplet.EXPORT_KEY_P2_PUBLIC_AND_CHAINCODE,
-        intPath.getData()
-      );
-      assertEquals(0x9000, response.getSw());
-      data = response.getData();
-      // First byte indicates it's a key return
-      assertEquals(data[0], KeycardApplet.TLV_KEY_TEMPLATE);
-      // Second byte denotes the length of the remaining payload
-      assertEquals(data[1], 4 + Crypto.KEY_PUB_SIZE + KeycardApplet.CHAIN_CODE_SIZE);
-      // Third byte indicates the pubkey is the next item
-      assertEquals(data[2], KeycardApplet.TLV_PUB_KEY);
-      // Fourth byte is the length of the pubkey
-      assertEquals(data[3], Crypto.KEY_PUB_SIZE);
-
-      int off = 4;
-      
-      intPubFromCard =  Arrays.copyOfRange(data, off, off + Crypto.KEY_PUB_SIZE);
-      assertArrayEquals(privD4.decompress().getPubKey(), intPubFromCard);
-      off += Crypto.KEY_PUB_SIZE;
-
-      // Next byte indicates the chain code is next
-      assertEquals(data[off++], KeycardApplet.TLV_CHAIN_CODE);
-      // Next byte is the length of the chain code
-      assertEquals(data[off++], KeycardApplet.CHAIN_CODE_SIZE);
-      chainCode = Arrays.copyOfRange(data, off, off + KeycardApplet.CHAIN_CODE_SIZE);
-
-      // Derive full key
-      response = cmdSet.deriveKey(fullPath.getData());
-      assertEquals(0x9000, response.getSw());
-      response = cmdSet.sendSecureCommand(
-        KeycardApplet.INS_EXPORT_KEY,
-        KeycardApplet.EXPORT_KEY_P1_CURRENT,
-        KeycardApplet.EXPORT_KEY_P2_PUBLIC_ONLY,
-        fullPath.getData()
-      );
-      assertEquals(0x9000, response.getSw());
-      data = response.getData();
-      assertEquals(data[0], KeycardApplet.TLV_KEY_TEMPLATE);
-      assertEquals(data[1], 2 + Crypto.KEY_PUB_SIZE);
-      assertEquals(data[2], KeycardApplet.TLV_PUB_KEY);
-      assertEquals(data[3], Crypto.KEY_PUB_SIZE);
-      fullPubFromCard = Arrays.copyOfRange(data, 4, data.length);
-
-      // Create a bitcoinj deterministic key from the intermediate pubkey bytes + chaincode
-      // Derive a child and check it against the full child derived from the card
-      intPub = HDKeyDerivation.createMasterPubKeyFromBytes(intPubFromCard, chainCode);
-      fullPub = HDKeyDerivation.deriveChildKey(intPub, cnD5);
-
-
-      assertArrayEquals(fullPub.decompress().getPubKey(), fullPubFromCard);
-    }
-  }
   
   @Test
   @DisplayName("GENERATE MNEMONIC command")
@@ -1735,6 +1535,223 @@ NEED TO FIGURE OUT WHY
     assertFalse(ethSendTransaction.hasError());
   }
 
+  //====================================
+  // GRIDPLUS SAFECARD TESTS
+  //====================================
+  
+  @Test
+  @DisplayName("Master Seeds")
+  void masterSeedsTest() throws Exception {
+    APDUResponse response;
+    Random random = new Random();
+
+    // Verify pin
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSw());
+
+    // Reset all keys
+    response = cmdSet.removeKey();
+    assertEquals(0x9000, response.getSw());
+
+    // Generate a non-exportable seed
+    byte empty = (byte) 0;
+    byte flag = (byte) 0;
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
+    assertEquals(0x9000, response.getSw());
+
+    // Fail to export the seed
+    response = cmdSet.exportSeed();
+    assertEquals(0x6986, response.getSw());
+
+    // Generate an exportable seed
+    flag = (byte) 1;
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
+    assertEquals(0x9000, response.getSw());
+
+    // Export the seed
+    response = cmdSet.exportSeed();
+    assertEquals(0x9000, response.getSw());
+    byte[] exportedSeed = response.getData();
+    assertEquals(KeycardApplet.TLV_SEED, exportedSeed[0]);
+    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeed[1]);
+    byte[] exportedSeedSlice = Arrays.copyOfRange(exportedSeed, 2, exportedSeed.length);
+    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeedSlice.length);
+
+    // Fail to load a seed of the wrong size
+    byte[] inSeed = new byte[KeycardApplet.BIP39_SEED_SIZE - 1];
+    random.nextBytes(inSeed);
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
+    assertEquals(0x6A80, response.getSw());
+
+    // Load a non-exportable seed
+    inSeed = new byte[KeycardApplet.BIP39_SEED_SIZE];
+    random.nextBytes(inSeed);
+    flag = (byte) 0;
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
+    assertEquals(0x9000, response.getSw());
+
+    // Fail to export the non-exportable seed
+    response = cmdSet.exportSeed();
+    assertEquals(0x6986, response.getSw());
+
+    // Load an exportable seed
+    flag = (byte) 1;
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
+    assertEquals(0x9000, response.getSw());
+
+    // Export the seed and verify it is the same that got loaded
+    response = cmdSet.exportSeed();
+    assertEquals(0x9000, response.getSw());
+    exportedSeed = response.getData();
+    assertEquals(KeycardApplet.TLV_SEED, exportedSeed[0]);
+    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeed[1]);
+    exportedSeedSlice = Arrays.copyOfRange(exportedSeed, 2, exportedSeed.length);
+    assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeedSlice.length);
+    assertArrayEquals(exportedSeedSlice, inSeed);
+
+    // Load a keypair and make sure the seed is no longer there
+    KeyPairGenerator g = keypairGenerator();
+    KeyPair keyPair = g.generateKeyPair();
+    response = cmdSet.loadKey(keyPair);
+
+    assertEquals(0x9000, response.getSw());
+    // You should not be able to export a seed when the flag is set to non-exportable.
+    // Whenever you import a keypair, the flag gets set to non-exportable
+    response = cmdSet.exportSeed();
+    assertEquals(0x6986, response.getSw());
+
+    // Remove all keys
+    response = cmdSet.removeKey();
+    assertEquals(0x9000, response.getSw());
+  }
+
+  @Test
+  @DisplayName("Public Key Derivation")
+  void pubKeyDerivationTest() throws Exception {
+    APDUResponse response;
+    Random random = new Random();
+    byte[] seed = new byte[KeycardApplet.BIP39_SEED_SIZE];
+    byte[] data;
+    byte[] chainCode;
+    random.nextBytes(seed);
+    DeterministicKey masterPriv = HDKeyDerivation.createMasterPrivateKey(seed);
+    DeterministicKey intPub;
+    DeterministicKey fullPub;
+    byte[] fullPubFromCard;
+    byte[] intPubFromCard;
+    byte[] hashData = "some data to be hashed".getBytes();
+    byte[] hash = sha256(hashData);
+
+    // Do 5 random derivations
+    for (int j = 0; j < 5; j++) {
+      int i = random.nextInt(100000);
+
+      // m/44'
+      ChildNumber cnD1 = new ChildNumber(44, true);
+      DeterministicKey privD1 = HDKeyDerivation.deriveChildKey(masterPriv, cnD1);
+      byte[] pub = privD1.getPubKey();
+      // m/44'/0'
+      ChildNumber cnD2 = new ChildNumber(0, true);
+      DeterministicKey privD2 = HDKeyDerivation.deriveChildKey(privD1, cnD2);
+      // m/44'/0'/0'
+      ChildNumber cnD3 = new ChildNumber(0, true);
+      DeterministicKey privD3 = HDKeyDerivation.deriveChildKey(privD2, cnD3);
+      // m/44'/0'/0'/0
+      ChildNumber cnD4 = new ChildNumber(0, false);
+      DeterministicKey privD4 = HDKeyDerivation.deriveChildKey(privD3, cnD4);
+      // m/44'/0'/0'/0/i
+      ChildNumber cnD5 = new ChildNumber(i, false);
+      DeterministicKey privD5 = HDKeyDerivation.deriveChildKey(privD4, cnD5);
+
+      // Verify pin
+      cmdSet.autoOpenSecureChannel();
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+
+      // Reset all keys
+      response = cmdSet.removeKey();
+      assertEquals(0x9000, response.getSw());
+
+      byte flag = (byte) 1;
+      response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, seed);
+      assertEquals(0x9000, response.getSw());
+
+      // Define paths
+      String intPathStr = "m/44'/0'/0'/0";
+      String fullPathStr = String.format("%s/%d", intPathStr, i);
+      KeyPath intPath = new KeyPath(intPathStr);
+      KeyPath fullPath = new KeyPath(fullPathStr);
+
+      // Derive intermediate key + chaincode
+      response = cmdSet.deriveKey(intPath.getData());
+      assertEquals(0x9000, response.getSw());
+      response = cmdSet.sendSecureCommand(
+        KeycardApplet.INS_EXPORT_KEY,
+        KeycardApplet.EXPORT_KEY_P1_DERIVE,
+        KeycardApplet.EXPORT_KEY_P2_PUBLIC_AND_CHAINCODE,
+        intPath.getData()
+      );
+      assertEquals(0x9000, response.getSw());
+      data = response.getData();
+      // First byte indicates it's a key return
+      assertEquals(data[0], KeycardApplet.TLV_KEY_TEMPLATE);
+      // Second byte denotes the length of the remaining payload
+      assertEquals(data[1], 4 + Crypto.KEY_PUB_SIZE + KeycardApplet.CHAIN_CODE_SIZE);
+      // Third byte indicates the pubkey is the next item
+      assertEquals(data[2], KeycardApplet.TLV_PUB_KEY);
+      // Fourth byte is the length of the pubkey
+      assertEquals(data[3], Crypto.KEY_PUB_SIZE);
+
+      int off = 4;
+      
+      intPubFromCard =  Arrays.copyOfRange(data, off, off + Crypto.KEY_PUB_SIZE);
+      assertArrayEquals(privD4.decompress().getPubKey(), intPubFromCard);
+      off += Crypto.KEY_PUB_SIZE;
+
+      // Next byte indicates the chain code is next
+      assertEquals(data[off++], KeycardApplet.TLV_CHAIN_CODE);
+      // Next byte is the length of the chain code
+      assertEquals(data[off++], KeycardApplet.CHAIN_CODE_SIZE);
+      chainCode = Arrays.copyOfRange(data, off, off + KeycardApplet.CHAIN_CODE_SIZE);
+
+      // Derive full key
+      response = cmdSet.deriveKey(fullPath.getData());
+      assertEquals(0x9000, response.getSw());
+      response = cmdSet.sendSecureCommand(
+        KeycardApplet.INS_EXPORT_KEY,
+        KeycardApplet.EXPORT_KEY_P1_CURRENT,
+        KeycardApplet.EXPORT_KEY_P2_PUBLIC_ONLY,
+        fullPath.getData()
+      );
+      assertEquals(0x9000, response.getSw());
+      data = response.getData();
+      assertEquals(data[0], KeycardApplet.TLV_KEY_TEMPLATE);
+      assertEquals(data[1], 2 + Crypto.KEY_PUB_SIZE);
+      assertEquals(data[2], KeycardApplet.TLV_PUB_KEY);
+      assertEquals(data[3], Crypto.KEY_PUB_SIZE);
+      fullPubFromCard = Arrays.copyOfRange(data, 4, data.length);
+
+      // Create a bitcoinj deterministic key from the intermediate pubkey bytes + chaincode
+      // Derive a child and check it against the full child derived from the card
+      intPub = HDKeyDerivation.createMasterPubKeyFromBytes(intPubFromCard, chainCode);
+      fullPub = HDKeyDerivation.deriveChildKey(intPub, cnD5);
+
+      assertArrayEquals(fullPub.decompress().getPubKey(), fullPubFromCard);
+    
+      // Sign with full key
+      response = cmdSet.signWithPath(hash, fullPathStr, false);
+      byte[] sig = response.getData();
+      byte[] signer = extractPublicKeyFromSignature(sig);
+      verifySignResp(hashData, response);
+      assertArrayEquals(signer, fullPubFromCard);
+    }
+  }
+
+  //====================================
+  // END GRIDPLUS SAFECARD TESTS
+  //====================================
+
   @Test
   @DisplayName("Performance Test")
   @Tag("manual")
@@ -1788,6 +1805,7 @@ NEED TO FIGURE OUT WHY
     System.out.println("Time to switch m/44'/60'/0'/0/0': " + deriveParentHardened);
     System.out.println("Time to switch back to m/44'/60'/0'/0/0: " + deriveParent);
   }
+  
 
   private KeyPairGenerator keypairGenerator() throws Exception {
     ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
