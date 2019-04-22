@@ -1634,6 +1634,16 @@ public class KeycardTest {
   }
 
   @Test
+  @DisplayName("Overwrite Pairing")
+  void overwritePairingTest() throws Exception {    
+    // Pair multiple times
+    for (int i = 0; i < 5; i++) {
+        cmdSet.autoPair(sharedSecret);
+        assertEquals(0, secureChannel.getPairingIndex());
+    }
+  }
+
+  @Test
   @DisplayName("Public Key Derivation")
   void pubKeyDerivationTest() throws Exception {
     APDUResponse response;
