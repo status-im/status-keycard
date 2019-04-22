@@ -3,6 +3,7 @@
 *.iml
 
 # Gradle output
+buildSrc/build
 /.gradle
 /build
 /gradle.properties
