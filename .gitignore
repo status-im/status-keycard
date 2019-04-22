@@ -4,11 +4,11 @@
 # IntelliJ IDEA project files
 .idea
 *.iml
-buildSrc/build
-bin
-
+.project
 # Gradle output
-/.gradle
-buildSrc/.gradle
+/bin
 /build
+/.gradle
 /gradle.properties
+buildSrc/build
+buildSrc/.gradle
