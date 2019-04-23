@@ -359,17 +359,20 @@ public class KeycardTest {
     assertTrue((0x6985 == response.getSw()) || (0x6982 == response.getSw()));
     cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
 
-    // Pair multiple indexes
-    for (int i = 1; i < 5; i++) {
-      cmdSet.autoPair(sharedSecret);
-      assertEquals(i, secureChannel.getPairingIndex());
-      cmdSet.autoOpenSecureChannel();
-      cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
-    }
+    // {{ GridPlus }} - only one pairing slot
+    int NUM_PAIRINGS = 1; // 5;
+    // // Pair multiple indexes
+    // for (int i = 1; i < NUM_PAIRINGS; i++) {
+    //   cmdSet.autoPair(sharedSecret);
+    //   assertEquals(i, secureChannel.getPairingIndex());
+    //   cmdSet.autoOpenSecureChannel();
+    //   cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
+    // }
 
+    // {{ GridPlus }} - we overwrite the first pairing index, so we won't get this error
     // Too many paired indexes
-    response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, challenge);
-    assertEquals(0x6A84, response.getSw());
+    // response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, challenge);
+    // assertEquals(0x6A84, response.getSw());
 
     // Unpair all (except the last, which will be unpaired in the tearDown phase)
     cmdSet.autoOpenSecureChannel();
@@ -379,10 +382,10 @@ public class KeycardTest {
       assertEquals(0x9000, response.getSw());
     }
 
-    for (byte i = 0; i < 4; i++) {
-      response = cmdSet.unpair(i);
-      assertEquals(0x9000, response.getSw());
-    }
+    // for (byte i = 0; i < NUM_PAIRINGS - 1; i++) {
+      // response = cmdSet.unpair((byte) 0); //i);
+      // assertEquals(0x9000, response.getSw());
+    // }
   }
 
   @Test
@@ -416,14 +419,17 @@ public class KeycardTest {
     response = cmdSet.unpair((byte) 5);
     assertEquals(0x6A86, response.getSw());
 
+    // {{ GridPlus }} - We can't use these because there is only one pairing, which
+    //                  gets removed during teardown
     // Unpair spare keyset
-    response = cmdSet.unpair(sparePairingIndex);
-    assertEquals(0x9000, response.getSw());
+    // response = cmdSet.unpair(sparePairingIndex);
+    // assertEquals(0x9000, response.getSw());
 
     // Proof that unpaired is not usable
-    response = cmdSet.openSecureChannel(sparePairingIndex, secureChannel.getPublicKey());
-    assertEquals(0x6A86, response.getSw());
+    // response = cmdSet.openSecureChannel(sparePairingIndex, secureChannel.getPublicKey());
+    // assertEquals(0x6A86, response.getSw());
   }
+
 
   @Test
   @DisplayName("GET STATUS command")
@@ -472,6 +478,7 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
     KeyPath path = new KeyPath(response.getData());
     assertNotEquals(null, path);
+
   }
 
   @Test
@@ -1622,6 +1629,16 @@ public class KeycardTest {
     // Remove all keys
     response = cmdSet.removeKey();
     assertEquals(0x9000, response.getSw());
+  }
+
+  @Test
+  @DisplayName("Overwrite Pairing")
+  void overwritePairingTest() throws Exception {    
+    // Pair multiple times
+    for (int i = 0; i < 5; i++) {
+        cmdSet.autoPair(sharedSecret);
+        assertEquals(0, secureChannel.getPairingIndex());
+    }
   }
 
   @Test

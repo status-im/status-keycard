@@ -1,3 +1,88 @@
+# SafeCard
+
+This repo contains the Javacard applet that runs on the GridPlus SafeCard. It is a fork of the [Status KeyCard](https://github.com/status-im/status-keycard), with only a few notable changes. They are documented below.
+
+## Certificates
+
+GridPlus SafeCards are typically used with a secure interface (the Lattice1), which will query the card for a GridPlus certificate. This cert is signed by the GridPlus certificate authority and is represented as an ECDSA signature of the card's unique id (created when the applet is installed on the card). There are typically three certs stored on each SafeCard.
+
+#### Load Certs (APDU 0xFA)
+
+This APDU allows the card issuer to install certs on a card that has not been initialized. 
+
+* P1: None
+* P2: None
+* Data: Certs data
+* Returns: None
+
+#### Export Certs (APDU 0xFB)
+
+This APDU allows any card holder to export the installed certs for inspection. It can be called at any point and does not require a secure channel.
+
+* P1: None
+* P2: None
+* Data: None
+* Returns: `[ TLV_CERTS (0x91), CERTS_LEN (0xD5), <certs>]`
+
+> `certs` is an array of up to three concatenated, 71-byte certs. If there are fewer certs loaded, `certs` will be right-padded with zeros.
+
+## Master Seed
+
+Status does not currently save the master seed and, as such, does not allow the user to export that seed for backup purposes. This is understandable, as Status cannot assume a secure interface. However, GridPlus can - the Lattice1 (and specifically a secure compute element inside) is the main interface for SafeCards.
+
+GridPlus has added an APDU (Export Seed) and modified two others (LoadKey/GenerateKey) to allow for storage and exporting of the card's wallet's master seed. Note that the user has full control over whether this should be exportable at all. Many users may want to restrict their seed to the card itself and never back it up. However, we felt it was important to allow an exportable option.
+
+#### GenerateKey (APDU 0xD4)
+
+Modified to allow generation and storage of master seed with exportable option.
+
+* P1: Exportable option (0 for non-exportable, 1 for exportable)
+* P2: None
+* Data: None
+* Returns: Key UID (not important for GridPlus)
+
+#### LoadKey (APDU 0xD0)
+
+Modified to allow storage of master seed with exportable option. 
+
+The following options assume you are loading a master seed:
+
+* P1: `0x03` (same as Status')
+* P2: Exportable option (0 for non-exportable, 1 for exportable)
+* Data: `<seed>`
+* Returns: None
+
+#### Export Seed (APDU 0xC3)
+
+This APDU allows the card holder to export the master seed if they designated it as "exportable" when they loaded/generated it.
+
+* P1: None
+* P2: None
+* Data: None
+* Returns: `[ TLV_SEED (0x90), BIP39_SEED_SIZE (0x40), <seed>]`
+
+> `seed` is a 64-byte master seed
+
+## Intermediate Public Keys
+
+GridPlus wishes to export intermediate public keys (e.g. `m/44'/60'/0'/`), which can be used to derive fully derived public keys (e.g. `m/44'/60'/0'/0/0`) *outside of the card environment*. In order to do external child key derivations, we need to export the chaincode as well.
+
+> GridPlus has modified the applet to **not allow export of private keys**. This is for various reasons, including the fact that we do allow exporting of master seeds and we allow exporting of the chaincode, which can be used with intermediate private keys to fully derive all child private keys.
+
+#### Export Key (APDU 0xC2)
+
+We have modified Export Key to allow exporting of chaincode and disallow exporting of private keys.
+
+* P1: Same as Status
+* P2: `0x02` exports public key and chaincode. `0x00` is disallowed.
+* Data: Same as Status
+* Returns (for P2=`0x02`): `[ TLV_PUB_KEY (0x80), PubKeyLen (0x41), TLV_CHAIN_CODE (0x82), ChainCodeLen (0x20) ]` 
+
+
+---
+
+**[ORIGINAL STATUS DOCS BELOW]**
+
 # What is Keycard?
 
 Keycard is a an implementation of a BIP-32 HD wallet running on Javacard 3.0.4+ (see implementation notes)
