@@ -1573,6 +1573,7 @@ public class KeycardTest {
     flag = (byte) 1;
     response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
     assertEquals(0x9000, response.getSw());
+    byte[] generatedKey = response.getData();
 
     // Export the seed
     response = cmdSet.exportSeed();
@@ -1582,6 +1583,7 @@ public class KeycardTest {
     assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeed[1]);
     byte[] exportedSeedSlice = Arrays.copyOfRange(exportedSeed, 2, exportedSeed.length);
     assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeedSlice.length);
+    assertArrayEquals(generatedKey, exportedSeedSlice);
 
     // Fail to load a seed of the wrong size
     byte[] inSeed = new byte[KeycardApplet.BIP39_SEED_SIZE - 1];

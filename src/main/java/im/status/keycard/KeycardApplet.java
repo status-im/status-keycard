@@ -1233,7 +1233,9 @@ public class KeycardApplet extends Applet {
     setSeedFlag(flag);
     
     pinlessPathLen = 0;
-    generateKeyUIDAndRespond(apdu, apduBuffer);
+
+    Util.arrayCopyNonAtomic(masterSeed, (short) 0, apduBuffer, SecureChannel.SC_OUT_OFFSET, BIP39_SEED_SIZE);
+    secureChannel.respond(apdu, BIP39_SEED_SIZE, ISO7816.SW_NO_ERROR);
   }
 
   /**
