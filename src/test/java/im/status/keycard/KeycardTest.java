@@ -1513,8 +1513,8 @@ public class KeycardTest {
   @Test
   @DisplayName("Certs")
   void loadCertsTest() throws Exception {
-    // Load certs into the card
-    byte[] certs = new byte[KeycardApplet.CERTS_LEN];
+    int len = KeycardApplet.CERTS_LEN - 5;
+    byte[] certs = new byte[len];
     Random random = new Random();
     random.nextBytes(certs);
     APDUResponse response;
@@ -1525,9 +1525,8 @@ public class KeycardTest {
     APDUResponse exportResponse = cmdSet.exportCerts();
     assertEquals(0x9000, response.getSw());
     byte[] exportedCerts = exportResponse.getData();
-    // System.out.println(Arrays.toString(exportedCerts));
     assertEquals(exportedCerts[0] & 0xff, KeycardApplet.TLV_CERTS & 0xff);
-    assertEquals(exportedCerts[1] & 0xff, certs.length & 0xff);
+    assertEquals(exportedCerts[1] & 0xff, len & 0xff);
 
     byte[] exportedCertsSlice = Arrays.copyOfRange(exportedCerts, 2, exportedCerts.length);
     assertArrayEquals(exportedCertsSlice, certs);
@@ -1536,7 +1535,6 @@ public class KeycardTest {
     random.nextBytes(certs);
     response = cmdSet.loadCerts(certs);
     assertEquals(0x6986, response.getSw());
-
   }
   
   @Test

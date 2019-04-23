@@ -126,6 +126,7 @@ public class KeycardApplet extends Applet {
   static final short CERTS_LEN = CERT_LEN * NUM_CERTS;
   private byte[] certs;
   private byte certsLoaded;
+  private byte certsLoadedLen;
 
   private byte[] masterSeed;
   private byte masterSeedFlag;
@@ -199,6 +200,7 @@ public class KeycardApplet extends Applet {
     // Room for 3 certs
     certs = new byte[CERTS_LEN];
     certsLoaded = 0;
+    certsLoadedLen = (byte) 0;
 
     masterSeed = new byte[BIP39_SEED_SIZE];
     masterSeedFlag = SFLAG_NONE;
@@ -802,14 +804,18 @@ public class KeycardApplet extends Applet {
     
     JCSystem.beginTransaction();
     
-    // Don't allow loads >CERTS_LEN, but do allow loads <CERTS_LEN
-    short len = CERTS_LEN;
-    if (apduBuffer.length < len) {
-      len = (short) apduBuffer.length;
+    // Get length of certs
+    short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
+    if (len > CERTS_LEN) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
     }
+
     Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, certs, (short) 0, len);
+    
     // Prevent any future calls of this function
     certsLoaded = 1;
+    // certsLoadedLen = (byte) len;
+    certsLoadedLen = (byte) len;
 
     JCSystem.commitTransaction();
   } 
@@ -822,9 +828,10 @@ public class KeycardApplet extends Applet {
   private void exportCerts(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
     apduBuffer[0] = TLV_CERTS;
-    apduBuffer[1] = (byte) (CERTS_LEN);
-    Util.arrayCopyNonAtomic(certs, (short) 0, apduBuffer, (short) 2, CERTS_LEN);
-    apdu.setOutgoingAndSend((short) 0, (short) (CERTS_LEN + 2));
+    apduBuffer[1] = certsLoadedLen;
+    short len = (short) (certsLoadedLen & 0xff);
+    Util.arrayCopyNonAtomic(certs, (short) 0, apduBuffer, (short) 2, len);
+    apdu.setOutgoingAndSend((short) 0, (short) (2 + len));
   }
 
   /**
