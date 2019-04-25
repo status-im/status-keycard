@@ -1786,7 +1786,7 @@ public class KeycardTest {
       // Encrypt the secret using an ECDH shared secret derived from a random keypair
       byte[] enc = secureChannel.oneShotEncrypt(pairingSecret);
       // Start the initialization process again to store the new pairingSecret
-      response = sdkChannel.send(new APDUCommand(0x80, KeycardApplet.INS_INIT, KeycardApplet.INIT_P1_NEW, (byte) 0, enc));
+      response = sdkChannel.send(new APDUCommand(0x80, KeycardApplet.INS_INIT, KeycardApplet.INIT_P1_NEW_CLIENT, (byte) 0, enc));
       assertEquals(0x9000, response.getSw());
       // Pair with this new pairing secret and open a secure channel
       cmdSet.autoPair(pairingSecret);

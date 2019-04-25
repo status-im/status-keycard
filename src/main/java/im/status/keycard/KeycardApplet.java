@@ -116,8 +116,8 @@ public class KeycardApplet extends Applet {
   static final byte SFLAG_EXPORTABLE = 1;
   static final byte SFLAG_MAX = 1;
 
-  static final byte INIT_P1_FIRST = 0x00;
-  static final byte INIT_P1_NEW = 0x01;
+  static final byte INIT_P1_FIRST_TIME = 0x00;
+  static final byte INIT_P1_NEW_CLIENT = 0x01;
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -268,7 +268,7 @@ public class KeycardApplet extends Applet {
     }
 
     // If we have no PIN it means we still have to initialize the applet.
-    if (pin == null || (code == INS_INIT && p1 == INIT_P1_NEW)) {
+    if (pin == null || (code == INS_INIT && p1 == INIT_P1_NEW_CLIENT)) {
       processInit(apdu);
       return;
     }
@@ -402,7 +402,7 @@ public class KeycardApplet extends Applet {
       // Send the APDU buffer
       apdu.setOutgoingAndSend((short) 0, (short) off);
 
-    } else if (cmd == INS_INIT && p1 == INIT_P1_FIRST) {
+    } else if (cmd == INS_INIT && p1 == INIT_P1_FIRST_TIME) {
       // The first time we are calling INIT - load the PIN and PUK
       secureChannel.oneShotDecrypt(apduBuffer);
 
@@ -420,7 +420,7 @@ public class KeycardApplet extends Applet {
       puk.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PUK_LENGTH);
 
       JCSystem.commitTransaction();
-    } else if (cmd == INS_INIT && p1 == INIT_P1_NEW) {
+    } else if (cmd == INS_INIT && p1 == INIT_P1_NEW_CLIENT) {
       // The card has already been initialized, but we need to create a pairing
       secureChannel.oneShotDecrypt(apduBuffer);
 
