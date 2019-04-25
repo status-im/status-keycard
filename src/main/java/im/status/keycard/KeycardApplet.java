@@ -428,6 +428,10 @@ public class KeycardApplet extends Applet {
         ISOException.throwIt(ISO7816.SW_WRONG_DATA);
       }
 
+      if (secureChannel.isInitialized == false) {
+        ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+      }
+
       JCSystem.beginTransaction();
       secureChannel.reInitSecureChannel(apduBuffer, (short)(ISO7816.OFFSET_CDATA));
       JCSystem.commitTransaction();

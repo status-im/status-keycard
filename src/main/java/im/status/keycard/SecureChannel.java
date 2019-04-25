@@ -35,6 +35,8 @@ public class SecureChannel {
 
   private short scCounter;
 
+  public boolean isInitialized = false;
+
   /*
    * To avoid overhead, the pairing keys are stored in a plain byte array as sequences of 33-bytes elements. The first
    * byte is 0 if the slot is free and 1 if used. The following 32 bytes are the actual key data.
@@ -82,6 +84,7 @@ public class SecureChannel {
     pairingSecret = new byte[SC_SECRET_LENGTH];
     Util.arrayCopy(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
     scKeypair.genKeyPair();
+    isInitialized = true;
   }
 
 
@@ -94,6 +97,8 @@ public class SecureChannel {
    * @param off the offset in the buffer
    */
   public void reInitSecureChannel(byte[] aPairingSecret, short off) {
+    if (isInitialized == false) return;
+    
     pairingSecret = new byte[SC_SECRET_LENGTH];
     Util.arrayCopy(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
   }

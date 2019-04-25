@@ -1793,7 +1793,7 @@ public class KeycardTest {
       response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
       assertEquals(0x9000, response.getSw());
       // Fair again to init the normal way
-      assertEquals(0x6D00, cmdSet.init("000000", "123456789012", pairingSecret).getSw()); 
+      assertEquals(0x6D00, cmdSet.init("000000", "123456789012", pairingSecret).getSw());
     }
   }
 
