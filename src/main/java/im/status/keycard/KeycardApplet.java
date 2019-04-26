@@ -116,6 +116,9 @@ public class KeycardApplet extends Applet {
   static final byte SFLAG_EXPORTABLE = 1;
   static final byte SFLAG_MAX = 1;
 
+  static final byte INIT_P1_FIRST_TIME = 0x00;
+  static final byte INIT_P1_NEW_CLIENT = 0x01;
+
   private OwnerPIN pin;
   private OwnerPIN puk;
   private byte[] uid;
@@ -249,6 +252,7 @@ public class KeycardApplet extends Applet {
   public void process(APDU apdu) throws ISOException {
     byte[] apduBuffer = apdu.getBuffer();
     byte code = apduBuffer[ISO7816.OFFSET_INS];
+    byte p1 = apduBuffer[ISO7816.OFFSET_P1];
     
     // Cert loading should happen before init
     if (code == INS_LOAD_CERTS) {
@@ -264,7 +268,7 @@ public class KeycardApplet extends Applet {
     }
 
     // If we have no PIN it means we still have to initialize the applet.
-    if (pin == null) {
+    if (pin == null || (code == INS_INIT && p1 == INIT_P1_NEW_CLIENT)) {
       processInit(apdu);
       return;
     }
@@ -375,7 +379,8 @@ public class KeycardApplet extends Applet {
   private void processInit(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
     apdu.setIncomingAndReceive();
-
+    byte cmd = apduBuffer[ISO7816.OFFSET_INS];
+    byte p1 = apduBuffer[ISO7816.OFFSET_P1];
     if (selectingApplet()) {
       short off = 0;
 
@@ -397,7 +402,8 @@ public class KeycardApplet extends Applet {
       // Send the APDU buffer
       apdu.setOutgoingAndSend((short) 0, (short) off);
 
-    } else if (apduBuffer[ISO7816.OFFSET_INS] == INS_INIT) {
+    } else if (cmd == INS_INIT && p1 == INIT_P1_FIRST_TIME) {
+      // The first time we are calling INIT - load the PIN and PUK
       secureChannel.oneShotDecrypt(apduBuffer);
 
       if ((apduBuffer[ISO7816.OFFSET_LC] != (byte)(PIN_LENGTH + PUK_LENGTH + SecureChannel.SC_SECRET_LENGTH)) || !allDigits(apduBuffer, ISO7816.OFFSET_CDATA, (short)(PIN_LENGTH + PUK_LENGTH))) {
@@ -414,6 +420,22 @@ public class KeycardApplet extends Applet {
       puk.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PUK_LENGTH);
 
       JCSystem.commitTransaction();
+    } else if (cmd == INS_INIT && p1 == INIT_P1_NEW_CLIENT) {
+      // The card has already been initialized, but we need to create a pairing
+      secureChannel.oneShotDecrypt(apduBuffer);
+
+      if (apduBuffer[ISO7816.OFFSET_LC] != (byte)(SecureChannel.SC_SECRET_LENGTH)) {
+        ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      }
+
+      if (secureChannel.isInitialized == false) {
+        ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+      }
+
+      JCSystem.beginTransaction();
+      secureChannel.reInitSecureChannel(apduBuffer, (short)(ISO7816.OFFSET_CDATA));
+      JCSystem.commitTransaction();
+      
     } else {
       ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
     }

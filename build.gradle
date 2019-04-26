@@ -11,7 +11,7 @@ buildscript {
   dependencies {
     classpath 'com.fidesmo:gradle-javacard:0.2.7'
     classpath 'org.junit.platform:junit-platform-gradle-plugin:1.1.1'
-    classpath 'com.github.gridplus.safe-card-java-sdk:desktop:a22fb496e0961f32fdcf3d2f1401470c1c083a7d'
+    classpath 'com.github.gridplus.safe-card-java-sdk:desktop:d8df11359a461e06f890e58446d2dcc24efe47b6'
     // classpath 'com.github.status-im.status-keycard-java:desktop:5771994'
   }
 }

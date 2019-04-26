@@ -1765,6 +1765,38 @@ public class KeycardTest {
     }
   }
 
+  @Test
+  @DisplayName("ReInit")
+  void reInitTest() throws Exception {
+    APDUResponse response;
+    Random random = new Random();
+    byte[] pairingSecret = new byte[32];
+    byte[] challenge = new byte[32];
+    byte[] pairingPass = new byte[16];
+    String pairingPassword;
+    random.nextBytes(pairingSecret);
+    assertEquals(0x6D00, cmdSet.init("000000", "123456789012", pairingSecret).getSw());
+    initCapabilities(cmdSet.getApplicationInfo());
+
+    for (int i = 0; i < 5; i++) {
+      random.nextBytes(pairingPass);
+      pairingPassword = new String(pairingPass);
+      // Generate the pairing secret
+      pairingSecret = cmdSet.pairingPasswordToSecret(System.getProperty("im.status.keycard.test.pairing", pairingPassword));
+      // Encrypt the secret using an ECDH shared secret derived from a random keypair
+      byte[] enc = secureChannel.oneShotEncrypt(pairingSecret);
+      // Start the initialization process again to store the new pairingSecret
+      response = sdkChannel.send(new APDUCommand(0x80, KeycardApplet.INS_INIT, KeycardApplet.INIT_P1_NEW_CLIENT, (byte) 0, enc));
+      assertEquals(0x9000, response.getSw());
+      // Pair with this new pairing secret and open a secure channel
+      cmdSet.autoPair(pairingSecret);
+      response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
+      assertEquals(0x9000, response.getSw());
+      // Fair again to init the normal way
+      assertEquals(0x6D00, cmdSet.init("000000", "123456789012", pairingSecret).getSw());
+    }
+  }
+
   //====================================
   // END GRIDPLUS SAFECARD TESTS
   //====================================
