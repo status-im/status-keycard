@@ -428,7 +428,8 @@ public class KeycardApplet extends Applet {
         ISOException.throwIt(ISO7816.SW_WRONG_DATA);
       }
 
-      if (secureChannel.isInitialized == false) {
+      if (pin == null) {
+        // Don't allow re-init if init hasn't happened
         ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
       }
 
