@@ -84,6 +84,23 @@ public class SecureChannel {
     scKeypair.genKeyPair();
   }
 
+
+  /**
+   * Re-initializes the SecureChannel instance with the pairing secret.
+   * This allows the client to create a pairing with a card that has already been
+   * initialized. The PIN and PUK cannot be changed.
+   *
+   * @param aPairingSecret the pairing secret
+   * @param off the offset in the buffer
+   */
+  public void reInitSecureChannel(byte[] aPairingSecret, short off) {
+    if (pairingSecret == null) return;
+    
+    pairingSecret = new byte[SC_SECRET_LENGTH];
+    Util.arrayCopy(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
+  }
+
+
   /**
    * Decrypts the content of the APDU by generating an AES key using EC-DH. Usable only with specific commands.
    * @param apduBuffer the APDU buffer

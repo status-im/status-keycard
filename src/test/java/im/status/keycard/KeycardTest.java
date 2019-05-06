@@ -1573,6 +1573,7 @@ public class KeycardTest {
     flag = (byte) 1;
     response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
     assertEquals(0x9000, response.getSw());
+    byte[] generatedKey = response.getData();
 
     // Export the seed
     response = cmdSet.exportSeed();
@@ -1582,6 +1583,7 @@ public class KeycardTest {
     assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeed[1]);
     byte[] exportedSeedSlice = Arrays.copyOfRange(exportedSeed, 2, exportedSeed.length);
     assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeedSlice.length);
+    assertArrayEquals(generatedKey, exportedSeedSlice);
 
     // Fail to load a seed of the wrong size
     byte[] inSeed = new byte[KeycardApplet.BIP39_SEED_SIZE - 1];
@@ -1760,6 +1762,38 @@ public class KeycardTest {
       byte[] signer = extractPublicKeyFromSignature(sig);
       verifySignResp(hashData, response);
       assertArrayEquals(signer, fullPubFromCard);
+    }
+  }
+
+  @Test
+  @DisplayName("ReInit")
+  void reInitTest() throws Exception {
+    APDUResponse response;
+    Random random = new Random();
+    byte[] pairingSecret = new byte[32];
+    byte[] challenge = new byte[32];
+    byte[] pairingPass = new byte[16];
+    String pairingPassword;
+    random.nextBytes(pairingSecret);
+    assertEquals(0x6D00, cmdSet.init("000000", "123456789012", pairingSecret).getSw());
+    initCapabilities(cmdSet.getApplicationInfo());
+
+    for (int i = 0; i < 5; i++) {
+      random.nextBytes(pairingPass);
+      pairingPassword = new String(pairingPass);
+      // Generate the pairing secret
+      pairingSecret = cmdSet.pairingPasswordToSecret(System.getProperty("im.status.keycard.test.pairing", pairingPassword));
+      // Encrypt the secret using an ECDH shared secret derived from a random keypair
+      byte[] enc = secureChannel.oneShotEncrypt(pairingSecret);
+      // Start the initialization process again to store the new pairingSecret
+      response = sdkChannel.send(new APDUCommand(0x80, KeycardApplet.INS_INIT, KeycardApplet.INIT_P1_NEW_CLIENT, (byte) 0, enc));
+      assertEquals(0x9000, response.getSw());
+      // Pair with this new pairing secret and open a secure channel
+      cmdSet.autoPair(pairingSecret);
+      response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
+      assertEquals(0x9000, response.getSw());
+      // Fair again to init the normal way
+      assertEquals(0x6D00, cmdSet.init("000000", "123456789012", pairingSecret).getSw());
     }
   }
 

@@ -4,5 +4,5 @@ repositories {
 }
 
 dependencies {
-  compile 'com.github.gridplus.safe-card-java-sdk:desktop:bcfe0b5'
+  compile 'com.github.gridplus.safe-card-java-sdk:desktop:3ae2324b08c041be30886b9fc2e1b04c2573d750'
 }
