@@ -868,6 +868,11 @@ public class KeycardApplet extends Applet {
     short privOffset = (short)(pubOffset + apduBuffer[(short)(pubOffset + 1)] + 2);
     short chainOffset = (short)(privOffset + apduBuffer[(short)(privOffset + 1)] + 2);
 
+    // Fail if there is a masterSeed - the user must remove it first
+    if (!isEmpty(masterSeed, (short) 0)) {
+      ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+    }
+
     if (apduBuffer[pubOffset] != TLV_PUB_KEY) {
       chainOffset = privOffset;
       privOffset = pubOffset;
@@ -929,9 +934,9 @@ public class KeycardApplet extends Applet {
     }
 
     // Do not allow overwriting of master seeds - require that the user call REMOVE_KEY first
-    // if (!isEmpty(masterSeed, (short) 0)) {
-      // ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
-    // }
+    if (!isEmpty(masterSeed, (short) 0)) {
+      ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+    }
 
     // Save the seed before turning it into a master key
     Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, masterSeed, (short) 0, BIP39_SEED_SIZE);
@@ -1735,10 +1740,10 @@ public class KeycardApplet extends Applet {
   private boolean isEmpty(byte[] a, short off) {
     for (short i = off; i < a.length; i++) {
       if (a[i] != 0) {
-          return true;
+          return false;
       }
     }
-    return false;
+    return true;
   } 
 
   /**
