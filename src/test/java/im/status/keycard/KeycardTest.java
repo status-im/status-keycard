@@ -933,6 +933,10 @@ public class KeycardTest {
     new Random().nextBytes(chainCode);
 
     if (cmdSet.getApplicationInfo().hasKeyManagementCapability()) {
+      // GridPlus mod - remove seed before loading a new key
+      response = cmdSet.removeKey();
+      assertEquals(0x9000, response.getSw());
+
       // Condition violation: keyset is not extended
       response = cmdSet.loadKey(keyPair);
       assertEquals(0x9000, response.getSw());
@@ -1014,6 +1018,10 @@ public class KeycardTest {
     }
 
     if (!cmdSet.getApplicationInfo().hasMasterKey()) {
+      // GridPlus mod: remove the old key so this command doesn't get blocked
+      response = cmdSet.removeKey();
+      assertEquals(0x9000, response.getSw());
+      // Now we can generate a key again
       response = cmdSet.generateKey();
       assertEquals(0x9000, response.getSw());
     }
@@ -1222,6 +1230,10 @@ public class KeycardTest {
     }
 
     if (cmdSet.getApplicationInfo().hasKeyManagementCapability()) {
+      // GridPlus mod - remove seed before loading a new key
+      response = cmdSet.removeKey();
+      assertEquals(0x9000, response.getSw());
+
       response = cmdSet.loadKey(keyPair, false, chainCode);
       assertEquals(0x9000, response.getSw());
     }
@@ -1543,41 +1555,49 @@ public class KeycardTest {
     response = cmdSet.loadCerts(certs);
     assertEquals(0x6986, response.getSw());
   }
-  
+
   @Test
   @DisplayName("Master Seeds")
   void masterSeedsTest() throws Exception {
     APDUResponse response;
     Random random = new Random();
-
+    int success = ISO7816.SW_NO_ERROR & 0xffff;
     // Verify pin
     cmdSet.autoOpenSecureChannel();
     response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
+    assertEquals(success, response.getSw());
 
     // Reset all keys
     response = cmdSet.removeKey();
-    assertEquals(0x9000, response.getSw());
+    assertEquals(success, response.getSw());
 
     // Generate a non-exportable seed
     byte empty = (byte) 0;
     byte flag = (byte) 0;
     response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
-    assertEquals(0x9000, response.getSw());
+    assertEquals(success, response.getSw());
 
     // Fail to export the seed
     response = cmdSet.exportSeed();
     assertEquals(0x6986, response.getSw());
 
-    // Generate an exportable seed
+    // Fail to generate a new (exportable) seed while one is on the device
     flag = (byte) 1;
     response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
-    assertEquals(0x9000, response.getSw());
+    assertEquals(ISO7816.SW_COMMAND_NOT_ALLOWED, response.getSw());
+
+    // Remove seed
+    response = cmdSet.removeKey();
+    assertEquals(success, response.getSw());
+
+    // Generate an exportable seed
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
+    assertEquals(success, response.getSw());
     byte[] generatedKey = response.getData();
 
     // Export the seed
     response = cmdSet.exportSeed();
-    assertEquals(0x9000, response.getSw());
+    assertEquals(success, response.getSw());
     byte[] exportedSeed = response.getData();
     assertEquals(KeycardApplet.TLV_SEED, exportedSeed[0]);
     assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeed[1]);
@@ -1591,25 +1611,37 @@ public class KeycardTest {
     response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
     assertEquals(0x6A80, response.getSw());
 
-    // Load a non-exportable seed
+    // Fail to load a new seed with one still on
     inSeed = new byte[KeycardApplet.BIP39_SEED_SIZE];
     random.nextBytes(inSeed);
     flag = (byte) 0;
     response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
-    assertEquals(0x9000, response.getSw());
+    assertEquals(ISO7816.SW_COMMAND_NOT_ALLOWED, response.getSw());
+
+    // Reset keystore
+    response = cmdSet.removeKey();
+    assertEquals(success, response.getSw());
+
+    // Succeed in loading new seed
+    response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
+    assertEquals(success, response.getSw());
 
     // Fail to export the non-exportable seed
     response = cmdSet.exportSeed();
     assertEquals(0x6986, response.getSw());
 
+    // Reset keystore
+    response = cmdSet.removeKey();
+    assertEquals(success, response.getSw()); 
+
     // Load an exportable seed
     flag = (byte) 1;
     response = cmdSet.sendSecureCommand(KeycardApplet.INS_LOAD_KEY, KeycardApplet.LOAD_KEY_P1_SEED, flag, inSeed);
-    assertEquals(0x9000, response.getSw());
+    assertEquals(success, response.getSw());
 
     // Export the seed and verify it is the same that got loaded
     response = cmdSet.exportSeed();
-    assertEquals(0x9000, response.getSw());
+    assertEquals(success, response.getSw());
     exportedSeed = response.getData();
     assertEquals(KeycardApplet.TLV_SEED, exportedSeed[0]);
     assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeed[1]);
@@ -1617,22 +1649,34 @@ public class KeycardTest {
     assertEquals((byte) KeycardApplet.BIP39_SEED_SIZE, exportedSeedSlice.length);
     assertArrayEquals(exportedSeedSlice, inSeed);
 
-    // Load a keypair and make sure the seed is no longer there
+    // Load a keypair (rather than a seed)
+    // GridPlus won't use this, but we want it for interoperability
     KeyPairGenerator g = keypairGenerator();
     KeyPair keyPair = g.generateKeyPair();
-    response = cmdSet.loadKey(keyPair);
 
-    assertEquals(0x9000, response.getSw());
+    // Fail first because there is a seed
+    response = cmdSet.loadKey(keyPair);
+    assertEquals(ISO7816.SW_COMMAND_NOT_ALLOWED, response.getSw());
+
+    // Remove the seed
+    response = cmdSet.removeKey();
+    assertEquals(success, response.getSw());
+
+    // Loading a key should now succeed
+    response = cmdSet.loadKey(keyPair);
+    assertEquals(success, response.getSw());
+
     // You should not be able to export a seed when the flag is set to non-exportable.
     // Whenever you import a keypair, the flag gets set to non-exportable
     response = cmdSet.exportSeed();
-    assertEquals(0x6986, response.getSw());
+    assertEquals(ISO7816.SW_COMMAND_NOT_ALLOWED, response.getSw());
 
     // Remove all keys
     response = cmdSet.removeKey();
-    assertEquals(0x9000, response.getSw());
-  }
+    assertEquals(success, response.getSw());
 
+  }
+/*
   @Test
   @DisplayName("Overwrite Pairing")
   void overwritePairingTest() throws Exception {    
@@ -1796,7 +1840,7 @@ public class KeycardTest {
       assertEquals(0x6D00, cmdSet.init("000000", "123456789012", pairingSecret).getSw());
     }
   }
-
+*/
   //====================================
   // END GRIDPLUS SAFECARD TESTS
   //====================================

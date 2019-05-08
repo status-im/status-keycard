@@ -868,6 +868,11 @@ public class KeycardApplet extends Applet {
     short privOffset = (short)(pubOffset + apduBuffer[(short)(pubOffset + 1)] + 2);
     short chainOffset = (short)(privOffset + apduBuffer[(short)(privOffset + 1)] + 2);
 
+    // Fail if there is a masterSeed - the user must remove it first
+    if (!isEmpty(masterSeed)) {
+      ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+    }
+
     if (apduBuffer[pubOffset] != TLV_PUB_KEY) {
       chainOffset = privOffset;
       privOffset = pubOffset;
@@ -926,6 +931,11 @@ public class KeycardApplet extends Applet {
   private void loadSeed(byte[] apduBuffer) {
     if (apduBuffer[ISO7816.OFFSET_LC] != BIP39_SEED_SIZE) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    // Do not allow overwriting of master seeds - require that the user call REMOVE_KEY first
+    if (!isEmpty(masterSeed)) {
+      ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
     }
 
     // Save the seed before turning it into a master key
@@ -1726,6 +1736,16 @@ public class KeycardApplet extends Applet {
     return (pinlessPathLen > 0) && (pinlessPathLen == keyPathLen) && (Util.arrayCompare(keyPath, (short) 0, pinlessPath, (short) 0, keyPathLen) == 0);
   }
 
+  // Returns whether the provided byte array is filled with zeros
+  private boolean isEmpty(byte[] a) {
+    for (short i = 0; i < a.length; i++) {
+      if (a[i] != 0) {
+          return false;
+      }
+    }
+    return true;
+  } 
+
   /**
    * Set curve parameters to cleared keys
    */
@@ -1742,4 +1762,5 @@ public class KeycardApplet extends Applet {
     secp256k1.setCurveParameters(pinlessPublicKey);
     secp256k1.setCurveParameters(pinlessPrivateKey);
   }
+
 }
