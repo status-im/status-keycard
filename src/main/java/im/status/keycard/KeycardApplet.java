@@ -928,6 +928,11 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
+    // Do not allow overwriting of master seeds - require that the user call REMOVE_KEY first
+    // if (!isEmpty(masterSeed, (short) 0)) {
+      // ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+    // }
+
     // Save the seed before turning it into a master key
     Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, masterSeed, (short) 0, BIP39_SEED_SIZE);
 
@@ -1726,6 +1731,16 @@ public class KeycardApplet extends Applet {
     return (pinlessPathLen > 0) && (pinlessPathLen == keyPathLen) && (Util.arrayCompare(keyPath, (short) 0, pinlessPath, (short) 0, keyPathLen) == 0);
   }
 
+  // Returns whether the provided byte array is filled with zeros
+  private boolean isEmpty(byte[] a, short off) {
+    for (short i = off; i < a.length; i++) {
+      if (a[i] != 0) {
+          return true;
+      }
+    }
+    return false;
+  } 
+
   /**
    * Set curve parameters to cleared keys
    */
@@ -1742,4 +1757,5 @@ public class KeycardApplet extends Applet {
     secp256k1.setCurveParameters(pinlessPublicKey);
     secp256k1.setCurveParameters(pinlessPrivateKey);
   }
+
 }
