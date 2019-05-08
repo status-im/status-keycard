@@ -869,7 +869,7 @@ public class KeycardApplet extends Applet {
     short chainOffset = (short)(privOffset + apduBuffer[(short)(privOffset + 1)] + 2);
 
     // Fail if there is a masterSeed - the user must remove it first
-    if (!isEmpty(masterSeed, (short) 0)) {
+    if (!isEmpty(masterSeed)) {
       ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
     }
 
@@ -934,7 +934,7 @@ public class KeycardApplet extends Applet {
     }
 
     // Do not allow overwriting of master seeds - require that the user call REMOVE_KEY first
-    if (!isEmpty(masterSeed, (short) 0)) {
+    if (!isEmpty(masterSeed)) {
       ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
     }
 
@@ -1737,8 +1737,8 @@ public class KeycardApplet extends Applet {
   }
 
   // Returns whether the provided byte array is filled with zeros
-  private boolean isEmpty(byte[] a, short off) {
-    for (short i = off; i < a.length; i++) {
+  private boolean isEmpty(byte[] a) {
+    for (short i = 0; i < a.length; i++) {
       if (a[i] != 0) {
           return false;
       }
