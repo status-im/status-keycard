@@ -1530,6 +1530,36 @@ public class KeycardTest {
   //====================================
 
   @Test
+  @DisplayName("Authentication")
+  void authTest() throws Exception {
+    // Build msg hash and setup
+    Random random = new Random();
+    byte[] msg = new byte[32];
+    random.nextBytes(msg);
+    APDUResponse response;
+
+    // Get public key for verification
+    byte[] data = cmdSet.select().checkOK().getData();
+    int pubKeyIdx = 0;
+    for(int i = 0; i < data.length; i++) {
+      if (data[i] == KeycardApplet.TLV_PUB_KEY) {
+        // The identifying pubkey we want is the latter (of 2) pubkeys
+        // returned from an applet select
+        pubKeyIdx = i;
+      }
+    }
+    System.out.println(pubKeyIdx);
+
+    // Request signature on msg hash
+    response = cmdSet.sendCommand(KeycardApplet.INS_AUTHENTICATE, (byte) 0, (byte) 0, msg);
+    assertEquals(0x9000, response.getSw());
+    byte[] sig = response.getData();
+
+    // Verify signature matches msg hash and public key
+    System.out.println(Arrays.toString(sig));
+  }
+
+  @Test
   @DisplayName("Certs")
   void loadCertsTest() throws Exception {
     int len = KeycardApplet.CERTS_LEN - 5;

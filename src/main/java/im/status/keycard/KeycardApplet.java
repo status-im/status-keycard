@@ -30,6 +30,7 @@ public class KeycardApplet extends Applet {
   static final byte INS_EXPORT_SEED = (byte) 0xC3;
   static final byte INS_GET_DATA = (byte) 0xCA;
   static final byte INS_STORE_DATA = (byte) 0xE2;
+  static final byte INS_AUTHENTICATE = (byte) 0xEE;
 
   static final short SW_REFERENCED_DATA_NOT_FOUND = (short) 0x6A88;
 
@@ -124,12 +125,14 @@ public class KeycardApplet extends Applet {
   private byte[] uid;
   private SecureChannel secureChannel;
 
-  static final short CERT_LEN = 71;
+  static final short CERT_LEN = 64;
   static final short NUM_CERTS = 3;
   static final short CERTS_LEN = CERT_LEN * NUM_CERTS;
   private byte[] certs;
   private byte certsLoaded;
   private byte certsLoadedLen;
+  private ECPrivateKey certsAuthPrivate;
+  private ECPublicKey certsAuthPublic;
 
   private byte[] masterSeed;
   private byte masterSeedFlag;
@@ -204,6 +207,14 @@ public class KeycardApplet extends Applet {
     certs = new byte[CERTS_LEN];
     certsLoaded = 0;
     certsLoadedLen = (byte) 0;
+    certsAuthPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
+    certsAuthPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
+    byte[] privBuf = new byte[Crypto.KEY_SECRET_SIZE];
+    crypto.random.generateData(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
+    certsAuthPrivate.setS(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
+    byte[] pubBuf = new byte[Crypto.KEY_PUB_SIZE];
+    secp256k1.derivePublicKey(privBuf, (short) 0, pubBuf, (short) 0);
+    certsAuthPublic.setW(pubBuf, (short) 0, Crypto.KEY_PUB_SIZE);
 
     masterSeed = new byte[BIP39_SEED_SIZE];
     masterSeedFlag = SFLAG_NONE;
@@ -264,6 +275,13 @@ public class KeycardApplet extends Applet {
     // so we should check it here
     if (code == INS_EXPORT_CERTS) {
       exportCerts(apdu);
+      return;
+    }
+
+    // We can request an authentication signature to validate the certs
+    // at any time
+    if (code == INS_AUTHENTICATE) {
+      authenticate(apdu);
       return;
     }
 
@@ -518,6 +536,10 @@ public class KeycardApplet extends Applet {
     apduBuffer[off++] = TLV_CAPABILITIES;
     apduBuffer[off++] = 1;
     apduBuffer[off++] = APPLICATION_CAPABILITIES;
+
+    apduBuffer[off++] = TLV_PUB_KEY;
+    apduBuffer[off++] = (byte) Crypto.KEY_PUB_SIZE;
+    certsAuthPublic.getW(apduBuffer, off++);
 
     apduBuffer[lenoff] = (byte)(off - lenoff - 1);
     apdu.setOutgoingAndSend((short) 0, off);
@@ -855,6 +877,23 @@ public class KeycardApplet extends Applet {
     short len = (short) (certsLoadedLen & 0xff);
     Util.arrayCopyNonAtomic(certs, (short) 0, apduBuffer, (short) 2, len);
     apdu.setOutgoingAndSend((short) 0, (short) (2 + len));
+  }
+
+  private void authenticate(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    apdu.setIncomingAndReceive();
+    byte[] msgHash = new byte[Crypto.KEY_SECRET_SIZE];
+    Util.arrayCopyNonAtomic(apduBuffer, (short) ISO7816.OFFSET_CDATA, msgHash, (short) 0, Crypto.KEY_SECRET_SIZE);
+    // signature.init(certsAuthPrivate, Signature.MODE_SIGN);
+    short sigLen = signature.signPreComputedHash(msgHash, (short) 0, MessageDigest.LENGTH_SHA_256, apduBuffer, (short) SecureChannel.SC_OUT_OFFSET);
+
+    // signPreComputedHash(byte[] hashBuff,
+    //                     short hashOffset,
+    //                     short hashLength,
+    //                     byte[] sigBuff,
+    //                     short sigOffset)
+    // apdu.setOutgoingAndSend((short) 0, (short) sigLen);
+    apdu.setOutgoingAndSend((short) 0, (short) sigLen);
   }
 
   /**
