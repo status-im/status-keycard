@@ -537,10 +537,6 @@ public class KeycardApplet extends Applet {
     apduBuffer[off++] = 1;
     apduBuffer[off++] = APPLICATION_CAPABILITIES;
 
-    apduBuffer[off++] = TLV_PUB_KEY;
-    apduBuffer[off++] = (byte) Crypto.KEY_PUB_SIZE;
-    certsAuthPublic.getW(apduBuffer, off++);
-
     apduBuffer[lenoff] = (byte)(off - lenoff - 1);
     apdu.setOutgoingAndSend((short) 0, off);
   }
@@ -884,16 +880,29 @@ public class KeycardApplet extends Applet {
     apdu.setIncomingAndReceive();
     byte[] msgHash = new byte[Crypto.KEY_SECRET_SIZE];
     Util.arrayCopyNonAtomic(apduBuffer, (short) ISO7816.OFFSET_CDATA, msgHash, (short) 0, Crypto.KEY_SECRET_SIZE);
-    // signature.init(certsAuthPrivate, Signature.MODE_SIGN);
-    short sigLen = signature.signPreComputedHash(msgHash, (short) 0, MessageDigest.LENGTH_SHA_256, apduBuffer, (short) SecureChannel.SC_OUT_OFFSET);
 
-    // signPreComputedHash(byte[] hashBuff,
-    //                     short hashOffset,
-    //                     short hashLength,
-    //                     byte[] sigBuff,
-    //                     short sigOffset)
-    // apdu.setOutgoingAndSend((short) 0, (short) sigLen);
-    apdu.setOutgoingAndSend((short) 0, (short) sigLen);
+    // Start a signature template. This logic is meant to be very similar to that in `sign()`
+    apduBuffer[0] = TLV_SIGNATURE_TEMPLATE;
+    apduBuffer[1] = (byte) 0x81;
+    
+    // Add public key for verification
+    apduBuffer[3] = TLV_PUB_KEY;
+    short outLen = apduBuffer[4] = Crypto.KEY_PUB_SIZE;
+    certsAuthPublic.getW(apduBuffer, (short) 5);
+    outLen += 5;
+    // Add signature of msg hash
+    short sigOff = outLen;
+    signature.init(certsAuthPrivate, Signature.MODE_SIGN);
+    // signature.init(privateKey, Signature.MODE_SIGN);
+
+    /*
+    outLen += signature.signPreComputedHash(msgHash, (short) 0, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
+    outLen += crypto.fixS(apduBuffer, sigOff);
+
+    // Finally add the full payload length to the front
+    apduBuffer[2] = (byte) (outLen - 3);
+*/
+    apdu.setOutgoingAndSend((short) 0, (short) outLen);
   }
 
   /**

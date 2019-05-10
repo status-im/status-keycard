@@ -1537,26 +1537,34 @@ public class KeycardTest {
     byte[] msg = new byte[32];
     random.nextBytes(msg);
     APDUResponse response;
+    Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
+    ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
 
-    // Get public key for verification
-    byte[] data = cmdSet.select().checkOK().getData();
-    int pubKeyIdx = 0;
-    for(int i = 0; i < data.length; i++) {
-      if (data[i] == KeycardApplet.TLV_PUB_KEY) {
-        // The identifying pubkey we want is the latter (of 2) pubkeys
-        // returned from an applet select
-        pubKeyIdx = i;
-      }
-    }
-    System.out.println(pubKeyIdx);
-
-    // Request signature on msg hash
+    // Get public key and signature
     response = cmdSet.sendCommand(KeycardApplet.INS_AUTHENTICATE, (byte) 0, (byte) 0, msg);
     assertEquals(0x9000, response.getSw());
-    byte[] sig = response.getData();
+    byte[] data = response.getData();
+    System.out.println("data");
+    System.out.println(data);
+
+    // The authentication pubkey should be the last 65 bytes of the data
+    // int pubKeyIdx = data.length - Crypto.KEY_PUB_SIZE;
+    // byte[] pubKeyBytes = Arrays.copyOfRange(data, pubKeyIdx, pubKeyIdx + Crypto.KEY_PUB_SIZE);
+    // System.out.println("pubKeyBytes");
+    // System.out.println(Arrays.toString(pubKeyBytes));
+    // ECPublicKeySpec pubKeySpec = new ECPublicKeySpec(ecSpec.getCurve().decodePoint(pubKeyBytes), ecSpec);
+    // ECPublicKey pubKey = (ECPublicKey) KeyFactory.getInstance("ECDSA", "BC").generatePublic(pubKeySpec);
+
+    // // Request signature on msg hash
+    // response = cmdSet.sendCommand(KeycardApplet.INS_AUTHENTICATE, (byte) 0, (byte) 0, msg);
+    // assertEquals(0x9000, response.getSw());
+    // byte[] sig = response.getData();
+    // signature.initVerify(pubKey);
+    // signature.update(new byte[8]);
+    // assertTrue(signature.verify(sig));
 
     // Verify signature matches msg hash and public key
-    System.out.println(Arrays.toString(sig));
+    // System.out.println(Arrays.toString(sig));
   }
 
   @Test
