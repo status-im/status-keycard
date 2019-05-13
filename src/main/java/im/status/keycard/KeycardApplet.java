@@ -899,25 +899,18 @@ public class KeycardApplet extends Applet {
     short outLen = apduBuffer[4] = Crypto.KEY_PUB_SIZE;
     certsAuthPublic.getW(apduBuffer, (short) 5);
     outLen += 5;
-
-    // Add signature of msg hash
+    
     short sigOff = outLen;
 
-/*
-FOR SOME REASON, USING privKey IS FINE BUT I CANT GET IT TO WORK WITH certsAuthPrivate
-NEED TO FIGURE OUT WHAT MAKES THESE KEYS DIFFERENT.
-I CANT EVEN GET signature.init TO WORK HERE (EVEN WITH tmpSig, WHICH WE SHOULDNT HAVE TO USE)
-*/
-
+    // Add signature of msg hash
     tmpSig.init(certsAuthPrivate, Signature.MODE_SIGN);
-    
     outLen += tmpSig.signPreComputedHash(msgHash, (short) 0, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
     outLen += crypto.fixS(apduBuffer, sigOff);
 
-    // Finally add the full payload length to the front
+    // // Finally add the full payload length to the front
     apduBuffer[2] = (byte) (outLen - 3);
 
-    apdu.setOutgoingAndSend((short) 0, (short) outLen);
+    apdu.setOutgoingAndSend((short) 0, (short) outLen);    
   }
 
   /**

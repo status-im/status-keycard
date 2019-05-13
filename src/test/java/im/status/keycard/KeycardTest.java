@@ -235,37 +235,36 @@ public class KeycardTest {
   @Test
   @DisplayName("Authentication")
   void authTest() throws Exception {
-    // Build msg hash and setup
-    Random random = new Random();
-    byte[] msg = new byte[32];
-    random.nextBytes(msg);
+    byte[] preImage = "some preImage to be hashed".getBytes();
+    byte[] hash = sha256(preImage);
+    System.out.println("\nhash:");
+    System.out.println(Arrays.toString(hash));
     APDUResponse response;
+    Signature tmpSig = Signature.getInstance("SHA256withECDSA", "BC");
+    ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
     
     // Get public key and signature
-    response = cmdSet.sendCommand(KeycardApplet.INS_AUTHENTICATE, (byte) 0, (byte) 0, msg);
+    response = cmdSet.sendCommand(KeycardApplet.INS_AUTHENTICATE, (byte) 0, (byte) 0, hash);
     assertEquals(0x9000, response.getSw());
     byte[] data = response.getData();
     System.out.println("data");
     System.out.println(Arrays.toString(data));
 
-    // The authentication pubkey should be the last 65 bytes of the data
-    // int pubKeyIdx = data.length - Crypto.KEY_PUB_SIZE;
-    // byte[] pubKeyBytes = Arrays.copyOfRange(data, pubKeyIdx, pubKeyIdx + Crypto.KEY_PUB_SIZE);
-    // System.out.println("pubKeyBytes");
-    // System.out.println(Arrays.toString(pubKeyBytes));
-    // ECPublicKeySpec pubKeySpec = new ECPublicKeySpec(ecSpec.getCurve().decodePoint(pubKeyBytes), ecSpec);
-    // ECPublicKey pubKey = (ECPublicKey) KeyFactory.getInstance("ECDSA", "BC").generatePublic(pubKeySpec);
+    byte[] keyData = extractPublicKeyFromSignature(data);
+    byte[] sig = extractSignature(data);
 
-    // // Request signature on msg hash
-    // response = cmdSet.sendCommand(KeycardApplet.INS_AUTHENTICATE, (byte) 0, (byte) 0, msg);
-    // assertEquals(0x9000, response.getSw());
-    // byte[] sig = response.getData();
-    // signature.initVerify(pubKey);
-    // signature.update(new byte[8]);
-    // assertTrue(signature.verify(sig));
+    System.out.println("auth pubkey");
+    System.out.println(Arrays.toString(keyData));
+    System.out.println("auth sig");
+    System.out.println(Arrays.toString(sig));
 
-    // Verify signature matches msg hash and public key
-    // System.out.println(Arrays.toString(sig));
+    ECPublicKeySpec cardKeySpec = new ECPublicKeySpec(ecSpec.getCurve().decodePoint(keyData), ecSpec);
+    ECPublicKey cardKey = (ECPublicKey) KeyFactory.getInstance("ECDSA", "BC").generatePublic(cardKeySpec);
+
+    tmpSig.initVerify(cardKey);
+    tmpSig.update(hash);
+    assertTrue(tmpSig.verify(sig));
+    
   }
 
   @Test
@@ -1116,15 +1115,19 @@ public class KeycardTest {
     Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
     assertEquals(0x9000, response.getSw());
     byte[] sig = response.getData();
+    System.out.println("verify data");
+    System.out.println(Arrays.toString(sig));
     byte[] keyData = extractPublicKeyFromSignature(sig);
     sig = extractSignature(sig);
+    System.out.println("verify sig");
+    System.out.println(Arrays.toString(sig));
 
     ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
     ECPublicKeySpec cardKeySpec = new ECPublicKeySpec(ecSpec.getCurve().decodePoint(keyData), ecSpec);
     ECPublicKey cardKey = (ECPublicKey) KeyFactory.getInstance("ECDSA", "BC").generatePublic(cardKeySpec);
 
     signature.initVerify(cardKey);
-    assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, keyData.length);
+    assertEquals((SecureChannel.SC_KEY_LENGTH * 2 / 8) + 1, keyData.length);    
     signature.update(data);
     assertTrue(signature.verify(sig));
     assertFalse(isMalleable(sig));
