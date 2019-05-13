@@ -131,8 +131,8 @@ public class KeycardApplet extends Applet {
   private byte[] certs;
   private byte certsLoaded;
   private byte certsLoadedLen;
-  private ECPrivateKey certsAuthPrivate;
   private ECPublicKey certsAuthPublic;
+  private ECPrivateKey certsAuthPrivate;
 
   private byte[] masterSeed;
   private byte masterSeedFlag;
@@ -207,17 +207,6 @@ public class KeycardApplet extends Applet {
     certs = new byte[CERTS_LEN];
     certsLoaded = 0;
     certsLoadedLen = (byte) 0;
-    // certsAuthPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
-    // certsAuthPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
-    // secp256k1.setCurveParameters(certsAuthPublic);
-    // secp256k1.setCurveParameters(certsAuthPrivate);
-    // byte[] privBuf = new byte[Crypto.KEY_SECRET_SIZE];
-    // crypto.random.generateData(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
-    // certsAuthPrivate.setS(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
-
-    // byte[] pubBuf = new byte[Crypto.KEY_PUB_SIZE];
-    // secp256k1.derivePublicKey(privBuf, (short) 0, pubBuf, (short) 0);
-    // certsAuthPublic.setW(pubBuf, (short) 0, Crypto.KEY_PUB_SIZE);
 
     masterSeed = new byte[BIP39_SEED_SIZE];
     masterSeedFlag = SFLAG_NONE;
@@ -234,6 +223,9 @@ public class KeycardApplet extends Applet {
     pinlessPublicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
     pinlessPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
 
+    certsAuthPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
+    certsAuthPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
+
     masterChainCode = new byte[CHAIN_CODE_SIZE];
     parentChainCode = new byte[CHAIN_CODE_SIZE];
     chainCode = new byte[CHAIN_CODE_SIZE];
@@ -243,6 +235,19 @@ public class KeycardApplet extends Applet {
     keyUID = new byte[KEY_UID_LENGTH];
 
     resetCurveParameters();
+
+    // Set the curve params for the certsAuth keypair. This MUST happen after all
+    // other keys are initialized or else the card will lock! 
+    secp256k1.setCurveParameters(certsAuthPublic);
+    secp256k1.setCurveParameters(certsAuthPrivate);
+
+    // Load the certs auth keypair with data
+    byte[] privBuf = new byte[Crypto.KEY_SECRET_SIZE];
+    crypto.random.generateData(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
+    certsAuthPrivate.setS(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
+    byte[] pubBuf = new byte[Crypto.KEY_PUB_SIZE];
+    secp256k1.derivePublicKey(privBuf, (short) 0, pubBuf, (short) 0);
+    certsAuthPublic.setW(pubBuf, (short) 0, Crypto.KEY_PUB_SIZE);
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
@@ -892,9 +897,9 @@ public class KeycardApplet extends Applet {
     // Add public key for verification
     apduBuffer[3] = TLV_PUB_KEY;
     short outLen = apduBuffer[4] = Crypto.KEY_PUB_SIZE;
-    // certsAuthPublic.getW(apduBuffer, (short) 5);
-    // certsAuthPrivate.getS(apduBuffer, (short) 5);
+    certsAuthPublic.getW(apduBuffer, (short) 5);
     outLen += 5;
+
     // Add signature of msg hash
     short sigOff = outLen;
 
@@ -904,17 +909,15 @@ NEED TO FIGURE OUT WHAT MAKES THESE KEYS DIFFERENT.
 I CANT EVEN GET signature.init TO WORK HERE (EVEN WITH tmpSig, WHICH WE SHOULDNT HAVE TO USE)
 */
 
-    // ECPrivateKey signingKey = certsAuthPrivate;
-    // tmpSig.init(masterPrivate, Signature.MODE_SIGN);
-    // tmpSig.init(signingKey, Signature.MODE_VERIFY);
+    tmpSig.init(certsAuthPrivate, Signature.MODE_SIGN);
     
-    // outLen += signature.signPreComputedHash(msgHash, (short) 0, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
-    // outLen += crypto.fixS(apduBuffer, sigOff);
+    outLen += tmpSig.signPreComputedHash(msgHash, (short) 0, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
+    outLen += crypto.fixS(apduBuffer, sigOff);
 
     // Finally add the full payload length to the front
-    // apduBuffer[2] = (byte) (outLen - 3);
+    apduBuffer[2] = (byte) (outLen - 3);
 
-    apdu.setOutgoingAndSend((short) 0, (short) 3);
+    apdu.setOutgoingAndSend((short) 0, (short) outLen);
   }
 
   /**
