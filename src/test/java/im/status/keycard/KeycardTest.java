@@ -1558,23 +1558,36 @@ public class KeycardTest {
   @Test
   @DisplayName("Certs")
   void loadCertsTest() throws Exception {
-    int len = KeycardApplet.CERTS_LEN - 5;
+    int numCerts = 2;
+    int len = KeycardApplet.CERT_LEN * 2;
     byte[] certs = new byte[len];
     Random random = new Random();
     random.nextBytes(certs);
     APDUResponse response;
+
+    // Should fail to load data that is not a multiple of CERT_LEN
+    byte[] notCerts = new byte[68];
+    random.nextBytes(notCerts);
+    response = cmdSet.loadCerts(notCerts);
+    assertEquals(ISO7816.SW_DATA_INVALID, response.getSw());
+
+    // Should successfully load certs of the correct len
     response = cmdSet.loadCerts(certs);
     assertEquals(0x9000, response.getSw());
 
     // Export the certs
-    APDUResponse exportResponse = cmdSet.exportCerts();
+    response = cmdSet.exportCerts();
     assertEquals(0x9000, response.getSw());
-    byte[] exportedCerts = exportResponse.getData();
+    byte[] exportedCerts = response.getData();
     assertEquals(exportedCerts[0] & 0xff, KeycardApplet.TLV_CERTS & 0xff);
     assertEquals(exportedCerts[1] & 0xff, len & 0xff);
 
-    byte[] exportedCertsSlice = Arrays.copyOfRange(exportedCerts, 2, exportedCerts.length);
-    assertArrayEquals(exportedCertsSlice, certs);
+    // Look at first cert
+    assertEquals(exportedCerts[2] & 0xff, KeycardApplet.TLV_CERT & 0xff);
+    assertEquals(exportedCerts[3] & 0xff, KeycardApplet.CERT_LEN & 0xff);
+    // Second cert
+    assertEquals(exportedCerts[4 + KeycardApplet.CERT_LEN] & 0xff, KeycardApplet.TLV_CERT & 0xff);
+    assertEquals(exportedCerts[5 + KeycardApplet.CERT_LEN] & 0xff, KeycardApplet.CERT_LEN & 0xff);
 
     // Should fail to re-load certs
     random.nextBytes(certs);

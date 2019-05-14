@@ -94,6 +94,7 @@ public class KeycardApplet extends Applet {
 
   static final byte TLV_SEED = (byte) 0x90;
   static final byte TLV_CERTS = (byte) 0x91;
+  static final byte TLV_CERT = (byte) 0x92;
 
   static final byte TLV_APPLICATION_STATUS_TEMPLATE = (byte) 0xA3;
   static final byte TLV_INT = (byte) 0x02;
@@ -130,7 +131,7 @@ public class KeycardApplet extends Applet {
   static final short CERTS_LEN = CERT_LEN * NUM_CERTS;
   private byte[] certs;
   private byte certsLoaded;
-  private byte certsLoadedLen;
+  private byte numCertsLoaded;
   private ECPublicKey certsAuthPublic;
   private ECPrivateKey certsAuthPrivate;
 
@@ -206,7 +207,7 @@ public class KeycardApplet extends Applet {
     // Room for 3 certs
     certs = new byte[CERTS_LEN];
     certsLoaded = 0;
-    certsLoadedLen = (byte) 0;
+    numCertsLoaded = (byte) 0;
 
     masterSeed = new byte[BIP39_SEED_SIZE];
     masterSeedFlag = SFLAG_NONE;
@@ -855,7 +856,7 @@ public class KeycardApplet extends Applet {
     
     // Get length of certs
     short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
-    if (len > CERTS_LEN) {
+    if (len > CERTS_LEN || len % CERT_LEN != 0) {
       ISOException.throwIt(ISO7816.SW_DATA_INVALID);
     }
 
@@ -863,8 +864,7 @@ public class KeycardApplet extends Applet {
     
     // Prevent any future calls of this function
     certsLoaded = 1;
-    // certsLoadedLen = (byte) len;
-    certsLoadedLen = (byte) len;
+    numCertsLoaded = (byte) (len / CERT_LEN);
 
     JCSystem.commitTransaction();
   } 
@@ -876,11 +876,16 @@ public class KeycardApplet extends Applet {
    */
   private void exportCerts(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
-    apduBuffer[0] = TLV_CERTS;
-    apduBuffer[1] = certsLoadedLen;
-    short len = (short) (certsLoadedLen & 0xff);
-    Util.arrayCopyNonAtomic(certs, (short) 0, apduBuffer, (short) 2, len);
-    apdu.setOutgoingAndSend((short) 0, (short) (2 + len));
+    short off = 0;
+    apduBuffer[off++] = TLV_CERTS;
+    apduBuffer[off++] = (byte) (CERT_LEN * numCertsLoaded);
+    for (short i = 0; i < numCertsLoaded; i++) {
+      apduBuffer[off++] = TLV_CERT;
+      apduBuffer[off++] = CERT_LEN;
+      Util.arrayCopyNonAtomic(certs, (short) (i * CERT_LEN), apduBuffer, (short) off, CERT_LEN);
+      off += CERT_LEN;
+    }
+    apdu.setOutgoingAndSend((short) 0, off);
   }
 
   private void authenticate(APDU apdu) {
