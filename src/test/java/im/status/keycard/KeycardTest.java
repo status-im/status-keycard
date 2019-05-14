@@ -14,7 +14,7 @@ import im.status.keycard.io.CardListener;
 import im.status.keycard.Crypto;
 import javacard.framework.AID;
 import javacard.framework.ISO7816;
-// import javacard.security.*;
+
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.crypto.ChildNumber;
 import org.bitcoinj.crypto.DeterministicKey;
@@ -34,6 +34,8 @@ import org.web3j.tx.Transfer;
 import org.web3j.utils.Convert;
 import org.web3j.utils.Numeric;
 
+import org.bouncycastle.jce.interfaces.ECPublicKey;
+
 import javax.smartcardio.*;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -43,8 +45,6 @@ import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.security.*;
-
-import org.bouncycastle.jce.interfaces.ECPublicKey;
 
 import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
@@ -230,41 +230,6 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
     byte[] data = response.getData();
     assertTrue(new ApplicationInfo(data).isInitializedCard());
-  }
-
-  @Test
-  @DisplayName("Authentication")
-  void authTest() throws Exception {
-    byte[] preImage = "some preImage to be hashed".getBytes();
-    byte[] hash = sha256(preImage);
-    System.out.println("\nhash:");
-    System.out.println(Arrays.toString(hash));
-    APDUResponse response;
-    Signature tmpSig = Signature.getInstance("SHA256withECDSA", "BC");
-    ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
-    
-    // Get public key and signature
-    response = cmdSet.sendCommand(KeycardApplet.INS_AUTHENTICATE, (byte) 0, (byte) 0, hash);
-    assertEquals(0x9000, response.getSw());
-    byte[] data = response.getData();
-    System.out.println("data");
-    System.out.println(Arrays.toString(data));
-
-    byte[] keyData = extractPublicKeyFromSignature(data);
-    byte[] sig = extractSignature(data);
-
-    System.out.println("auth pubkey");
-    System.out.println(Arrays.toString(keyData));
-    System.out.println("auth sig");
-    System.out.println(Arrays.toString(sig));
-
-    ECPublicKeySpec cardKeySpec = new ECPublicKeySpec(ecSpec.getCurve().decodePoint(keyData), ecSpec);
-    ECPublicKey cardKey = (ECPublicKey) KeyFactory.getInstance("ECDSA", "BC").generatePublic(cardKeySpec);
-
-    tmpSig.initVerify(cardKey);
-    tmpSig.update(hash);
-    assertTrue(tmpSig.verify(sig));
-    
   }
 
   @Test
@@ -1115,12 +1080,8 @@ public class KeycardTest {
     Signature signature = Signature.getInstance("SHA256withECDSA", "BC");
     assertEquals(0x9000, response.getSw());
     byte[] sig = response.getData();
-    System.out.println("verify data");
-    System.out.println(Arrays.toString(sig));
     byte[] keyData = extractPublicKeyFromSignature(sig);
     sig = extractSignature(sig);
-    System.out.println("verify sig");
-    System.out.println(Arrays.toString(sig));
 
     ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
     ECPublicKeySpec cardKeySpec = new ECPublicKeySpec(ecSpec.getCurve().decodePoint(keyData), ecSpec);
@@ -1569,6 +1530,32 @@ public class KeycardTest {
   //====================================
 
   @Test
+  @DisplayName("Authentication")
+  void authTest() throws Exception {
+    byte[] preImage = "some preImage to be hashed".getBytes();
+    byte[] hash = sha256(preImage);
+    APDUResponse response;
+    Signature tmpSig = Signature.getInstance("SHA256withECDSA", "BC");
+    
+    // Get public key and signature
+    response = cmdSet.sendCommand(KeycardApplet.INS_AUTHENTICATE, (byte) 0, (byte) 0, hash);
+    assertEquals(0x9000, response.getSw());
+    byte[] data = response.getData();
+
+    byte[] keyData = extractPublicKeyFromSignature(data);
+    byte[] sig = extractSignature(data);
+
+    ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
+    ECPublicKeySpec cardKeySpec = new ECPublicKeySpec(ecSpec.getCurve().decodePoint(keyData), ecSpec);
+    ECPublicKey cardKey = (ECPublicKey) KeyFactory.getInstance("ECDSA", "BC").generatePublic(cardKeySpec);
+
+    tmpSig.initVerify(cardKey);
+    tmpSig.update(preImage);
+    assertTrue(tmpSig.verify(sig));
+  }
+
+
+  @Test
   @DisplayName("Certs")
   void loadCertsTest() throws Exception {
     int len = KeycardApplet.CERTS_LEN - 5;
@@ -1715,7 +1702,7 @@ public class KeycardTest {
     assertEquals(success, response.getSw());
 
   }
-/*
+
   @Test
   @DisplayName("Overwrite Pairing")
   void overwritePairingTest() throws Exception {    
@@ -1879,7 +1866,7 @@ public class KeycardTest {
       assertEquals(0x6D00, cmdSet.init("000000", "123456789012", pairingSecret).getSw());
     }
   }
-*/
+
   //====================================
   // END GRIDPLUS SAFECARD TESTS
   //====================================
