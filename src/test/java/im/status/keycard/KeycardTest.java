@@ -1580,7 +1580,7 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
     byte[] exportedCerts = response.getData();
     assertEquals(exportedCerts[0] & 0xff, KeycardApplet.TLV_CERTS & 0xff);
-    assertEquals(exportedCerts[1] & 0xff, len & 0xff);
+    assertEquals(exportedCerts[1] & 0xff, (len + (2 * numCerts)) & 0xff);
 
     // Look at first cert
     assertEquals(exportedCerts[2] & 0xff, KeycardApplet.TLV_CERT & 0xff);

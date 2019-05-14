@@ -878,7 +878,7 @@ public class KeycardApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     short off = 0;
     apduBuffer[off++] = TLV_CERTS;
-    apduBuffer[off++] = (byte) (CERT_LEN * numCertsLoaded);
+    apduBuffer[off++] = (byte) ((2 + CERT_LEN) * numCertsLoaded); // Each cert has a 2-byte header
     for (short i = 0; i < numCertsLoaded; i++) {
       apduBuffer[off++] = TLV_CERT;
       apduBuffer[off++] = CERT_LEN;
