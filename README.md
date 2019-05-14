@@ -2,15 +2,15 @@
 
 This repo contains the Javacard applet that runs on the GridPlus SafeCard. It is a fork of the [Status KeyCard](https://github.com/status-im/status-keycard), with only a few notable changes. They are documented below.
 
-## Certificates
+## Certificates and Card Authentication
 
-GridPlus SafeCards are typically used with a secure interface (the Lattice1), which queries the card for its certificates. Each cert is an ECDSA signature on the card's unique ID (create when the applet is installed on the card) and is signed by a GridPlus certificate authority. There are typically three certs stored on each SafeCard.
+GridPlus SafeCards are typically used with a secure interface (the Lattice1), which queries the card for its certificates. Each cert is an ECDSA signature on the card's "authentication" public key and is signed by a GridPlus certificate authority. There are between 1 and 3 certs stored on the card.
 
-> The GridPlus CA produces 71-byte signatures, so we have allocated 213 bytes of certificate storage to the applet. It is conceivable that future versions will have shorter signatures, so we return `len(certs)` in Export Certs.
+> The GridPlus CA produces 64-byte signatures (concatenated `r` and `s` components - fixed at 32 bytes each)
 
 #### `Load Certs (APDU 0xFA)`
 
-This APDU allows the card issuer to load certs on a card that has not been initialized. 
+This APDU allows the card issuer to load certs on a card that has not been initialized. The payload length must be a multiple of cert length (64 bytes). 
 
 * P1: None
 * P2: None
@@ -24,9 +24,23 @@ This APDU allows any card holder to export the loaded certs for inspection. It c
 * P1: None
 * P2: None
 * Data: None
-* Returns: `[ TLV_CERTS (0x91), <len(certs)>, <certs>]`
+* Returns: `[ TLV_CERTS (0x91), <len(payload)>, TLV_CERT (0x92), <len(cert0)>, <cert0>, ... TLV_CERT (0x92), <len(certN)>, <certN>]`
 
-> `certs` is an array of up to three concatenated, 71-byte certs
+> `cert` is a 64-byte signature (`r` concatenated with `s`)
+
+#### `Authenticate (APDU 0xEE)`
+
+This APDU allows the user to request a signature on a hash from the "auth" keypair. It returns the same signature TLV template as `SIGN`.
+
+> This APDU does not use a secure channel because authorization and verification of the card should happen before the user inputs a PIN
+
+* P1: None
+* P2: None
+* Date: 32-byte hash
+* return `[ TLV_SIGNATURE_TEMPLATE, 0x81, <len(payload)>, TLV_PUB_KEY, <len(pubKey)>, <pubKey>, 0x30, <len(sig)>, 0x02, <len(sig.r)>, <sig.r>, 0x02, <len(sig.s)>, <sig.s>]`
+
+> Note that this signature template is the same as what `SIGN` would produce. I'm not sure where some of the tag byte values come from.
+
 
 ## Master Seed
 
