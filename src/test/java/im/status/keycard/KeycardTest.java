@@ -513,6 +513,13 @@ public class KeycardTest {
 
     cmdSet.autoOpenSecureChannel();
 
+    // Wrong format
+    response = cmdSet.verifyPIN("12345");
+    assertEquals(0x6a80, response.getSw());
+
+    response = cmdSet.verifyPIN("12345a");
+    assertEquals(0x6a80, response.getSw());
+
     // Wrong PIN
     response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C2, response.getSw());

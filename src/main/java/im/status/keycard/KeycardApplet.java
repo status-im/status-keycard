@@ -542,6 +542,10 @@ public class KeycardApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     byte len = (byte) secureChannel.preprocessAPDU(apduBuffer);
 
+    if (!(len == PIN_LENGTH && allDigits(apduBuffer, ISO7816.OFFSET_CDATA, len))) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
     if (!pin.check(apduBuffer, ISO7816.OFFSET_CDATA, len)) {
       ISOException.throwIt((short)((short) 0x63c0 | (short) pin.getTriesRemaining()));
     }
