@@ -51,7 +51,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Test the Keycard Applet")
 public class KeycardTest {
-  // Psiring key is KeycardTest
+  // Pairing key is KeycardTest
   private static CardTerminal cardTerminal;
   private static CardChannel apduChannel;
   private static im.status.keycard.io.CardChannel sdkChannel;
@@ -130,7 +130,13 @@ public class KeycardTest {
   private static void openSimulatorChannel() throws Exception {
     simulator = new CardSimulator();
     AID appletAID = AIDUtil.create(Identifiers.getKeycardInstanceAID());
+    AID ndefAID = AIDUtil.create(Identifiers.NDEF_AID);
+    AID cashAID = AIDUtil.create(Identifiers.CASH_AID);
+
     simulator.installApplet(appletAID, KeycardApplet.class);
+    simulator.installApplet(ndefAID, NDEFApplet.class);
+    simulator.installApplet(cashAID, CashApplet.class);
+
     cardTerminal = CardTerminalSimulator.terminal(simulator);
 
     openPCSCChannel();
@@ -1430,6 +1436,24 @@ public class KeycardTest {
     response = cmdSet.duplicateKeyImport(backup);
     assertEquals(0x9000, response.getSw());
     assertArrayEquals(keyUID, response.getData());
+  }
+
+  @Test
+  @DisplayName("Test the Cash applet")
+  @Tag("manual")
+  void cashTest() throws Exception {
+    CashCommandSet cashCmdSet = new CashCommandSet(sdkChannel);
+    APDUResponse response = cashCmdSet.select();
+    assertEquals(0x9000, response.getSw());
+
+    ApplicationInfo info = new ApplicationInfo(response.getData());
+    assertFalse(info.isInitializedCard());
+
+    byte[] data = "some data to be hashed".getBytes();
+    byte[] hash = sha256(data);
+
+    response = cashCmdSet.sign(hash);
+    verifySignResp(data, response);
   }
 
   @Test

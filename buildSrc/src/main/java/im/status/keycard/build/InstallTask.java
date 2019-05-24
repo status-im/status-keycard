@@ -67,6 +67,8 @@ public class InstallTask extends DefaultTask {
       cmdSet.installKeycardApplet();
       logger.info("Installing the NDEF Applet");
       cmdSet.installNDEFApplet(new byte[0]);
+      logger.info("Installing the Cash Applet");
+      cmdSet.installCashApplet();
     } catch (IOException e) {
       throw new GradleException("I/O error", e);
     } catch (APDUException e) {
