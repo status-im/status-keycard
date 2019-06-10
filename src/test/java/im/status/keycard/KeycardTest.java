@@ -1446,8 +1446,8 @@ public class KeycardTest {
     APDUResponse response = cashCmdSet.select();
     assertEquals(0x9000, response.getSw());
 
-    ApplicationInfo info = new ApplicationInfo(response.getData());
-    assertFalse(info.isInitializedCard());
+    CashApplicationInfo info = new CashApplicationInfo(response.getData());
+    assertTrue(info.getAppVersion() > 0);
 
     byte[] data = "some data to be hashed".getBytes();
     byte[] hash = sha256(data);

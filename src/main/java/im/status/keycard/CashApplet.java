@@ -84,10 +84,23 @@ public class CashApplet extends Applet {
   private void selectApplet(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
 
-    apduBuffer[0] = KeycardApplet.TLV_PUB_KEY;
-    apduBuffer[1] = (byte) publicKey.getW(apduBuffer, (short) 2);
+    short off = 0;
 
-    apdu.setOutgoingAndSend((short) 0, (short)(apduBuffer[1] + 2));
+    apduBuffer[off++] = KeycardApplet.TLV_APPLICATION_INFO_TEMPLATE;
+    short lenoff = off++;
+
+    apduBuffer[off++] = KeycardApplet.TLV_PUB_KEY;
+    short keyLength = publicKey.getW(apduBuffer, (short) (off + 1));
+    apduBuffer[off++] = (byte) keyLength;
+    off += keyLength;
+
+    apduBuffer[off++] = KeycardApplet.TLV_INT;
+    apduBuffer[off++] = 2;
+    Util.setShort(apduBuffer, off, KeycardApplet.APPLICATION_VERSION);
+    off += 2;
+
+    apduBuffer[lenoff] = (byte)(off - lenoff - 1);
+    apdu.setOutgoingAndSend((short) 0, off);
   }
 
   private void sign(APDU apdu) {
