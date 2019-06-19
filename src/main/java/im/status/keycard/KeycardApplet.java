@@ -95,6 +95,7 @@ public class KeycardApplet extends Applet {
   static final byte TLV_SEED = (byte) 0x90;
   static final byte TLV_CERTS = (byte) 0x91;
   static final byte TLV_CERT = (byte) 0x92;
+  static final byte TLV_SEED_FLAG = (byte) 0x9F;
 
   static final byte TLV_APPLICATION_STATUS_TEMPLATE = (byte) 0xA3;
   static final byte TLV_INT = (byte) 0x02;
@@ -104,6 +105,7 @@ public class KeycardApplet extends Applet {
   static final byte TLV_UID = (byte) 0x8F;
   static final byte TLV_KEY_UID = (byte) 0x8E;
   static final byte TLV_CAPABILITIES = (byte) 0x8D;
+
 
   static final byte CAPABILITY_SECURE_CHANNEL = (byte) 0x01;
   static final byte CAPABILITY_KEY_MANAGEMENT = (byte) 0x02;
@@ -115,8 +117,9 @@ public class KeycardApplet extends Applet {
   static final byte[] EIP_1581_PREFIX = { (byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D};
 
   static final byte SFLAG_NONE = 0;
-  static final byte SFLAG_EXPORTABLE = 1;
-  static final byte SFLAG_MAX = 1;
+  static final byte SFLAG_NOT_EXPORTABLE = 1;
+  static final byte SFLAG_EXPORTABLE = 2;
+  static final byte SFLAG_MAX = 2;
 
   static final byte INIT_P1_FIRST_TIME = 0x00;
   static final byte INIT_P1_NEW_CLIENT = 0x01;
@@ -546,6 +549,10 @@ public class KeycardApplet extends Applet {
     apduBuffer[off++] = 1;
     apduBuffer[off++] = APPLICATION_CAPABILITIES;
 
+    apduBuffer[off++] = TLV_SEED_FLAG;
+    apduBuffer[off++] = 1;
+    apduBuffer[off++] = masterSeedFlag;
+
     apduBuffer[lenoff] = (byte)(off - lenoff - 1);
     apdu.setOutgoingAndSend((short) 0, off);
   }
@@ -776,7 +783,7 @@ public class KeycardApplet extends Applet {
     if (!pin.isValidated()) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
-    byte flag = apduBuffer[ISO7816.OFFSET_P2];
+    byte flag = (byte) (apduBuffer[ISO7816.OFFSET_P2] + (byte) 1); // non-exportable = 1, exportable = 2
 
     switch (apduBuffer[ISO7816.OFFSET_P1])  {
       case LOAD_KEY_P1_EC:
@@ -1318,7 +1325,7 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    byte flag = apduBuffer[ISO7816.OFFSET_P1];
+    byte flag = (byte) (apduBuffer[ISO7816.OFFSET_P1] + (byte) 1); // non-exportable = 1, exportable = 2
 
     apduBuffer[ISO7816.OFFSET_LC] = BIP39_SEED_SIZE;
     crypto.random.generateData(apduBuffer, ISO7816.OFFSET_CDATA, BIP39_SEED_SIZE);
@@ -1592,7 +1599,7 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    if (masterSeedFlag == SFLAG_NONE) {
+    if (masterSeedFlag != SFLAG_EXPORTABLE) {
       ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
     }
 

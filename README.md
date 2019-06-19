@@ -2,6 +2,18 @@
 
 This repo contains the Javacard applet that runs on the GridPlus SafeCard. It is a fork of the [Status KeyCard](https://github.com/status-im/status-keycard), with only a few notable changes. They are documented below.
 
+## `SELECT`
+
+The `SELECT` command returns the same data as [Status' response](https://status.im/keycard_api/apdu_select.html) with one
+additional piece appended to the end of the response data:
+
+`Tag 0x9F = SeedFlag (1 byte)`
+
+The value will be one of the following:
+* Seed not initialized: `0`
+* Seed initialized but not exportable: `1`
+* Seed initialized and exportable: `2`
+
 ## Certificates and Card Authentication
 
 GridPlus SafeCards are typically used with a secure interface (the Lattice1), which queries the card for its certificates. Each cert is an ECDSA signature on the card's "authentication" public key and is signed by a GridPlus certificate authority. There are between 1 and 3 certs stored on the card.

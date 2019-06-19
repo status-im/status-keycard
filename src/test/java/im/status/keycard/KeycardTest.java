@@ -229,6 +229,7 @@ public class KeycardTest {
     APDUResponse response = cmdSet.select();
     assertEquals(0x9000, response.getSw());
     byte[] data = response.getData();
+
     assertTrue(new ApplicationInfo(data).isInitializedCard());
   }
 
@@ -1598,6 +1599,7 @@ public class KeycardTest {
   @Test
   @DisplayName("Master Seeds")
   void masterSeedsTest() throws Exception {
+    byte[] data;
     APDUResponse response;
     Random random = new Random();
     int success = ISO7816.SW_NO_ERROR & 0xffff;
@@ -1610,10 +1612,36 @@ public class KeycardTest {
     response = cmdSet.removeKey();
     assertEquals(success, response.getSw());
 
+    // Verify seed flag is set to null
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSw());
+    data = response.getData();
+    assertEquals(data[data.length - 3], KeycardApplet.TLV_SEED_FLAG);
+    assertEquals(data[data.length - 2], (byte) 1);
+    assertEquals(data[data.length - 1], KeycardApplet.SFLAG_NONE);
+
+    // Verify pin
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(success, response.getSw());
+
     // Generate a non-exportable seed
     byte empty = (byte) 0;
     byte flag = (byte) 0;
     response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
+    assertEquals(success, response.getSw());
+
+    // Verify seed flag is set to NOT_EXPORTABLE
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSw());
+    data = response.getData();
+    assertEquals(data[data.length - 3], KeycardApplet.TLV_SEED_FLAG);
+    assertEquals(data[data.length - 2], (byte) 1);
+    assertEquals(data[data.length - 1], KeycardApplet.SFLAG_NOT_EXPORTABLE);
+
+    // Verify pin
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.verifyPIN("000000");
     assertEquals(success, response.getSw());
 
     // Fail to export the seed
@@ -1633,6 +1661,19 @@ public class KeycardTest {
     response = cmdSet.sendSecureCommand(KeycardApplet.INS_GENERATE_KEY, flag, empty, new byte[0]);
     assertEquals(success, response.getSw());
     byte[] generatedKey = response.getData();
+
+    // Verify seed flag is set to EXPORTABLE
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSw());
+    data = response.getData();
+    assertEquals(data[data.length - 3], KeycardApplet.TLV_SEED_FLAG);
+    assertEquals(data[data.length - 2], (byte) 1);
+    assertEquals(data[data.length - 1], KeycardApplet.SFLAG_EXPORTABLE);
+
+    // Verify pin
+    cmdSet.autoOpenSecureChannel();
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(success, response.getSw());
 
     // Export the seed
     response = cmdSet.exportSeed();
