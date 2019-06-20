@@ -106,6 +106,8 @@ public class KeycardApplet extends Applet {
   static final byte TLV_KEY_UID = (byte) 0x8E;
   static final byte TLV_CAPABILITIES = (byte) 0x8D;
 
+  static final byte TLV_PHONON_IDX = (byte) 0xF0;
+
 
   static final byte CAPABILITY_SECURE_CHANNEL = (byte) 0x01;
   static final byte CAPABILITY_KEY_MANAGEMENT = (byte) 0x02;
@@ -135,8 +137,8 @@ public class KeycardApplet extends Applet {
   private byte[] certs;
   private byte certsLoaded;
   private byte numCertsLoaded;
-  private ECPublicKey certsAuthPublic;
-  private ECPrivateKey certsAuthPrivate;
+  private ECPublicKey idPublic;
+  private ECPrivateKey idPrivate;
 
   private byte[] masterSeed;
   private byte masterSeedFlag;
@@ -229,8 +231,8 @@ public class KeycardApplet extends Applet {
     pinlessPublicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
     pinlessPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
 
-    certsAuthPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
-    certsAuthPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
+    idPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
+    idPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
 
     masterChainCode = new byte[CHAIN_CODE_SIZE];
     parentChainCode = new byte[CHAIN_CODE_SIZE];
@@ -244,16 +246,16 @@ public class KeycardApplet extends Applet {
 
     // Set the curve params for the certsAuth keypair. This MUST happen after all
     // other keys are initialized or else the card will lock! 
-    secp256k1.setCurveParameters(certsAuthPublic);
-    secp256k1.setCurveParameters(certsAuthPrivate);
+    secp256k1.setCurveParameters(idPublic);
+    secp256k1.setCurveParameters(idPrivate);
 
     // Load the certs auth keypair with data
     byte[] privBuf = new byte[Crypto.KEY_SECRET_SIZE];
     crypto.random.generateData(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
-    certsAuthPrivate.setS(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
+    idPrivate.setS(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
     byte[] pubBuf = new byte[Crypto.KEY_PUB_SIZE];
     secp256k1.derivePublicKey(privBuf, (short) 0, pubBuf, (short) 0);
-    certsAuthPublic.setW(pubBuf, (short) 0, Crypto.KEY_PUB_SIZE);
+    idPublic.setW(pubBuf, (short) 0, Crypto.KEY_PUB_SIZE);
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
@@ -402,6 +404,49 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(sw);
     }
   }
+
+
+  //==============================================================================
+  // PHONON STUFF
+  //==============================================================================
+
+  /**
+   * Deposit a phonon
+   * @param apdu - the JCRE-owned APDU object.
+   * P1 and P2 are combined to form a 2-byte number (short) representing a deposit nonce
+   * Data represents the serialized phonon deposit data, which includes the following params:
+   * - networkId (byte): the index of the relevant network identifier (stored in the PhononNetwork instance)
+   * - assetId (byte): the index of the asset, generally stored on-chain (no representation on the card)
+   * - amount (short): Value of the phonon
+   * - decimals (byte): Exponent of amount (true value is: amount * 10 ** decimals)
+   * - extraData (byte[33]): Data that is needed to validate the phonon (e.g. txhash + vout) 
+   */
+  private void phononDeposit(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    apdu.setIncomingAndReceive();
+    byte p1 = (byte) apduBuffer[ISO7816.OFFSET_P1];
+    byte p2 = (byte) apduBuffer[ISO7816.OFFSET_P2];
+    short nonce = phonon.bytesToShort(p1, p2);
+    // Get length of payload and instantiate
+    short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
+    byte[] payload = new byte[len];
+    
+    JCSystem.beginTransaction();
+    // Get the private key
+    byte[] key = getPhononKey(nonce);
+    // Copy data to payload
+    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, payload, (short) 0, len);
+    // Attempt the deposit
+    short phononIdx = phonon.deposit(nonce, key, payload);
+    JCSystem.commitTransaction();
+    apduBuffer[0] = TLV_PHONON_IDX;
+    apduBuffer[1] = 2; // length of deposit index (short)
+    byte[] bPhononIndex = phonon.shortToBytes(phononIdx);
+    apduBuffer[2] = bPhononIndex[0];
+    apduBuffer[3] = bPhononIndex[1];
+    apdu.setOutgoingAndSend((short) 0, (short) 4);  
+  }
+
 
   /**
    * Processes the init command, this is invoked only if the applet has not yet been personalized with secrets.
@@ -911,13 +956,13 @@ public class KeycardApplet extends Applet {
     // Add public key for verification
     apduBuffer[3] = TLV_PUB_KEY;
     short outLen = apduBuffer[4] = Crypto.KEY_PUB_SIZE;
-    certsAuthPublic.getW(apduBuffer, (short) 5);
+    idPublic.getW(apduBuffer, (short) 5);
     outLen += 5;
     
     short sigOff = outLen;
 
     // Add signature of msg hash
-    tmpSig.init(certsAuthPrivate, Signature.MODE_SIGN);
+    tmpSig.init(idPrivate, Signature.MODE_SIGN);
     outLen += tmpSig.signPreComputedHash(msgHash, (short) 0, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
     outLen += crypto.fixS(apduBuffer, sigOff);
 
@@ -1833,4 +1878,34 @@ public class KeycardApplet extends Applet {
     secp256k1.setCurveParameters(pinlessPrivateKey);
   }
 
+  //==========================================================================================================
+  // PHONON HELPERS
+  //==========================================================================================================    
+
+  // Get a phonon private key based on a nonce
+  private byte[] getPhononKey(short nonce) {
+    byte[] preImage = new byte[Crypto.KEY_SECRET_SIZE + 2];
+    byte[] privBuf = new byte[Crypto.KEY_SECRET_SIZE];
+    idPrivate.getS(preImage, (short) 0);
+
+    // Get the first and second bytes of the nonce
+    // NOTE: This assumes little endian - if this were a big endian system, these byte values would be flipped
+    byte[] b = phonon.shortToBytes(nonce);
+    preImage[Crypto.KEY_SECRET_SIZE] = b[0];
+    preImage[Crypto.KEY_SECRET_SIZE + 1] = b[1];
+    
+    // Derive the nonced private key
+    crypto.sha256.doFinal(preImage, (short) 0, (short) (Crypto.KEY_SECRET_SIZE + 2), privBuf, (short) 0);
+    return privBuf;
+  }
+
+  // Derive a phonon private key using a nonce and return the corresponding public key
+  private byte[] getPhononDepositPubKey(short nonce) {
+    byte[] pubBuf = new byte[Crypto.KEY_PUB_SIZE];
+    byte[] privBuf = getPhononKey(nonce);
+    
+    // Derive corresponding public key
+    secp256k1.derivePublicKey(privBuf, (short) 0, pubBuf, (short) 0);
+    return pubBuf;
+  }
 }
