@@ -168,6 +168,7 @@ public class KeycardApplet extends Applet {
 
   private Crypto crypto;
   private SECP256k1 secp256k1;
+  private PhononNetwork phonon;
 
   private byte[] duplicationEncKey;
   private short expectedEntropy;
@@ -203,6 +204,7 @@ public class KeycardApplet extends Applet {
     crypto = new Crypto();
     secp256k1 = new SECP256k1(crypto);
     secureChannel = new SecureChannel(PAIRING_MAX_CLIENT_COUNT, crypto, secp256k1);
+    phonon = new PhononNetwork();
 
     uid = new byte[UID_LENGTH];
     crypto.random.generateData(uid, (short) 0, UID_LENGTH);
