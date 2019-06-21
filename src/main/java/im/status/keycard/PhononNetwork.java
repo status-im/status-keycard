@@ -2,6 +2,7 @@ package im.status.keycard;
 import javacard.framework.*;
 
 public class PhononNetwork {
+    static final public byte SERIALIZED_PHONON_LEN = 59; // 37 bytes of data + 32 byte priv key
     static final public byte NETWORK_DESCRIPTOR_LEN = 32;
     static final public byte EXTRA_DATA_LEN = 33;
     static final public byte NUM_PHONONS = 32;
@@ -21,28 +22,6 @@ public class PhononNetwork {
         this.networks = new byte[NETWORK_DESCRIPTOR_LEN * NUM_NETWORK_SLOTS];   // 5x Network descriptors
     }
 
-    //==========================================================================================================
-    // PUBLIC GETTERS AND SETTERS
-    //==========================================================================================================    
-
-    // Add a 32 byte network descriptor. This must be 32 bytes and should be left-padded with zeros,
-    // though the padding itself is not enforced here.
-    public boolean setNetworkDescriptor(short i, byte[] d) {
-        if (d.length != NETWORK_DESCRIPTOR_LEN || i < 0 || i > 4) {
-            return false;
-        }
-        Util.arrayCopy(d, (short) 0, this.networks, (short) (i * NETWORK_DESCRIPTOR_LEN), NETWORK_DESCRIPTOR_LEN);
-        return true;
-    }
-
-    // Get the network descriptor at slot `i`
-    public byte[] getNetworkDescriptor(short i) {
-        byte[] d = new byte[NETWORK_DESCRIPTOR_LEN];
-        if (i >= 0 && i <= 4) {
-            Util.arrayCopy(this.networks, (short) (i * NETWORK_DESCRIPTOR_LEN), d, (short) 0, NETWORK_DESCRIPTOR_LEN);
-        }
-        return d;
-    }
 
     //==========================================================================================================
     // PRIVATE HELPERS
@@ -75,20 +54,52 @@ public class PhononNetwork {
         return b;
     }
 
+    // Unpack a 37 byte serialized payload
     private Phonon unpackDeposit(short nonce, byte[] priv, byte[] d) {
-        //  byte[] priv, byte networkId, byte assetId, short amount, byte decimals, byte[] extraData
         short off = 0;
+        // byte 0
         byte networkId = d[off];
+        // byte 1
         byte assetId = d[off++];
+        // byte 2-3
         byte a1 = d[off++];
         byte a2 = d[off++];
         short amount = this.bytesToShort(a1, a2);
+        // byte 4
         byte decimals = d[off++];
+        // byte 5-36
         byte[] extraData = new byte[EXTRA_DATA_LEN];
         Util.arrayCopy(d, off, extraData, (short) 0, EXTRA_DATA_LEN);
         Phonon p = new Phonon(networkId, assetId, priv, amount, decimals, extraData);
         return p;
     }
+
+    //==========================================================================================================
+    // PUBLIC GETTERS AND SETTERS
+    //==========================================================================================================    
+
+    // Add a 32 byte network descriptor. This must be 32 bytes and should be left-padded with zeros,
+    // though the padding itself is not enforced here.
+    public boolean setNetworkDescriptor(short i, byte[] d) {
+        if (d.length != NETWORK_DESCRIPTOR_LEN || i < 0 || i > 4) {
+            return false;
+        }
+        Util.arrayCopy(d, (short) 0, this.networks, (short) (i * NETWORK_DESCRIPTOR_LEN), NETWORK_DESCRIPTOR_LEN);
+        return true;
+    }
+
+    // Get the network descriptor at slot `i`
+    public byte[] getNetworkDescriptor(short i) {
+        byte[] d = new byte[NETWORK_DESCRIPTOR_LEN];
+        if (i >= 0 && i <= 4) {
+            Util.arrayCopy(this.networks, (short) (i * NETWORK_DESCRIPTOR_LEN), d, (short) 0, NETWORK_DESCRIPTOR_LEN);
+        }
+        return d;
+    }
+
+    // public byte[] getSerializedPhonon(short i) {
+
+    // }
 
     //==========================================================================================================
     // DEPOSITS
@@ -97,12 +108,16 @@ public class PhononNetwork {
     public short deposit(short nonce, byte[] priv, byte[] payload) {
         // Ensure we are able to deposit at this nonce
         if (nonce <= this.depositNonce) {
-            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+            return -1;
         }
         // Ensure there is an available phonon slot
         short i = getNextPhononSlot();
         if (i < 0) {
-            ISOException.throwIt(ISO7816.SW_FILE_FULL);
+            return -1;
+        }
+        // Ensure the payload is the correct length
+        if ((payload.length + priv.length) != (short) SERIALIZED_PHONON_LEN) {
+            return -1;
         }
         // Save the phonon
         Phonon p = unpackDeposit(nonce, priv, payload);

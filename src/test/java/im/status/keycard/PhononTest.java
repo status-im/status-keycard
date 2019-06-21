@@ -334,7 +334,32 @@ public class PhononTest {
     //--------------------------------
     // Deposits
     //--------------------------------
+    /*
+    @Test
+    @DisplayName("Test network descriptors")
+    void depositTest() throws Exception {
+        APDUResponse response;
+        Random random = new Random();
+        byte[] d;
+        byte slot = 0x00;
+        byte[] networkData;
 
+        // Get the deposit nonce
+
+
+        // Fail to make a deposit with correct params to nonce equal deposit nonce
+
+        // Fail to make deposit with bad fields (should return -1 index)
    
+        // Ensure deposit nonce is still zero
 
+        // Ensure there is no phonon at the first slot
+    
+        // Deposit with correct params
+
+        // Ensure deposit nonce has incremented
+
+        // Ensure there is a phonon in the first slot
+    }
+*/
 }

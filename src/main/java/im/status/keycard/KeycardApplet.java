@@ -37,9 +37,9 @@ public class KeycardApplet extends Applet {
   static final byte INS_PHONON_GET_NETWORK_DESCRIPTOR = (byte) 0xF5;
   static final byte INS_PHONON_GET_DEPOSIT_NONCE = (byte) 0xF6;
   static final byte INS_PHONON_GET_DEPOSIT_PUBKEY = (byte) 0xF7;
-  static final byte INS_PHONON_DEPOSIT = (byte) 0xF;
-
+  static final byte INS_PHONON_DEPOSIT = (byte) 0xF8;
   static final byte TLV_PHONON_NETWORK_DESCRIPTOR = (byte) 0xFA;
+  static final byte TLV_PHONON_IDX = (byte) 0xFB;
 
   static final short SW_REFERENCED_DATA_NOT_FOUND = (short) 0x6A88;
 
@@ -492,9 +492,9 @@ public class KeycardApplet extends Applet {
    * - assetId (byte): the index of the asset, generally stored on-chain (no representation on the card)
    * - amount (short): Value of the phonon
    * - decimals (byte): Exponent of amount (true value is: amount * 10 ** decimals)
-   * - extraData (byte[33]): Data that is needed to validate the phonon (e.g. txhash + vout) 
+   * - extraData (byte[33]): Data that is needed to validate the phonon (e.g. txhash + vout)
+   * @returns index at which the phonon was deposited. If this is -1, the deposit failed.
    */
-  /*
   private void phononDeposit(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
     apdu.setIncomingAndReceive();
@@ -520,7 +520,6 @@ public class KeycardApplet extends Applet {
     apduBuffer[3] = bPhononIndex[1];
     apdu.setOutgoingAndSend((short) 0, (short) 4);  
   }
-*/
 
   /**
    * Processes the init command, this is invoked only if the applet has not yet been personalized with secrets.
