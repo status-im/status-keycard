@@ -21,7 +21,7 @@ public class PhononNetwork {
     }
 
     //==========================================================================================================
-    // GLOBAL GETTERS AND SETTERS
+    // PUBLIC GETTERS AND SETTERS
     //==========================================================================================================    
 
     // Add a 32 byte network descriptor. This must be 32 bytes and should be left-padded with zeros,
@@ -41,6 +41,15 @@ public class PhononNetwork {
         byte[] d = new byte[NETWORK_DESCRIPTOR_LEN];
         Util.arrayCopy(this.networks, (short) (i * NETWORK_DESCRIPTOR_LEN), d, (short) 0, NETWORK_DESCRIPTOR_LEN);
         return d;
+    }
+
+    //==========================================================================================================
+    // PRIVATE HELPERS
+    //==========================================================================================================    
+
+    // Get the current deposit nonce
+    public short getDepositNonce() {
+        return this.depositNonce;
     }
 
     private short getNextPhononSlot() {
@@ -86,7 +95,7 @@ public class PhononNetwork {
 
     public short deposit(short nonce, byte[] priv, byte[] payload) {
         // Ensure we are able to deposit at this nonce
-        if (nonce < this.depositNonce) {
+        if (nonce <= this.depositNonce) {
             ISOException.throwIt(ISO7816.SW_WRONG_DATA);
         }
         // Ensure there is an available phonon slot
@@ -98,7 +107,7 @@ public class PhononNetwork {
         Phonon p = unpackDeposit(nonce, priv, payload);
         phonons[i] = p;
         // Increment nonce and return phonon index
-        this.depositNonce++;
+        this.depositNonce = nonce;
         return i;
     }
 

@@ -32,6 +32,15 @@ public class KeycardApplet extends Applet {
   static final byte INS_STORE_DATA = (byte) 0xE2;
   static final byte INS_AUTHENTICATE = (byte) 0xEE;
 
+  // Phonon APDUs
+  static final byte INS_PHONON_SET_NETWORK_DESCRIPTOR = (byte) 0xF4;
+  static final byte INS_PHONON_GET_NETWORK_DESCRIPTOR = (byte) 0xF5;
+  static final byte INS_PHONON_GET_DEPOSIT_NONCE = (byte) 0xF6;
+  static final byte INS_PHONON_GET_DEPOSIT_PUBKEY = (byte) 0xF7;
+  static final byte INS_PHONON_DEPOSIT = (byte) 0xF8;
+
+  static final byte TLV_PHONON_NETWORK_DESCRIPTOR = (byte) 0xFA;
+
   static final short SW_REFERENCED_DATA_NOT_FOUND = (short) 0x6A88;
 
   static final byte PUK_LENGTH = 12;
@@ -98,6 +107,7 @@ public class KeycardApplet extends Applet {
   static final byte TLV_SEED_FLAG = (byte) 0x9F;
 
   static final byte TLV_APPLICATION_STATUS_TEMPLATE = (byte) 0xA3;
+  static final byte TLV_SHORT = (byte) 0x03;
   static final byte TLV_INT = (byte) 0x02;
   static final byte TLV_BOOL = (byte) 0x01;
 
@@ -105,8 +115,6 @@ public class KeycardApplet extends Applet {
   static final byte TLV_UID = (byte) 0x8F;
   static final byte TLV_KEY_UID = (byte) 0x8E;
   static final byte TLV_CAPABILITIES = (byte) 0x8D;
-
-  static final byte TLV_PHONON_IDX = (byte) 0xF0;
 
 
   static final byte CAPABILITY_SECURE_CHANNEL = (byte) 0x01;
@@ -380,6 +388,16 @@ public class KeycardApplet extends Applet {
         case INS_STORE_DATA:
           storeData(apdu);
           break;
+        // Phonon stuff
+        case INS_PHONON_SET_NETWORK_DESCRIPTOR:
+          phononSetNetworkDescriptor(apdu);
+          break;
+        case INS_PHONON_GET_NETWORK_DESCRIPTOR:
+          phononGetNetworkDescriptor(apdu);
+          break;
+        case INS_PHONON_GET_DEPOSIT_NONCE:
+          phononGetDepositNonce(apdu);
+          break;
         default:
           ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
           break;
@@ -410,6 +428,58 @@ public class KeycardApplet extends Applet {
   // PHONON STUFF
   //==============================================================================
 
+
+  /**
+   * Get the current deposit nonce for Phonon. Deposits MUST be made in order
+   * of deposit nonces!
+   * @param apdu - the JCRE-owned APDU object.
+   * Returns a short representing the deposit nonce
+   */
+  private void phononGetDepositNonce(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    short n = phonon.getDepositNonce();
+    apduBuffer[0] = TLV_SHORT;
+    apduBuffer[1] = 2;
+    Util.setShort(apduBuffer, (short) 2, n);
+    apdu.setOutgoingAndSend((short) 0, (short) 2);  
+  }
+
+  /**
+   * Get the network descriptor given an index.
+   */
+  private void phononGetNetworkDescriptor(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    // P1 contains the descriptor index
+    short idx = (short) apduBuffer[ISO7816.OFFSET_P1];
+    byte[] d = phonon.getNetworkDescriptor(idx);
+    apduBuffer[0] = TLV_PHONON_NETWORK_DESCRIPTOR;
+    apduBuffer[1] = (byte) phonon.NETWORK_DESCRIPTOR_LEN;
+    Util.arrayCopyNonAtomic(d, (short) 0, apduBuffer, (short) 2, phonon.NETWORK_DESCRIPTOR_LEN);
+    apdu.setOutgoingAndSend((short) 0, (short) (2 + phonon.NETWORK_DESCRIPTOR_LEN)); 
+  }
+
+  /**
+   * Set a network descriptor to the index provided in P1
+   */
+  private void phononSetNetworkDescriptor(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    // Ensure correct data length
+    short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
+    if (len != phonon.NETWORK_DESCRIPTOR_LEN) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
+    // P1 contains the descriptor index
+    short idx = (short) apduBuffer[ISO7816.OFFSET_P1];
+    // Copy data and write
+    JCSystem.beginTransaction();
+    byte[] d = new byte[phonon.NETWORK_DESCRIPTOR_LEN];
+    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, d, (short) 0, phonon.NETWORK_DESCRIPTOR_LEN);
+    phonon.setNetworkDescriptor(idx, d);
+    JCSystem.commitTransaction();
+
+    apdu.setOutgoingAndSend((short) 0, (short) (0)); 
+  }
+
   /**
    * Deposit a phonon
    * @param apdu - the JCRE-owned APDU object.
@@ -421,6 +491,7 @@ public class KeycardApplet extends Applet {
    * - decimals (byte): Exponent of amount (true value is: amount * 10 ** decimals)
    * - extraData (byte[33]): Data that is needed to validate the phonon (e.g. txhash + vout) 
    */
+  /*
   private void phononDeposit(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
     apdu.setIncomingAndReceive();
@@ -446,7 +517,7 @@ public class KeycardApplet extends Applet {
     apduBuffer[3] = bPhononIndex[1];
     apdu.setOutgoingAndSend((short) 0, (short) 4);  
   }
-
+*/
 
   /**
    * Processes the init command, this is invoked only if the applet has not yet been personalized with secrets.
