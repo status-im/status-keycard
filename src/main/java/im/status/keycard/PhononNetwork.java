@@ -7,6 +7,7 @@ public class PhononNetwork {
     static final public byte EXTRA_DATA_LEN = 33;
     static final public byte NUM_PHONONS = 32;
     static final public byte NUM_NETWORK_SLOTS = 5;
+    static final public short DEPOSIT_FAIL = 10000;
 
     private short depositNonce;
     private short[] salts;
@@ -108,16 +109,17 @@ public class PhononNetwork {
     public short deposit(short nonce, byte[] priv, byte[] payload) {
         // Ensure we are able to deposit at this nonce
         if (nonce <= this.depositNonce) {
-            return -1;
+            return DEPOSIT_FAIL;
         }
         // Ensure there is an available phonon slot
         short i = getNextPhononSlot();
         if (i < 0) {
-            return -1;
+            return DEPOSIT_FAIL;
         }
         // Ensure the payload is the correct length
-        if ((payload.length + priv.length) != (short) SERIALIZED_PHONON_LEN) {
-            return -1;
+        byte inLen = (byte) (payload.length + priv.length);
+        if (inLen != SERIALIZED_PHONON_LEN) {        
+            return DEPOSIT_FAIL;
         }
         // Save the phonon
         Phonon p = unpackDeposit(nonce, priv, payload);

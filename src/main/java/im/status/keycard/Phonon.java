@@ -1,13 +1,11 @@
 package im.status.keycard;
 import javacard.framework.Util;
-// import javacard.security.ECPrivateKey;
-// import javacard.security.KeyBuilder;
+import javacard.security.*;
 
 public class Phonon {
     public byte networkId;
     public byte assetId;
-    public byte[] owner;
-    // private ECPrivateKey owner;
+    private ECPrivateKey owner;
     public short amount;
     public byte decimals;
     public byte[] extraData;
@@ -22,15 +20,15 @@ public class Phonon {
         this.amount = _amount;
         this.decimals = _decimals;
         Util.arrayCopy(this.extraData, (short) 0, _extraData, (short) 0, (short) _extraData.length);
-/*
+
         // Save the private key
+        // TODO: Probably want to do this in KeycardApplet and just have an ECPrivateKey passed in here
         Crypto crypto = new Crypto();
         SECP256k1 secp256k1 = new SECP256k1(crypto);
-        byte[] privBuf = new byte[Crypto.KEY_SECRET_SIZE];
         this.owner = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
         secp256k1.setCurveParameters(this.owner);
         this.owner.setS(_owner, (short) 0, Crypto.KEY_SECRET_SIZE);
-*/
+
     }
 /*
     serialize() {
