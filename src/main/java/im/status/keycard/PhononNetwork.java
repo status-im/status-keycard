@@ -2,9 +2,10 @@ package im.status.keycard;
 import javacard.framework.*;
 
 public class PhononNetwork {
-    static final public short NETWORK_DESCRIPTOR_LEN = 32;
-    static final public short EXTRA_DATA_LEN = 33;
-    static final public short NUM_PHONONS = 32;
+    static final public byte NETWORK_DESCRIPTOR_LEN = 32;
+    static final public byte EXTRA_DATA_LEN = 33;
+    static final public byte NUM_PHONONS = 32;
+    static final public byte NUM_NETWORK_SLOTS = 5;
 
     private short depositNonce;
     private short[] salts;
@@ -17,7 +18,7 @@ public class PhononNetwork {
         this.phonons = new Phonon[NUM_PHONONS];       // Set of phonons
         this.salts = new short[5];          // Salt slots for receiving phonons
         this.saltsTs = new short[5];        // Corresponding timestamps for salts
-        this.networks = new byte[NETWORK_DESCRIPTOR_LEN * 5];   // 5x Network descriptors
+        this.networks = new byte[NETWORK_DESCRIPTOR_LEN * NUM_NETWORK_SLOTS];   // 5x Network descriptors
     }
 
     //==========================================================================================================
@@ -26,20 +27,20 @@ public class PhononNetwork {
 
     // Add a 32 byte network descriptor. This must be 32 bytes and should be left-padded with zeros,
     // though the padding itself is not enforced here.
-    public void setNetworkDescriptor(short i, byte[] d) {
+    public boolean setNetworkDescriptor(short i, byte[] d) {
         if (d.length != NETWORK_DESCRIPTOR_LEN || i < 0 || i > 4) {
-            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+            return false;
         }
         Util.arrayCopy(d, (short) 0, this.networks, (short) (i * NETWORK_DESCRIPTOR_LEN), NETWORK_DESCRIPTOR_LEN);
+        return true;
     }
 
     // Get the network descriptor at slot `i`
     public byte[] getNetworkDescriptor(short i) {
-        if (i < 0 || i > 4) {
-            ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-        }
         byte[] d = new byte[NETWORK_DESCRIPTOR_LEN];
-        Util.arrayCopy(this.networks, (short) (i * NETWORK_DESCRIPTOR_LEN), d, (short) 0, NETWORK_DESCRIPTOR_LEN);
+        if (i >= 0 && i <= 4) {
+            Util.arrayCopy(this.networks, (short) (i * NETWORK_DESCRIPTOR_LEN), d, (short) 0, NETWORK_DESCRIPTOR_LEN);
+        }
         return d;
     }
 

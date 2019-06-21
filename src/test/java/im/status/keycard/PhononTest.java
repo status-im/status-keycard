@@ -5,6 +5,7 @@ import com.licel.jcardsim.smartcardio.CardTerminalSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
 
 import im.status.keycard.KeycardApplet;
+import im.status.keycard.PhononNetwork;
 import im.status.keycard.applet.*;
 import im.status.keycard.desktop.LedgerUSBManager;
 import im.status.keycard.desktop.PCSCCardChannel;
@@ -269,15 +270,67 @@ public class PhononTest {
     // Setup
     //--------------------------------
     @Test
-    @DisplayName("Add network descriptors")
-    void addNetworkDescriptors() throws Exception {
-        APDUResponse response = cmdSet.select();
-        assertEquals(0x9000, response.getSw());
-        byte[] data = response.getData();
+    @DisplayName("Test network descriptors")
+    void networkDescriptorsTest() throws Exception {
+        APDUResponse response;
+        Random random = new Random();
+        byte[] d;
+        byte slot = 0x00;
+        byte[] networkData;
+        
+        // Fail to add a short descriptor
+        d = new byte[31];
+        random.nextBytes(d);
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_SET_NETWORK_DESCRIPTOR, slot, (byte) 0, d);
+        assertEquals(ISO7816.SW_DATA_INVALID, response.getSw());
+        
+        // Fail to add a long descriptor
+        d = new byte[33];
+        random.nextBytes(d);
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_SET_NETWORK_DESCRIPTOR, slot, (byte) 0, d);
+        assertEquals(ISO7816.SW_DATA_INVALID, response.getSw());
+        
+        // Fail to add a descriptor to an index > 4
+        d = new byte[32];
+        random.nextBytes(d);
+        slot = 0x05;
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_SET_NETWORK_DESCRIPTOR, slot, (byte) 0, d);
+        assertEquals(ISO7816.SW_DATA_INVALID, response.getSw());
 
-        assertTrue(new ApplicationInfo(data).isInitializedCard());
+        // Add a descriptor of proper length
+        slot = 0x04;
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_SET_NETWORK_DESCRIPTOR, slot, (byte) 0, d);
+        assertEquals(0x9000, response.getSw());
+
+        // Fail to get data at slot >4
+        slot = 0x05;
+        byte[] emptyData = new byte[0];
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_NETWORK_DESCRIPTOR, slot, (byte) 0,  emptyData);
+        assertEquals(ISO7816.SW_DATA_INVALID, response.getSw());
+
+        // Get the data at slot 0 (should be empty)
+        slot = 0x01;
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_NETWORK_DESCRIPTOR, slot, (byte) 0,  emptyData);
+        assertEquals(0x9000, response.getSw());
+        networkData = response.getData();
+        assertEquals(networkData[0], KeycardApplet.TLV_PHONON_NETWORK_DESCRIPTOR);
+        assertEquals(networkData[1], PhononNetwork.NETWORK_DESCRIPTOR_LEN);
+        for (int i = 2; i < networkData.length; i++) {
+            assertEquals(0x00, networkData[i]);
+        }
+
+        // Get the data at slot 4 (should be equal to `d`)
+        slot = 0x04;
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_NETWORK_DESCRIPTOR, slot, (byte) 0,  emptyData);
+        assertEquals(0x9000, response.getSw());
+        networkData = response.getData();
+        assertEquals(networkData[0], KeycardApplet.TLV_PHONON_NETWORK_DESCRIPTOR);
+        assertEquals(networkData[1], PhononNetwork.NETWORK_DESCRIPTOR_LEN);
+        for (int i = 2; i < networkData.length; i++) {
+            assertEquals(d[i - 2], networkData[i]);
+        }
     }
-    
+
     //--------------------------------
     // Deposits
     //--------------------------------

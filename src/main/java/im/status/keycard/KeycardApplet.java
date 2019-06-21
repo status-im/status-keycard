@@ -37,7 +37,7 @@ public class KeycardApplet extends Applet {
   static final byte INS_PHONON_GET_NETWORK_DESCRIPTOR = (byte) 0xF5;
   static final byte INS_PHONON_GET_DEPOSIT_NONCE = (byte) 0xF6;
   static final byte INS_PHONON_GET_DEPOSIT_PUBKEY = (byte) 0xF7;
-  static final byte INS_PHONON_DEPOSIT = (byte) 0xF8;
+  static final byte INS_PHONON_DEPOSIT = (byte) 0xF;
 
   static final byte TLV_PHONON_NETWORK_DESCRIPTOR = (byte) 0xFA;
 
@@ -451,6 +451,9 @@ public class KeycardApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     // P1 contains the descriptor index
     short idx = (short) apduBuffer[ISO7816.OFFSET_P1];
+    if (idx < 0 || idx > phonon.NUM_NETWORK_SLOTS-1) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
     byte[] d = phonon.getNetworkDescriptor(idx);
     apduBuffer[0] = TLV_PHONON_NETWORK_DESCRIPTOR;
     apduBuffer[1] = (byte) phonon.NETWORK_DESCRIPTOR_LEN;
@@ -463,18 +466,18 @@ public class KeycardApplet extends Applet {
    */
   private void phononSetNetworkDescriptor(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
-    // Ensure correct data length
-    short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
-    if (len != phonon.NETWORK_DESCRIPTOR_LEN) {
-      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
-    }
     // P1 contains the descriptor index
     short idx = (short) apduBuffer[ISO7816.OFFSET_P1];
+    // Ensure correct data length and index is in range
+    short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
+    if (len != phonon.NETWORK_DESCRIPTOR_LEN || idx < 0 || idx > phonon.NUM_NETWORK_SLOTS-1) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
     // Copy data and write
     JCSystem.beginTransaction();
     byte[] d = new byte[phonon.NETWORK_DESCRIPTOR_LEN];
     Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, d, (short) 0, phonon.NETWORK_DESCRIPTOR_LEN);
-    phonon.setNetworkDescriptor(idx, d);
+    boolean success = phonon.setNetworkDescriptor(idx, d);
     JCSystem.commitTransaction();
 
     apdu.setOutgoingAndSend((short) 0, (short) (0)); 
