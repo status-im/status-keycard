@@ -2,7 +2,6 @@ package im.status.keycard;
 import javacard.framework.*;
 
 public class PhononNetwork {
-    static final public byte SERIALIZED_PHONON_LEN = 59; // 37 bytes of data + 32 byte priv key
     static final public byte NETWORK_DESCRIPTOR_LEN = 32;
     static final public byte EXTRA_DATA_LEN = 33;
     static final public byte NUM_PHONONS = 32;
@@ -85,9 +84,11 @@ public class PhononNetwork {
         return d;
     }
 
-    // public byte[] getSerializedPhonon(short i) {
-
-    // }
+    // Request a serialized phonon payload given an index.
+    // This does *not* include the private key
+    public byte[] getSerializedPhonon(short i) {
+        return phonons[i].serialize();
+    }
 
     //==========================================================================================================
     // DEPOSITS
@@ -105,7 +106,7 @@ public class PhononNetwork {
         }
         // Ensure the payload is the correct length
         byte inLen = (byte) (payload.length + priv.length);
-        if (inLen != SERIALIZED_PHONON_LEN) {        
+        if (inLen != Phonon.SERIALIZED_PHONON_LEN) {        
             return DEPOSIT_FAIL;
         }
         // Save the phonon
