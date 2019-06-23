@@ -30,17 +30,19 @@ public class Phonon {
         this.owner.setS(_owner, (short) 0, Crypto.KEY_SECRET_SIZE);
 
     }
-/*
-    serialize() {
+
+    public byte[] serialize() {
+        // TODO: Should probably move SERIALIZED_PHONON_LEN to this file
         byte[] d = new byte[PhononNetwork.SERIALIZED_PHONON_LEN];
         short off = 0;
         d[off] = this.networkId; off++;
         d[off] = this.assetId; off++;
-        byte[] a = PhononNetwork.shortToBytes(this.amount);
+        byte[] a = new byte[2];
+        Util.getShort(a, this.amount);
         d[off] = a[0]; off++;
         d[off] = a[1]; off++;
         d[off] = this.decimals; off++;
-
+        return d;
     }
-*/
+
 }

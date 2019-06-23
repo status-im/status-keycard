@@ -500,7 +500,7 @@ public class KeycardApplet extends Applet {
     apdu.setIncomingAndReceive();
     byte p1 = (byte) apduBuffer[ISO7816.OFFSET_P1];
     byte p2 = (byte) apduBuffer[ISO7816.OFFSET_P2];
-    short nonce = phonon.bytesToShort(p1, p2);
+    short nonce = Util.makeShort(p1, p2);
     // Get length of payload and instantiate
     short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
     byte[] payload = new byte[len];
@@ -515,7 +515,8 @@ public class KeycardApplet extends Applet {
     JCSystem.commitTransaction();
     apduBuffer[0] = TLV_PHONON_IDX;
     apduBuffer[1] = 2; // length of deposit index (short)
-    byte[] bPhononIndex = phonon.shortToBytes(phononIdx);
+    byte[] bPhononIndex =new byte[2];
+    Util.getShort(bPhononIndex, phononIdx);
     apduBuffer[2] = bPhononIndex[0];
     apduBuffer[3] = bPhononIndex[1];
     apdu.setOutgoingAndSend((short) 0, (short) 4);  
@@ -1963,7 +1964,8 @@ public class KeycardApplet extends Applet {
 
     // Get the first and second bytes of the nonce
     // NOTE: This assumes little endian - if this were a big endian system, these byte values would be flipped
-    byte[] b = phonon.shortToBytes(nonce);
+    byte[] b = new byte[2];
+    Util.getShort(b, nonce);
     preImage[Crypto.KEY_SECRET_SIZE] = b[0];
     preImage[Crypto.KEY_SECRET_SIZE + 1] = b[1];
     

@@ -42,19 +42,6 @@ public class PhononNetwork {
         return -1;
     }
 
-    // Useful helper functions for various things touching phonon
-    // Convert two bytes to a short type
-    public short bytesToShort(byte b1, byte b2) {
-        return (short) (b2 & 0xff | b1 << 8); // Little endian
-    }
-    // Convert a short type to two bytes
-    public byte[] shortToBytes(short s) {
-        byte[] b = new byte[2];
-        b[0] = (byte) (s & 0xff);
-        b[1] = (byte) ((s >> 8) & 0xff);
-        return b;
-    }
-
     // Unpack a 37 byte serialized payload
     private Phonon unpackDeposit(short nonce, byte[] priv, byte[] d) {
         short off = 0;
@@ -65,7 +52,7 @@ public class PhononNetwork {
         // byte 2-3
         byte a1 = d[off++];
         byte a2 = d[off++];
-        short amount = this.bytesToShort(a1, a2);
+        short amount = Util.makeShort(a1, a2);
         // byte 4
         byte decimals = d[off++];
         // byte 5-36
