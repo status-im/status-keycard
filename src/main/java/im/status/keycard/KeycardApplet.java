@@ -37,7 +37,8 @@ public class KeycardApplet extends Applet {
   static final byte INS_PHONON_GET_NETWORK_DESCRIPTOR = (byte) 0xF5;
   static final byte INS_PHONON_GET_DEPOSIT_NONCE = (byte) 0xF6;
   static final byte INS_PHONON_GET_DEPOSIT_PUBKEY = (byte) 0xF7;
-  static final byte INS_PHONON_DEPOSIT = (byte) 0xF8;
+  static final byte INS_GET_PHONON = (byte) 0xF8;
+  static final byte INS_PHONON_DEPOSIT = (byte) 0xF9;
   static final byte TLV_PHONON_NETWORK_DESCRIPTOR = (byte) 0xFA;
   static final byte TLV_PHONON_IDX = (byte) 0xFB;
 
@@ -398,6 +399,12 @@ public class KeycardApplet extends Applet {
         case INS_PHONON_GET_DEPOSIT_NONCE:
           phononGetDepositNonce(apdu);
           break;
+        case INS_GET_PHONON:
+          getPhonon(apdu);
+          break;
+        case INS_PHONON_DEPOSIT:
+          phononDeposit(apdu);
+          break;
         default:
           ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
           break;
@@ -441,7 +448,7 @@ public class KeycardApplet extends Applet {
     apduBuffer[0] = TLV_SHORT;
     apduBuffer[1] = 2;
     Util.setShort(apduBuffer, (short) 2, n);
-    apdu.setOutgoingAndSend((short) 0, (short) 2);  
+    apdu.setOutgoingAndSend((short) 0, (short) 4);  
   }
 
   /**
@@ -484,6 +491,20 @@ public class KeycardApplet extends Applet {
   }
 
   /**
+   * Get a serialized phonon (with the public key) given an index
+   * @param apdu - P1 and P2 are combined to form the index
+   */
+  private void getPhonon(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    byte p1 = (byte) apduBuffer[ISO7816.OFFSET_P1];
+    byte p2 = (byte) apduBuffer[ISO7816.OFFSET_P2];
+    short i = PhononNetwork.bytesToShort(p1, p2);
+    byte[] p = phonon.getSerializedPhonon(i);
+    Util.arrayCopyNonAtomic(p, (short) 0, apduBuffer, (short) 0, (short) p.length);
+    apdu.setOutgoingAndSend((short) 0, (short) p.length);
+  }
+
+  /**
    * Deposit a phonon
    * @param apdu - the JCRE-owned APDU object.
    * P1 and P2 are combined to form a 2-byte number (short) representing a deposit nonce
@@ -497,28 +518,36 @@ public class KeycardApplet extends Applet {
    */
   private void phononDeposit(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
-    apdu.setIncomingAndReceive();
     byte p1 = (byte) apduBuffer[ISO7816.OFFSET_P1];
     byte p2 = (byte) apduBuffer[ISO7816.OFFSET_P2];
-    short nonce = Util.makeShort(p1, p2);
+    short nonce = PhononNetwork.bytesToShort(p1, p2);
+
     // Get length of payload and instantiate
     short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
+    if (len != Phonon.DEPOSIT_DATA_LEN) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+    // Build the phonon payload
     byte[] payload = new byte[len];
-    
-    JCSystem.beginTransaction();
     // Get the private key
-    byte[] key = getPhononKey(nonce);
+    byte[] key = getPhononKey(p1, p2);
     // Copy data to payload
     Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, payload, (short) 0, len);
     // Attempt the deposit
+    boolean depositable = phonon.canDeposit(nonce, key, payload);
+    if (depositable == false) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+    // Deposit the phonon in an atomic transaction
+    JCSystem.beginTransaction();
     short phononIdx = phonon.deposit(nonce, key, payload);
-    JCSystem.commitTransaction();
     apduBuffer[0] = TLV_PHONON_IDX;
-    apduBuffer[1] = 2; // length of deposit index (short)
-    byte[] bPhononIndex =new byte[2];
-    Util.getShort(bPhononIndex, phononIdx);
+    apduBuffer[1] = 2;
+    byte[] bPhononIndex = PhononNetwork.shortToBytes(phononIdx);
     apduBuffer[2] = bPhononIndex[0];
     apduBuffer[3] = bPhononIndex[1];
+    JCSystem.commitTransaction();
+    
     apdu.setOutgoingAndSend((short) 0, (short) 4);  
   }
 
@@ -716,10 +745,10 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    short dataLen = Util.makeShort((byte) 0x00, apduBuffer[ISO7816.OFFSET_LC]);
+    short dataLen = PhononNetwork.bytesToShort((byte) 0x00, apduBuffer[ISO7816.OFFSET_LC]);
     short offset;
 
-    if (Util.makeShort(apduBuffer[ISO7816.OFFSET_CDATA], apduBuffer[(short)(ISO7816.OFFSET_CDATA + 1)]) != (short)(dataLen - 2)) {
+    if (PhononNetwork.bytesToShort(apduBuffer[ISO7816.OFFSET_CDATA], apduBuffer[(short)(ISO7816.OFFSET_CDATA + 1)]) != (short)(dataLen - 2)) {
       offset = ISO7816.OFFSET_P2;
       apduBuffer[ISO7816.OFFSET_P2] = 0;
       dataLen += 2;
@@ -1861,7 +1890,7 @@ public class KeycardApplet extends Applet {
       secureChannel.preprocessAPDU(apduBuffer);
     }
 
-    short outLen = Util.makeShort((byte) 0x00, data[0]);
+    short outLen = PhononNetwork.bytesToShort((byte) 0x00, data[0]);
     Util.arrayCopyNonAtomic(data, (short) 1, apduBuffer, SecureChannel.SC_OUT_OFFSET, outLen);
 
     if (secureChannel.isOpen()) {
@@ -1884,7 +1913,7 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    short dataLen = Util.makeShort((byte) 0x00, apduBuffer[ISO7816.OFFSET_LC]);
+    short dataLen = PhononNetwork.bytesToShort((byte) 0x00, apduBuffer[ISO7816.OFFSET_LC]);
 
     if (dataLen > MAX_DATA_LENGTH) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
@@ -1957,30 +1986,29 @@ public class KeycardApplet extends Applet {
   //==========================================================================================================    
 
   // Get a phonon private key based on a nonce
-  private byte[] getPhononKey(short nonce) {
+  // Here the nonce is in the form of a two-byte array (rather than a short)
+  private byte[] getPhononKey(byte p1, byte p2) {
     byte[] preImage = new byte[Crypto.KEY_SECRET_SIZE + 2];
     byte[] privBuf = new byte[Crypto.KEY_SECRET_SIZE];
     idPrivate.getS(preImage, (short) 0);
-
     // Get the first and second bytes of the nonce
     // NOTE: This assumes little endian - if this were a big endian system, these byte values would be flipped
-    byte[] b = new byte[2];
-    Util.getShort(b, nonce);
-    preImage[Crypto.KEY_SECRET_SIZE] = b[0];
-    preImage[Crypto.KEY_SECRET_SIZE + 1] = b[1];
+    preImage[0] = p1;
+    preImage[1] = p2;
     
     // Derive the nonced private key
-    crypto.sha256.doFinal(preImage, (short) 0, (short) (Crypto.KEY_SECRET_SIZE + 2), privBuf, (short) 0);
+    crypto.sha256.doFinal(preImage, (short) 0, (short) preImage.length, privBuf, (short) 0);
+
     return privBuf;
   }
 
   // Derive a phonon private key using a nonce and return the corresponding public key
-  private byte[] getPhononDepositPubKey(short nonce) {
+  /*private byte[] getPhononDepositPubKey(short nonce) {
     byte[] pubBuf = new byte[Crypto.KEY_PUB_SIZE];
     byte[] privBuf = getPhononKey(nonce);
     
     // Derive corresponding public key
     secp256k1.derivePublicKey(privBuf, (short) 0, pubBuf, (short) 0);
     return pubBuf;
-  }
+  }*/
 }

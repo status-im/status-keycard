@@ -3,7 +3,11 @@ import javacard.framework.Util;
 import javacard.security.*;
 
 public class Phonon {
-    static final public byte SERIALIZED_PHONON_LEN = 102; // 37 bytes of data + 65 byte pub key
+    static final public byte EXTRA_DATA_LEN = 33;
+    static final public byte DEPOSIT_DATA_LEN = 38;
+    static final public byte SERIALIZED_PHONON_LEN = (short) (DEPOSIT_DATA_LEN + Crypto.KEY_PUB_SIZE);
+    static final public byte SERIALIZED_DEPOSIT_LEN = (short) (DEPOSIT_DATA_LEN + Crypto.KEY_SECRET_SIZE);
+
     public byte networkId;
     public byte assetId;
     private ECPrivateKey owner;
@@ -20,8 +24,8 @@ public class Phonon {
         this.assetId = _assetId;
         this.amount = _amount;
         this.decimals = _decimals;
+        this.extraData = new byte[EXTRA_DATA_LEN];
         Util.arrayCopy(this.extraData, (short) 0, _extraData, (short) 0, (short) _extraData.length);
-
         // Save the private key
         Crypto crypto = new Crypto();
         SECP256k1 secp256k1 = new SECP256k1(crypto);
@@ -31,7 +35,6 @@ public class Phonon {
     }
 
     public byte[] serialize() {
-        // TODO: Should probably move SERIALIZED_PHONON_LEN to this file
         byte[] d = new byte[SERIALIZED_PHONON_LEN];
         short off = 0;
         d[off] = this.networkId; off++;

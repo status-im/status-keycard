@@ -7,6 +7,7 @@ public class PhononNetwork {
     static final public byte NUM_PHONONS = 32;
     static final public byte NUM_NETWORK_SLOTS = 5;
     static final public short DEPOSIT_FAIL = 10000;
+    static final public short NO_PHONON_SLOT = 10000;
 
     private short depositNonce;
     private short[] salts;
@@ -27,18 +28,13 @@ public class PhononNetwork {
     // PRIVATE HELPERS
     //==========================================================================================================    
 
-    // Get the current deposit nonce
-    public short getDepositNonce() {
-        return this.depositNonce;
-    }
-
     private short getNextPhononSlot() {
         for (short i = 0; i < NUM_PHONONS; i++) {
-            if (phonons[i].amount == 0) {
+            if (phonons[i] == null) {
                 return i;
             }
         }
-        return -1;
+        return NO_PHONON_SLOT;
     }
 
     // Unpack a 37 byte serialized payload
@@ -51,7 +47,7 @@ public class PhononNetwork {
         // byte 2-3
         byte a1 = d[off++];
         byte a2 = d[off++];
-        short amount = Util.makeShort(a1, a2);
+        short amount = bytesToShort(a1, a2);
         // byte 4
         byte decimals = d[off++];
         // byte 5-36
@@ -62,8 +58,28 @@ public class PhononNetwork {
     }
 
     //==========================================================================================================
+    // PUBLIC HELPERS
+    //==========================================================================================================    
+
+    static public byte[] shortToBytes(short s) {
+        byte[] b = new byte[2];
+        b[0] = (byte) ((s >> 8) & 0xFF);
+        b[1] = (byte) (s & 0xFF);
+        return b;
+    }
+
+    static public short bytesToShort(byte a, byte b) {
+        return (short)(((a & 0xFF) << 8) | (b & 0xFF));
+    }
+
+    //==========================================================================================================
     // PUBLIC GETTERS AND SETTERS
     //==========================================================================================================    
+
+    // Get the current deposit nonce
+    public short getDepositNonce() {
+        return this.depositNonce;
+    }
 
     // Add a 32 byte network descriptor. This must be 32 bytes and should be left-padded with zeros,
     // though the padding itself is not enforced here.
@@ -87,32 +103,41 @@ public class PhononNetwork {
     // Request a serialized phonon payload given an index.
     // This does *not* include the private key
     public byte[] getSerializedPhonon(short i) {
-        return phonons[i].serialize();
+        if (phonons[i] == null) {
+            byte[] empty = { };
+            return empty;
+        } else {
+            return phonons[i].serialize();
+        }
     }
 
     //==========================================================================================================
     // DEPOSITS
     //==========================================================================================================
 
-    public short deposit(short nonce, byte[] priv, byte[] payload) {
+    // Determine whether we can deposit this phonon
+    public boolean canDeposit(short nonce, byte[] priv, byte[] payload) {
         // Ensure we are able to deposit at this nonce
         if (nonce <= this.depositNonce) {
-            return DEPOSIT_FAIL;
+            return false;
         }
         // Ensure there is an available phonon slot
-        short i = getNextPhononSlot();
-        if (i < 0) {
-            return DEPOSIT_FAIL;
+        if (getNextPhononSlot() == NO_PHONON_SLOT) {
+            return false;
         }
         // Ensure the payload is the correct length
         byte inLen = (byte) (payload.length + priv.length);
-        if (inLen != Phonon.SERIALIZED_PHONON_LEN) {        
-            return DEPOSIT_FAIL;
+        if (inLen != Phonon.SERIALIZED_DEPOSIT_LEN) {        
+            return false;
         }
-        // Save the phonon
+        return true;
+    }
+
+    // Deposit the phonon
+    public short deposit(short nonce, byte[] priv, byte[] payload) {
+        short i = getNextPhononSlot();
         Phonon p = unpackDeposit(nonce, priv, payload);
         phonons[i] = p;
-        // Increment nonce and return phonon index
         this.depositNonce = nonce;
         return i;
     }
