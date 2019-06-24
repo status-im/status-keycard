@@ -500,8 +500,9 @@ public class KeycardApplet extends Applet {
     byte p2 = (byte) apduBuffer[ISO7816.OFFSET_P2];
     short i = PhononNetwork.bytesToShort(p1, p2);
     byte[] p = phonon.getSerializedPhonon(i);
-    Util.arrayCopyNonAtomic(p, (short) 0, apduBuffer, (short) 0, (short) p.length);
-    apdu.setOutgoingAndSend((short) 0, (short) p.length);
+    // Util.arrayCopyNonAtomic(apduBuffer, (short) 0, p, (short) 0, (short) p.length);
+    // apdu.setOutgoingAndSend((short) 0, (short) p.length);
+    apdu.setOutgoingAndSend((short) 0, (short) 0);
   }
 
   /**

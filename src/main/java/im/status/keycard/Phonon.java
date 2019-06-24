@@ -39,8 +39,7 @@ public class Phonon {
         short off = 0;
         d[off] = this.networkId; off++;
         d[off] = this.assetId; off++;
-        byte[] a = new byte[2];
-        Util.getShort(a, this.amount);
+        byte[] a = PhononNetwork.shortToBytes(this.amount);
         d[off] = a[0]; off++;
         d[off] = a[1]; off++;
         d[off] = this.decimals; off++;

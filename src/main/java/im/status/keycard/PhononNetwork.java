@@ -103,12 +103,11 @@ public class PhononNetwork {
     // Request a serialized phonon payload given an index.
     // This does *not* include the private key
     public byte[] getSerializedPhonon(short i) {
-        if (phonons[i] == null) {
-            byte[] empty = { };
-            return empty;
-        } else {
+        if (phonons[i] != null) {
             return phonons[i].serialize();
         }
+        byte[] r = {0};
+        return r;
     }
 
     //==========================================================================================================

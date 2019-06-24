@@ -406,13 +406,13 @@ public class PhononTest {
         d = response.getData();
         short newNonce = PhononNetwork.bytesToShort(d[2], d[3]);
         assertEquals(newNonce, nonce+1);
-/*
+
         // Ensure there is a phonon in the first slot
         response = cmdSet.sendCommand(KeycardApplet.INS_GET_PHONON, (byte) 0, (byte) 0, emptyData);
         assertEquals(0x9000, response.getSw());
-        d = response.getData();
-        System.out.println("phonon " + Arrays.toString(d));
-*/
+        // d = response.getData();
+        // System.out.println("phonon " + Arrays.toString(d));
+
     }
 
 }
