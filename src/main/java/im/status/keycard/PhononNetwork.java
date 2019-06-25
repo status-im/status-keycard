@@ -1,25 +1,29 @@
 package im.status.keycard;
 import javacard.framework.*;
+// import javacard.security.RandomData;
 
 public class PhononNetwork {
     static final public byte NETWORK_DESCRIPTOR_LEN = 32;
     static final public byte EXTRA_DATA_LEN = 33;
-    static final public byte NUM_PHONONS = 32;
+    static final public byte NUM_PHONON_SLOTS = 32;
     static final public byte NUM_NETWORK_SLOTS = 5;
-    static final public short DEPOSIT_FAIL = 10000;
+    static final public byte NUM_SALT_SLOTS = 5;
     static final public short NO_PHONON_SLOT = 10000;
+    static final public short NO_SALT_SLOT = 10000;
 
     private short depositNonce;
-    private short[] salts;
-    private short[] saltsTs;
+    // private byte[] salts;
+    // private byte[] saltsTs;
     private Phonon[] phonons;
     private byte[] networks;
+    // Crypto crypto;
 
     PhononNetwork() {
+        // crypto = new Crypto();
         this.depositNonce = 0;              // Global nonce tracker to prevent replayed deposits
-        this.phonons = new Phonon[NUM_PHONONS];       // Set of phonons
-        this.salts = new short[5];          // Salt slots for receiving phonons
-        this.saltsTs = new short[5];        // Corresponding timestamps for salts
+        this.phonons = new Phonon[NUM_PHONON_SLOTS];       // Set of phonons
+        // this.salts = new byte[NUM_SALT_SLOTS * 4];          // Salt slots for receiving phonons (4-byte int)
+        // this.saltsTs = new byte[NUM_SALT_SLOTS * 4];        // Corresponding timestamps for salts (4-byte int)
         this.networks = new byte[NETWORK_DESCRIPTOR_LEN * NUM_NETWORK_SLOTS];   // 5x Network descriptors
     }
 
@@ -29,14 +33,23 @@ public class PhononNetwork {
     //==========================================================================================================    
 
     private short getNextPhononSlot() {
-        for (short i = 0; i < NUM_PHONONS; i++) {
+        for (short i = 0; i < NUM_PHONON_SLOTS; i++) {
             if (phonons[i] == null) {
                 return i;
             }
         }
         return NO_PHONON_SLOT;
     }
-
+/*
+    private short getNextSaltSlot() {
+        for (short i = 0; i < NUM_SALT_SLOTS; i++) {
+            if (salts[i * 4] == 0) {
+                return i;
+            }
+        }
+        return NO_SALT_SLOT;
+    }
+*/
     // Unpack a 37 byte serialized payload
     private Phonon unpackDeposit(short nonce, byte[] priv, byte[] d) {
         short off = 0;
@@ -144,4 +157,22 @@ public class PhononNetwork {
         this.depositNonce = nonce;
         return i;
     }
+
+    //==========================================================================================================
+    // RECEIVE
+    //==========================================================================================================
+
+    // Initiate 
+    /*public byte[] startReceive(byte[] ts) {
+        short i = getNextSaltSlot();
+        if (i == NO_SALT_SLOT) {
+            byte[] e = { 0, 0, 0, 0};
+            return e;
+        }
+        byte[] r = new byte[4];
+        crypto.random.generateData(r, (short) 0, (short) 4);
+        Util.arrayCopy(r, (short) 0, salts, (short) (i * 4), (short) 4);
+        Util.arrayCopy(ts, (short) 0, saltsTs, (short) (i * 4), (short) 4);
+        return r;
+    }*/
 }
