@@ -268,6 +268,19 @@ public class PhononTest {
         return p;
     }
 
+    private void validatePhonon(byte networkId, byte assetId, short amount, byte decimals, byte[] extraData, byte[] p) {
+        assertEquals(KeycardApplet.TLV_PHONON, p[0]);
+        assertEquals(Phonon.SERIALIZED_PHONON_LEN, p[1]);
+        assertEquals(networkId, p[2]);
+        assertEquals(assetId, p[3]);
+        short pAmount = PhononNetwork.bytesToShort(p[4], p[5]);
+        assertEquals(pAmount, amount);
+        assertEquals(decimals, p[6]);
+        for (short i = 0; i < 33; i++) {
+            assertEquals(p[7 + i], extraData[i]);
+        }
+    }
+
     //=================================================================
     // TESTS
     //=================================================================
@@ -419,16 +432,8 @@ public class PhononTest {
         response = cmdSet.sendCommand(KeycardApplet.INS_GET_PHONON, (byte) 0, (byte) 0, emptyData);
         assertEquals(0x9000, response.getSw());
         d = response.getData();
-        assertEquals(KeycardApplet.TLV_PHONON, d[0]);
-        assertEquals(Phonon.SERIALIZED_PHONON_LEN, d[1]);
-        assertEquals(networkId, d[2]);
-        assertEquals(assetId, d[3]);
-        short pAmount = PhononNetwork.bytesToShort(d[4], d[5]);
-        assertEquals(pAmount, amount);
-        assertEquals(decimals, d[6]);
-        for (short i = 0; i < 33; i++) {
-            assertEquals(d[7 + i], extraData[i]);
-        }
+        validatePhonon(networkId, assetId, amount, decimals, extraData, d);
+       
     }
 
 }
