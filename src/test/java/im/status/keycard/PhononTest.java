@@ -357,9 +357,12 @@ public class PhononTest {
         APDUResponse response;
         Random random = new Random();
         byte[] p;
-        byte slot = 0x00;
         byte[] extraData = new byte[33];
         byte[] d;
+        byte networkId = 4;
+        byte assetId = 13;
+        byte decimals = 1;
+        short amount = 1000;
         random.nextBytes(extraData);
 
         // Get the deposit nonce (it should be zero)
@@ -371,7 +374,7 @@ public class PhononTest {
         assertEquals((short) 0, nonce);
 
         // Fail to make a deposit with correct params to nonce equal deposit nonce
-        p = buildPhonon((byte) 0, (byte) 0, (short) 1000, (byte) 1, extraData);
+        p = buildPhonon(networkId, assetId, amount, decimals, extraData);
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_DEPOSIT, (byte) 0, (byte) 0, p);
         assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
 
@@ -380,6 +383,10 @@ public class PhononTest {
         byte[] badPhonon = buildPhonon((byte) 0, (byte) 0, (short) 1000, (byte) 1, badExtraData);
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_DEPOSIT, (byte) 0, (byte) 0x01, badPhonon);
         assertEquals(ISO7816.SW_WRONG_DATA, response.getSw());
+        // NetworkId > 4
+        badPhonon = buildPhonon((byte) 5, (byte) 0, (short) 1000, (byte) 1, extraData);
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_DEPOSIT, (byte) 0, (byte) 0x01, badPhonon);
+        assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
 
         // Ensure deposit nonce is still zero
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_DEPOSIT_NONCE, (byte) 0, (byte) 0, emptyData);
@@ -391,7 +398,8 @@ public class PhononTest {
         response = cmdSet.sendCommand(KeycardApplet.INS_GET_PHONON, (byte) 0, (byte) 0, emptyData);
         assertEquals(0x9000, response.getSw());
         byte[] phononAt = response.getData();
-        assertEquals(0, phononAt.length);
+        assertEquals(KeycardApplet.TLV_PHONON, phononAt[0]);
+        assertEquals(0, phononAt[1]);
 
         // Deposit with correct params
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_DEPOSIT, (byte) 0, (byte) 1, p);
@@ -410,9 +418,17 @@ public class PhononTest {
         // Ensure there is a phonon in the first slot
         response = cmdSet.sendCommand(KeycardApplet.INS_GET_PHONON, (byte) 0, (byte) 0, emptyData);
         assertEquals(0x9000, response.getSw());
-        // d = response.getData();
-        // System.out.println("phonon " + Arrays.toString(d));
-
+        d = response.getData();
+        assertEquals(KeycardApplet.TLV_PHONON, d[0]);
+        assertEquals(Phonon.SERIALIZED_PHONON_LEN, d[1]);
+        assertEquals(networkId, d[2]);
+        assertEquals(assetId, d[3]);
+        short pAmount = PhononNetwork.bytesToShort(d[4], d[5]);
+        assertEquals(pAmount, amount);
+        assertEquals(decimals, d[6]);
+        for (short i = 0; i < 33; i++) {
+            assertEquals(d[7 + i], extraData[i]);
+        }
     }
 
 }

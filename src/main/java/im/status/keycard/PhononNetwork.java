@@ -41,15 +41,15 @@ public class PhononNetwork {
     private Phonon unpackDeposit(short nonce, byte[] priv, byte[] d) {
         short off = 0;
         // byte 0
-        byte networkId = d[off];
+        byte networkId = d[off]; off++;
         // byte 1
-        byte assetId = d[off++];
+        byte assetId = d[off]; off++;
         // byte 2-3
-        byte a1 = d[off++];
-        byte a2 = d[off++];
+        byte a1 = d[off]; off++;
+        byte a2 = d[off]; off++;
         short amount = bytesToShort(a1, a2);
         // byte 4
-        byte decimals = d[off++];
+        byte decimals = d[off]; off++;
         // byte 5-36
         byte[] extraData = new byte[EXTRA_DATA_LEN];
         Util.arrayCopy(d, off, extraData, (short) 0, EXTRA_DATA_LEN);
@@ -106,7 +106,7 @@ public class PhononNetwork {
         if (phonons[i] != null) {
             return phonons[i].serialize();
         }
-        byte[] r = {0};
+        byte[] r = {};
         return r;
     }
 
@@ -127,6 +127,10 @@ public class PhononNetwork {
         // Ensure the payload is the correct length
         byte inLen = (byte) (payload.length + priv.length);
         if (inLen != Phonon.SERIALIZED_DEPOSIT_LEN) {        
+            return false;
+        }
+        // Verify that networkId is in bounds
+        if (payload[0] >= NUM_NETWORK_SLOTS) {
             return false;
         }
         return true;

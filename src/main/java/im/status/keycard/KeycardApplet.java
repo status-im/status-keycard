@@ -41,6 +41,7 @@ public class KeycardApplet extends Applet {
   static final byte INS_PHONON_DEPOSIT = (byte) 0xF9;
   static final byte TLV_PHONON_NETWORK_DESCRIPTOR = (byte) 0xFA;
   static final byte TLV_PHONON_IDX = (byte) 0xFB;
+  static final byte TLV_PHONON = (byte) 0xFC;
 
   static final short SW_REFERENCED_DATA_NOT_FOUND = (short) 0x6A88;
 
@@ -500,9 +501,10 @@ public class KeycardApplet extends Applet {
     byte p2 = (byte) apduBuffer[ISO7816.OFFSET_P2];
     short i = PhononNetwork.bytesToShort(p1, p2);
     byte[] p = phonon.getSerializedPhonon(i);
-    // Util.arrayCopyNonAtomic(apduBuffer, (short) 0, p, (short) 0, (short) p.length);
-    // apdu.setOutgoingAndSend((short) 0, (short) p.length);
-    apdu.setOutgoingAndSend((short) 0, (short) 0);
+    apduBuffer[0] = TLV_PHONON;
+    apduBuffer[1] = (byte) p.length;
+    Util.arrayCopyNonAtomic(p, (short) 0, apduBuffer, (short) 2, (short) p.length);
+    apdu.setOutgoingAndSend((short) 0, (short) (p.length + 2));
   }
 
   /**
