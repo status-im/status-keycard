@@ -13,7 +13,7 @@ public class KeycardApplet extends Applet {
   static final byte INS_GET_STATUS = (byte) 0xF2;
   static final byte INS_SET_NDEF = (byte) 0xF3;
   static final byte INS_INIT = (byte) 0xFE;
-  static final byte INS_LOAD_CERTS = (byte) 0xFA;
+  static final byte INS_LOAD_CERT = (byte) 0xFA;
   static final byte INS_EXPORT_CERTS = (byte) 0xFB;
   static final byte INS_VERIFY_PIN = (byte) 0x20;
   static final byte INS_CHANGE_PIN = (byte) 0x21;
@@ -93,8 +93,7 @@ public class KeycardApplet extends Applet {
   static final byte TLV_CHAIN_CODE = (byte) 0x82;
 
   static final byte TLV_SEED = (byte) 0x90;
-  static final byte TLV_CERTS = (byte) 0x91;
-  static final byte TLV_CERT = (byte) 0x92;
+  static final byte TLV_CERT = (byte) 0x91;
   static final byte TLV_SEED_FLAG = (byte) 0x9F;
 
   static final byte TLV_APPLICATION_STATUS_TEMPLATE = (byte) 0xA3;
@@ -130,13 +129,10 @@ public class KeycardApplet extends Applet {
   private SecureChannel secureChannel;
 
   static final short CERT_LEN = 64;
-  static final short NUM_CERTS = 3;
-  static final short CERTS_LEN = CERT_LEN * NUM_CERTS;
-  private byte[] certs;
-  private byte certsLoaded;
-  private byte numCertsLoaded;
-  private ECPublicKey certsAuthPublic;
-  private ECPrivateKey certsAuthPrivate;
+  private byte[] cert;
+  private byte certLoaded;
+  private ECPublicKey idPublic;
+  private ECPrivateKey idPrivate;
 
   private byte[] masterSeed;
   private byte masterSeedFlag;
@@ -210,9 +206,8 @@ public class KeycardApplet extends Applet {
     crypto.random.generateData(uid, (short) 0, UID_LENGTH);
 
     // Room for 3 certs
-    certs = new byte[CERTS_LEN];
-    certsLoaded = 0;
-    numCertsLoaded = (byte) 0;
+    cert = new byte[CERT_LEN];
+    certLoaded = 0;
 
     masterSeed = new byte[BIP39_SEED_SIZE];
     masterSeedFlag = SFLAG_NONE;
@@ -229,8 +224,8 @@ public class KeycardApplet extends Applet {
     pinlessPublicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
     pinlessPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
 
-    certsAuthPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
-    certsAuthPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
+    idPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
+    idPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
 
     masterChainCode = new byte[CHAIN_CODE_SIZE];
     parentChainCode = new byte[CHAIN_CODE_SIZE];
@@ -244,16 +239,16 @@ public class KeycardApplet extends Applet {
 
     // Set the curve params for the certsAuth keypair. This MUST happen after all
     // other keys are initialized or else the card will lock! 
-    secp256k1.setCurveParameters(certsAuthPublic);
-    secp256k1.setCurveParameters(certsAuthPrivate);
+    secp256k1.setCurveParameters(idPublic);
+    secp256k1.setCurveParameters(idPrivate);
 
     // Load the certs auth keypair with data
     byte[] privBuf = new byte[Crypto.KEY_SECRET_SIZE];
     crypto.random.generateData(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
-    certsAuthPrivate.setS(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
+    idPrivate.setS(privBuf, (short) 0, Crypto.KEY_SECRET_SIZE);
     byte[] pubBuf = new byte[Crypto.KEY_PUB_SIZE];
     secp256k1.derivePublicKey(privBuf, (short) 0, pubBuf, (short) 0);
-    certsAuthPublic.setW(pubBuf, (short) 0, Crypto.KEY_PUB_SIZE);
+    idPublic.setW(pubBuf, (short) 0, Crypto.KEY_PUB_SIZE);
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
@@ -280,8 +275,8 @@ public class KeycardApplet extends Applet {
     byte p1 = apduBuffer[ISO7816.OFFSET_P1];
     
     // Cert loading should happen before init
-    if (code == INS_LOAD_CERTS) {
-      loadCerts(apdu);
+    if (code == INS_LOAD_CERT) {
+      loadCert(apdu);
       return;
     }
 
@@ -414,26 +409,9 @@ public class KeycardApplet extends Applet {
     byte cmd = apduBuffer[ISO7816.OFFSET_INS];
     byte p1 = apduBuffer[ISO7816.OFFSET_P1];
     if (selectingApplet()) {
-      short off = 0;
-
-      // Add the secure channel public key to the output info
       apduBuffer[0] = TLV_PUB_KEY;
       apduBuffer[1] = (byte) secureChannel.copyPublicKey(apduBuffer, (short) 2);
-      off += 2;
-      off += apduBuffer[1];
-
-      // Get the instance UID. This is a unique identifier for the installation and
-      // cannot be updated after the app is installed. It is used to make the certificates.
-      apduBuffer[off] = TLV_UID;
-      off += 1;
-      apduBuffer[off] = UID_LENGTH;
-      off += 1;
-      Util.arrayCopyNonAtomic(uid, (short) 0, apduBuffer, off, UID_LENGTH);
-      off += UID_LENGTH;
-
-      // Send the APDU buffer
-      apdu.setOutgoingAndSend((short) 0, (short) off);
-
+      apdu.setOutgoingAndSend((short) 0, (short)(apduBuffer[1] + 2));
     } else if (cmd == INS_INIT && p1 == INIT_P1_FIRST_TIME) {
       // The first time we are calling INIT - load the PIN and PUK
       secureChannel.oneShotDecrypt(apduBuffer);
@@ -852,11 +830,11 @@ public class KeycardApplet extends Applet {
    * This function may only be called once.
    * @param apdu the JCRE-owned APDU object.
    */
-  private void loadCerts(APDU apdu) {
+  private void loadCert(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
     apdu.setIncomingAndReceive();    
 
-    if (certsLoaded > 0) {
+    if (certLoaded > 0) {
       // Only allow this to happen once and make sure it's an appropriate size
       ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
     }
@@ -865,15 +843,14 @@ public class KeycardApplet extends Applet {
     
     // Get length of certs
     short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
-    if (len > CERTS_LEN || len % CERT_LEN != 0) {
+    if (len != CERT_LEN) {
       ISOException.throwIt(ISO7816.SW_DATA_INVALID);
     }
 
-    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, certs, (short) 0, len);
+    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, cert, (short) 0, len);
     
     // Prevent any future calls of this function
-    certsLoaded = 1;
-    numCertsLoaded = (byte) (len / CERT_LEN);
+    certLoaded = 1;
 
     JCSystem.commitTransaction();
   } 
@@ -886,14 +863,10 @@ public class KeycardApplet extends Applet {
   private void exportCerts(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
     short off = 0;
-    apduBuffer[off++] = TLV_CERTS;
-    apduBuffer[off++] = (byte) ((2 + CERT_LEN) * numCertsLoaded); // Each cert has a 2-byte header
-    for (short i = 0; i < numCertsLoaded; i++) {
-      apduBuffer[off++] = TLV_CERT;
-      apduBuffer[off++] = CERT_LEN;
-      Util.arrayCopyNonAtomic(certs, (short) (i * CERT_LEN), apduBuffer, (short) off, CERT_LEN);
-      off += CERT_LEN;
-    }
+    apduBuffer[off] = TLV_CERT; off++;
+    apduBuffer[off] = (byte) CERT_LEN; off++;
+    Util.arrayCopyNonAtomic(cert, (short) 0, apduBuffer, (short) off, CERT_LEN);
+    off += CERT_LEN;
     apdu.setOutgoingAndSend((short) 0, off);
   }
 
@@ -911,13 +884,13 @@ public class KeycardApplet extends Applet {
     // Add public key for verification
     apduBuffer[3] = TLV_PUB_KEY;
     short outLen = apduBuffer[4] = Crypto.KEY_PUB_SIZE;
-    certsAuthPublic.getW(apduBuffer, (short) 5);
+    idPublic.getW(apduBuffer, (short) 5);
     outLen += 5;
     
     short sigOff = outLen;
 
     // Add signature of msg hash
-    tmpSig.init(certsAuthPrivate, Signature.MODE_SIGN);
+    tmpSig.init(idPrivate, Signature.MODE_SIGN);
     outLen += tmpSig.signPreComputedHash(msgHash, (short) 0, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
     outLen += crypto.fixS(apduBuffer, sigOff);
 
