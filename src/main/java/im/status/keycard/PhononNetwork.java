@@ -1,29 +1,28 @@
 package im.status.keycard;
 import javacard.framework.*;
-// import javacard.security.RandomData;
 
 public class PhononNetwork {
     static final public byte NETWORK_DESCRIPTOR_LEN = 32;
+    static final public byte INT_LEN = 4; // Number of bytes per integer
     static final public byte EXTRA_DATA_LEN = 33;
     static final public byte NUM_PHONON_SLOTS = 32;
     static final public byte NUM_NETWORK_SLOTS = 5;
     static final public byte NUM_SALT_SLOTS = 5;
+    static final public short DEPOSIT_FAIL = 10000;
     static final public short NO_PHONON_SLOT = 10000;
     static final public short NO_SALT_SLOT = 10000;
 
     private short depositNonce;
-    // private byte[] salts;
-    // private byte[] saltsTs;
+    private byte[] salts;
+    private byte[] saltsTs;
     private Phonon[] phonons;
     private byte[] networks;
-    // Crypto crypto;
 
     PhononNetwork() {
-        // crypto = new Crypto();
         this.depositNonce = 0;              // Global nonce tracker to prevent replayed deposits
         this.phonons = new Phonon[NUM_PHONON_SLOTS];       // Set of phonons
-        // this.salts = new byte[NUM_SALT_SLOTS * 4];          // Salt slots for receiving phonons (4-byte int)
-        // this.saltsTs = new byte[NUM_SALT_SLOTS * 4];        // Corresponding timestamps for salts (4-byte int)
+        this.salts = new byte[INT_LEN * NUM_SALT_SLOTS];          // Salt slots for receiving phonons
+        this.saltsTs = new byte[INT_LEN * NUM_SALT_SLOTS];        // Corresponding timestamps for salts
         this.networks = new byte[NETWORK_DESCRIPTOR_LEN * NUM_NETWORK_SLOTS];   // 5x Network descriptors
     }
 
@@ -31,6 +30,14 @@ public class PhononNetwork {
     //==========================================================================================================
     // PRIVATE HELPERS
     //==========================================================================================================    
+    private short getNextSaltSlot() {
+        for (short i = 0; i < NUM_SALT_SLOTS; i++) {
+            if (saltIsEmpty(i) == true) { 
+                return i;
+            }
+        }
+        return NO_SALT_SLOT;
+    }
 
     private short getNextPhononSlot() {
         for (short i = 0; i < NUM_PHONON_SLOTS; i++) {
@@ -40,23 +47,14 @@ public class PhononNetwork {
         }
         return NO_PHONON_SLOT;
     }
-/*
-    private short getNextSaltSlot() {
-        for (short i = 0; i < NUM_SALT_SLOTS; i++) {
-            if (salts[i * 4] == 0) {
-                return i;
-            }
-        }
-        return NO_SALT_SLOT;
-    }
-*/
+
     // Unpack a 37 byte serialized payload
     private Phonon unpackDeposit(short nonce, byte[] priv, byte[] d) {
         short off = 0;
         // byte 0
         byte networkId = d[off]; off++;
         // byte 1
-        byte assetId = d[off]; off++;
+        byte assetId = d[off]; off++; 
         // byte 2-3
         byte a1 = d[off]; off++;
         byte a2 = d[off]; off++;
@@ -123,6 +121,19 @@ public class PhononNetwork {
         return r;
     }
 
+    public boolean saltIsEmpty(short i) {
+        if (i >= NUM_SALT_SLOTS) {
+            return false;
+        }
+        short si = (short) (i * INT_LEN);
+        if (salts[si] == (byte) 0 && salts[(short) (si + 1)] == (byte) 0
+            && salts[(short) (si + 2)] == (byte) 0 && salts[(short) (si + 3)] == (byte) 0) {
+            return true;
+        }
+        return false;
+    }
+
+
     //==========================================================================================================
     // DEPOSITS
     //==========================================================================================================
@@ -162,17 +173,39 @@ public class PhononNetwork {
     // RECEIVE
     //==========================================================================================================
 
-    // Initiate 
-    /*public byte[] startReceive(byte[] ts) {
-        short i = getNextSaltSlot();
-        if (i == NO_SALT_SLOT) {
-            byte[] e = { 0, 0, 0, 0};
-            return e;
+    // Determine if we can start the receive process by generating a new salt and saving it
+    public boolean canMakeNewSalt(byte[] salt, byte[] ts) {
+        if (getNextSaltSlot() == NO_SALT_SLOT || salt.length != INT_LEN || ts.length != INT_LEN) {
+            return false;
         }
-        byte[] r = new byte[4];
-        crypto.random.generateData(r, (short) 0, (short) 4);
-        Util.arrayCopy(r, (short) 0, salts, (short) (i * 4), (short) 4);
-        Util.arrayCopy(ts, (short) 0, saltsTs, (short) (i * 4), (short) 4);
-        return r;
-    }*/
+        return true;
+    }
+
+    // Save the generated salt at the next available slot. This function will only be called
+    // after `canReceive`, which ensures there is a salt slot available.
+    public short newSalt(byte[] salt, byte[] ts) {
+        short i = getNextSaltSlot();
+        Util.arrayCopy(salt, (short) 0, this.salts, (short) (i * INT_LEN), INT_LEN);
+        Util.arrayCopy(ts, (short) 0, this.saltsTs, (short) (i * INT_LEN), INT_LEN);
+        return i;
+    }
+
+    public byte[] getSalt(short i) {
+        byte[] s = new byte[4];
+        Util.arrayCopyNonAtomic(this.salts, (byte) (i * INT_LEN), s, (byte) 0, INT_LEN);
+        return s;
+    }
+
+    public void removeSalt(short i) {
+        short j = (short) (i * 4);
+        this.salts[j] = 0;
+        this.saltsTs[j] = 0;
+        this.salts[(short) (j + 1)] = 0;
+        this.saltsTs[(short) (j + 1)] = 0;
+        this.salts[(short) (j + 2)] = 0;
+        this.saltsTs[(short) (j + 2)] = 0;
+        this.salts[(short) (j + 3)] = 0;
+        this.saltsTs[(short) (j + 3)] = 0;
+        return;
+    }
 }

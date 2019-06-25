@@ -33,15 +33,19 @@ public class KeycardApplet extends Applet {
   static final byte INS_AUTHENTICATE = (byte) 0xEE;
 
   // Phonon APDUs
-  static final byte INS_PHONON_SET_NETWORK_DESCRIPTOR = (byte) 0xF4;
-  static final byte INS_PHONON_GET_NETWORK_DESCRIPTOR = (byte) 0xF5;
-  static final byte INS_PHONON_GET_DEPOSIT_NONCE = (byte) 0xF6;
-  static final byte INS_PHONON_GET_DEPOSIT_PUBKEY = (byte) 0xF7;
-  static final byte INS_GET_PHONON = (byte) 0xF8;
-  static final byte INS_PHONON_DEPOSIT = (byte) 0xF9;
+  static final byte INS_PHONON_SET_NETWORK_DESCRIPTOR = (byte) 0x30;
+  static final byte INS_PHONON_GET_NETWORK_DESCRIPTOR = (byte) 0x31;
+  static final byte INS_PHONON_GET_DEPOSIT_NONCE = (byte) 0x32;
+  static final byte INS_PHONON_GET_DEPOSIT_PUBKEY = (byte) 0x33;
+  static final byte INS_GET_PHONON = (byte) 0x34;
+  static final byte INS_PHONON_DEPOSIT = (byte) 0x35;
+  static final byte INS_PHONON_NEW_SALT = (byte) 0x36;
+  static final byte INS_PHONON_REMOVE_SALT = (byte) 0x37;
+  static final byte INS_PHONON_GET_SALT = (byte) 0x38;
   static final byte TLV_PHONON_NETWORK_DESCRIPTOR = (byte) 0xFA;
   static final byte TLV_PHONON_IDX = (byte) 0xFB;
   static final byte TLV_PHONON = (byte) 0xFC;
+  static final byte TLV_PHONON_NEW_SALT = (byte) 0xFD;
 
   static final short SW_REFERENCED_DATA_NOT_FOUND = (short) 0x6A88;
 
@@ -401,6 +405,15 @@ public class KeycardApplet extends Applet {
         case INS_PHONON_DEPOSIT:
           phononDeposit(apdu);
           break;
+        case INS_PHONON_NEW_SALT:
+          phononNewSalt(apdu);
+          break;
+        case INS_PHONON_REMOVE_SALT:
+          phononRemoveSalt(apdu);
+          break;
+        case INS_PHONON_GET_SALT:
+          phononGetSalt(apdu);
+          break;
         default:
           ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
           break;
@@ -512,6 +525,7 @@ public class KeycardApplet extends Applet {
    * - amount (short): Value of the phonon
    * - decimals (byte): Exponent of amount (true value is: amount * 10 ** decimals)
    * - extraData (byte[33]): Data that is needed to validate the phonon (e.g. txhash + vout)
+   * 
    * @returns index at which the phonon was deposited. If this is -1, the deposit failed.
    */
   private void phononDeposit(APDU apdu) {
@@ -547,6 +561,85 @@ public class KeycardApplet extends Applet {
     JCSystem.commitTransaction();
     
     apdu.setOutgoingAndSend((short) 0, (short) 4);  
+  }
+
+  /**
+   * Setup card to receive a phonon. This will create a new salt (random uint32) and save it to
+   * `phonon`. If all the salt-storing slots are filled, this will fail.
+   * @param apdu - the JCRE-owned APDU object
+   * * P1 and P2 are not checked
+   * * Data contains a uint32 representing the timestamp. This can be empty, as it is not validated here.
+   * 
+   * @returns [TLV_PHONON_NEW_SALT][TLV_SHORT][2][saltSlotIndex][TLV_INT][4][salt]
+   */
+  private void phononNewSalt(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    // The timestamp (uint32) should be included
+    short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
+    if (len != (short) (PhononNetwork.INT_LEN)) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+    byte[] timestamp = new byte[PhononNetwork.INT_LEN];
+    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, timestamp, (short) 0, len);
+    // Generate a salt using the PUF
+    byte[] salt = new byte[PhononNetwork.INT_LEN];
+    crypto.random.generateData(salt, (short) 0, (short) salt.length);
+    // Verify that this is valid data and there is an open slot
+    boolean canmakeSalt = phonon.canMakeNewSalt(salt, timestamp);
+    if (canmakeSalt == false) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+    // Commit the salt
+    JCSystem.beginTransaction();
+    short saltSlot = phonon.newSalt(salt, timestamp);
+    short off = 0;
+    apduBuffer[off] = TLV_PHONON_NEW_SALT; off++;
+    apduBuffer[off] = TLV_SHORT; off++;
+    apduBuffer[off] = (byte) 2; off++; // Length of short
+    byte[] saltSlotBytes = PhononNetwork.shortToBytes(saltSlot);
+    apduBuffer[off] = saltSlotBytes[0]; off++;
+    apduBuffer[off] = saltSlotBytes[1]; off++;
+    apduBuffer[off] = TLV_INT; off++;
+    apduBuffer[off] = (byte) 4; off++; // Length of int
+    for (short i = 0; i < 4; i++) {
+      apduBuffer[off] = salt[i]; off++;
+    }
+    JCSystem.commitTransaction();
+
+    apdu.setOutgoingAndSend((short) 0, (short) off);
+  }
+
+  /**
+   * Remove a phonon salt by index
+   * @param apdu
+   */
+  private void phononRemoveSalt(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    short i = PhononNetwork.bytesToShort((byte) apduBuffer[ISO7816.OFFSET_P1], (byte) apduBuffer[ISO7816.OFFSET_P2]);
+    // Ensure the index is in bounds
+    if (i >= PhononNetwork.NUM_SALT_SLOTS) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+    // Ensure there is a salt there
+    if (phonon.saltIsEmpty(i) == false) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+    // Remove the salt
+    JCSystem.beginTransaction();
+    phonon.removeSalt((short) 0);
+    JCSystem.commitTransaction();
+    apdu.setOutgoingAndSend((short) 0, (short) 0);
+  }
+
+  private void phononGetSalt(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    short i = PhononNetwork.bytesToShort((byte) apduBuffer[ISO7816.OFFSET_P1], (byte) apduBuffer[ISO7816.OFFSET_P2]);
+    // Ensure the index is in bounds
+    if (i >= PhononNetwork.NUM_SALT_SLOTS) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+    byte[] salt = phonon.getSalt(i);
+    Util.arrayCopyNonAtomic(salt, (short) 0, apduBuffer, (short) 0, (short) salt.length);
   }
 
   /**
