@@ -144,6 +144,4 @@ public class PhononNetwork {
         this.depositNonce = nonce;
         return i;
     }
-
-
 }

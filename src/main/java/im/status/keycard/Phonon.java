@@ -52,5 +52,4 @@ public class Phonon {
         off += pubLen;
         return d;
     }
-
 }
