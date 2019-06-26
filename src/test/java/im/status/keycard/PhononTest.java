@@ -290,6 +290,15 @@ public class PhononTest {
         assertEquals(d[5], KeycardApplet.TLV_INT);
         assertEquals(d[6], (byte) 4);
     }
+
+    private boolean arraysEqual(byte[] a, short aOff, byte[] b, short bOff, short len) {
+        for (short i = 0; i < len; i++) {
+            if (a[aOff + i] != b[bOff + i]) {
+                return false;
+            }
+        }
+        return true;
+    }
     //=================================================================
     // TESTS
     //=================================================================
@@ -450,6 +459,7 @@ public class PhononTest {
         byte[] data;
         // Timestamps aren't enforced at the card level. Here's a static, dummy one.
         byte[] timestamp = { (byte) 0x5d, (byte) 0x12, (byte) 0x8a, (byte) 0xab }; // 1561496235
+        byte[] empty = { 0, 0, 0, 0 };
 
         // Fail to begin with a 3 byte timestamp
         byte[] badTs = { (byte) 0x5d, (byte) 0x12, (byte) 0x8a };
@@ -466,7 +476,6 @@ public class PhononTest {
             response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_NEW_SALT, (byte) 0, (byte) i, timestamp);
             assertEquals(0x9000, response.getSw());
             data = response.getData();
-            System.out.println("data " + Arrays.toString(data));
             validateNewSalt(data);
         }
 
@@ -482,15 +491,22 @@ public class PhononTest {
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_SALT, (byte) 0, (byte) 3, emptyData);
         assertEquals(0x9000, response.getSw());
         data = response.getData();
-        System.out.println("salt" + Arrays.toString(data));
+        assertEquals(arraysEqual(data, (short) 2, empty, (short) 0, (short) empty.length), false);
 
-        // // Remove the 3rd salt
-        // response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, (byte) 3, emptyData);
-        // assertEquals(0x9000, response.getSw());
+        // Remove the 3rd salt
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, (byte) 3, emptyData);
+        assertEquals(0x9000, response.getSw());
 
-        // // Fail to remove the 3rd salt again because it is empty
-        // response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, (byte) 3, emptyData);
-        // assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
+        // Get the 3rd salt and ensure it *is* null
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_SALT, (byte) 0, (byte) 3, emptyData);
+        assertEquals(0x9000, response.getSw());
+        data = response.getData();
+        assertEquals(arraysEqual(data, (short) 2, empty, (short) 0, (short) empty.length), true);
+
+        // Fail to remove the 3rd salt again because it is empty
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, (byte) 3, emptyData);
+        assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
+        
     }
 
 }

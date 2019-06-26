@@ -197,15 +197,9 @@ public class PhononNetwork {
     }
 
     public void removeSalt(short i) {
-        short j = (short) (i * 4);
-        this.salts[j] = 0;
-        this.saltsTs[j] = 0;
-        this.salts[(short) (j + 1)] = 0;
-        this.saltsTs[(short) (j + 1)] = 0;
-        this.salts[(short) (j + 2)] = 0;
-        this.saltsTs[(short) (j + 2)] = 0;
-        this.salts[(short) (j + 3)] = 0;
-        this.saltsTs[(short) (j + 3)] = 0;
+        byte[] empty = { 0, 0, 0, 0 };
+        Util.arrayCopy(empty, (short) 0, this.salts, (short) (i * INT_LEN), INT_LEN);
+        Util.arrayCopy(empty, (short) 0, this.saltsTs, (short) (i * INT_LEN), INT_LEN);
         return;
     }
 }

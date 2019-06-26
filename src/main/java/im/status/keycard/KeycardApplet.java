@@ -621,12 +621,12 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
     // Ensure there is a salt there
-    if (phonon.saltIsEmpty(i) == false) {
+    if (phonon.saltIsEmpty(i) == true) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
     // Remove the salt
     JCSystem.beginTransaction();
-    phonon.removeSalt((short) 0);
+    phonon.removeSalt(i);
     JCSystem.commitTransaction();
     apdu.setOutgoingAndSend((short) 0, (short) 0);
   }
@@ -635,11 +635,14 @@ public class KeycardApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     short i = PhononNetwork.bytesToShort((byte) apduBuffer[ISO7816.OFFSET_P1], (byte) apduBuffer[ISO7816.OFFSET_P2]);
     // Ensure the index is in bounds
-    if (i >= PhononNetwork.NUM_SALT_SLOTS) {
-      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-    }
+    // if (i >= PhononNetwork.NUM_SALT_SLOTS) {
+      // ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    // }
     byte[] salt = phonon.getSalt(i);
-    Util.arrayCopyNonAtomic(salt, (short) 0, apduBuffer, (short) 0, (short) salt.length);
+    apduBuffer[0] = TLV_INT;
+    apduBuffer[1] = PhononNetwork.INT_LEN;
+    Util.arrayCopyNonAtomic(salt, (short) 0, apduBuffer, (short) 2, (short) PhononNetwork.INT_LEN);
+    apdu.setOutgoingAndSend((short) 0, (short) (PhononNetwork.INT_LEN + 2));
   }
 
   /**
