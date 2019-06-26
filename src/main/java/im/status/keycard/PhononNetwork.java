@@ -170,7 +170,7 @@ public class PhononNetwork {
     }
 
     //==========================================================================================================
-    // RECEIVE
+    // SALTS
     //==========================================================================================================
 
     // Determine if we can start the receive process by generating a new salt and saving it
@@ -202,4 +202,22 @@ public class PhononNetwork {
         Util.arrayCopy(empty, (short) 0, this.saltsTs, (short) (i * INT_LEN), INT_LEN);
         return;
     }
+
+    //==========================================================================================================
+    // TRANSFER
+    //==========================================================================================================
+
+/*
+    public byte[] transfer(short i, byte[] nonce) {
+        if (phonons[i] == null) {
+            byte[] e = {};
+            return e;
+        }
+        // Export the phonon and delete it on card
+        byte[] p = phonons[i].export();
+        phonons[i] = null;
+        // Encrypt the phonon with the nonce
+        return p;
+    }
+*/
 }

@@ -35,6 +35,7 @@ public class Phonon {
         this.owner.setS(_owner, (short) 0, Crypto.KEY_SECRET_SIZE);
     }
 
+    // Serialize static phonon data (NOT including private key)
     public byte[] serialize() {
         byte[] d = JCSystem.makeTransientByteArray(SERIALIZED_PHONON_LEN, JCSystem.CLEAR_ON_RESET);
         short off = 0;
@@ -52,4 +53,21 @@ public class Phonon {
         off += pubLen;
         return d;
     }
+/*
+    // Export the phonon (with private key)
+    public byte[] export() {
+        byte[] d = JCSystem.makeTransientByteArray(SERIALIZED_PHONON_LEN, JCSystem.CLEAR_ON_RESET);
+        short off = 0;
+        d[off] = this.networkId; off++;
+        d[off] = this.assetId; off++;
+        byte[] a = PhononNetwork.shortToBytes(this.amount);
+        d[off] = a[0]; off++;
+        d[off] = a[1]; off++;
+        d[off] = this.decimals; off++;
+        Util.arrayCopy(this.extraData, (short) 0, d, (short) off, (short) this.extraData.length);
+        off += this.extraData.length;
+        this.owner.getS(d, off);
+        return d;
+    }
+*/
 }

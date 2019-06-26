@@ -287,8 +287,9 @@ public class PhononTest {
         assertEquals(d[0], KeycardApplet.TLV_PHONON_NEW_SALT);
         assertEquals(d[1], KeycardApplet.TLV_SHORT);
         assertEquals(d[2], (byte) 2);
-        assertEquals(d[5], KeycardApplet.TLV_INT);
-        assertEquals(d[6], (byte) 4);
+        assertEquals(d[5], KeycardApplet.TLV_PUB_KEY);
+        assertEquals(d[6], (byte) 65);
+        assertEquals(d[7], (byte) 4); // All pubkeys are uncompressed and are prefixed with 4
     }
 
     private boolean arraysEqual(byte[] a, short aOff, byte[] b, short bOff, short len) {
@@ -298,6 +299,14 @@ public class PhononTest {
             }
         }
         return true;
+    }
+
+    private byte[] arraySlice(byte[] a, short aOff, short len) {
+        byte[] b = new byte[len];
+        for (short i = 0; i < len; i++) {
+            b[i] = a[aOff + i];
+        }
+        return b;
     }
     //=================================================================
     // TESTS
@@ -380,10 +389,14 @@ public class PhononTest {
     //--------------------------------
     // Deposits
     //--------------------------------
+    byte[] depositedPhonon;
+    byte[] receivePubKey = new byte[Crypto.KEY_PUB_SIZE];
+    byte[] phononPayload;
     
     @Test
     @DisplayName("Test network descriptors")
     void depositTest() throws Exception {
+        System.out.println("depositText\n");
         APDUResponse response;
         Random random = new Random();
         byte[] p;
@@ -403,8 +416,8 @@ public class PhononTest {
         assertEquals((short) 0, nonce);
 
         // Fail to make a deposit with correct params to nonce equal deposit nonce
-        p = buildPhonon(networkId, assetId, amount, decimals, extraData);
-        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_DEPOSIT, (byte) 0, (byte) 0, p);
+        depositedPhonon = buildPhonon(networkId, assetId, amount, decimals, extraData);
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_DEPOSIT, (byte) 0, (byte) 0, depositedPhonon);
         assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
 
         // Fail to make deposit with bad fields
@@ -431,7 +444,7 @@ public class PhononTest {
         assertEquals(0, phononAt[1]);
 
         // Deposit with correct params
-        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_DEPOSIT, (byte) 0, (byte) 1, p);
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_DEPOSIT, (byte) 0, (byte) 1, depositedPhonon);
         assertEquals(0x9000, response.getSw());
         d = response.getData();
         short depositIndex = PhononNetwork.bytesToShort(d[2], d[3]);
@@ -449,11 +462,14 @@ public class PhononTest {
         assertEquals(0x9000, response.getSw());
         d = response.getData();
         validatePhonon(networkId, assetId, amount, decimals, extraData, d);
+        System.out.println("deposit test end\n\n");
+
     }
 
     @Test
-    @DisplayName("Receive a phonon command")
-    void receiveTest() throws Exception {
+    @DisplayName("Test Salts")
+    void saltsTest() throws Exception {
+        System.out.println("salts test\n\n");
         // Get a salt 
         APDUResponse response;
         byte[] data;
@@ -487,26 +503,37 @@ public class PhononTest {
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, (byte) 6, emptyData);
         assertEquals(ISO7816.SW_WRONG_DATA, response.getSw());
 
-        // Get the 3rd salt and ensure it is non-null
-        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_SALT, (byte) 0, (byte) 3, emptyData);
+        // Get the 3rd receiving key and ensure it is non-null
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_RECEIVE_PUB_KEY, (byte) 0, (byte) 3, emptyData);
         assertEquals(0x9000, response.getSw());
         data = response.getData();
-        assertEquals(arraysEqual(data, (short) 2, empty, (short) 0, (short) empty.length), false);
+        // Save the pubkey
+        receivePubKey = arraySlice(data, (short) 2, Crypto.KEY_PUB_SIZE);
 
         // Remove the 3rd salt
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, (byte) 3, emptyData);
         assertEquals(0x9000, response.getSw());
 
-        // Get the 3rd salt and ensure it *is* null
-        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_SALT, (byte) 0, (byte) 3, emptyData);
-        assertEquals(0x9000, response.getSw());
-        data = response.getData();
-        assertEquals(arraysEqual(data, (short) 2, empty, (short) 0, (short) empty.length), true);
+        // Get the 3rd receiving key and ensure it *is* null
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_RECEIVE_PUB_KEY, (byte) 0, (byte) 3, emptyData);
+        assertEquals(ISO7816.SW_RECORD_NOT_FOUND, response.getSw());
 
         // Fail to remove the 3rd salt again because it is empty
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, (byte) 3, emptyData);
         assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
-        
+
+        // retreieve and save the first receiving keuy
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_RECEIVE_PUB_KEY, (byte) 0, (byte) 0, emptyData);
+        assertEquals(0x9000, response.getSw());
+        data = response.getData();
+        // Save the pubkey
+        receivePubKey = arraySlice(data, (short) 2, Crypto.KEY_PUB_SIZE);
+    }
+
+    @Test
+    @DisplayName("Test Transfer")
+    void transferTest() throws Exception {
+
     }
 
 }
