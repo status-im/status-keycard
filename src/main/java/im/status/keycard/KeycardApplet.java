@@ -42,10 +42,13 @@ public class KeycardApplet extends Applet {
   static final byte INS_PHONON_NEW_SALT = (byte) 0x36;
   static final byte INS_PHONON_REMOVE_SALT = (byte) 0x37;
   static final byte INS_PHONON_GET_RECEIVE_PUB_KEY = (byte) 0x38;
+  static final byte INS_PHONON_TRANSFER = (byte) 0x39;
   static final byte TLV_PHONON_NETWORK_DESCRIPTOR = (byte) 0xFA;
   static final byte TLV_PHONON_IDX = (byte) 0xFB;
-  static final byte TLV_PHONON = (byte) 0xFC;
-  static final byte TLV_PHONON_NEW_SALT = (byte) 0xFD;
+  static final byte TLV_PHONON_STATIC = (byte) 0xFC;
+  static final byte TLV_PHONON_ENCRYPTED = (byte) 0xFD;
+  static final byte TLV_PHONON_NEW_SALT = (byte) 0xFE;
+
 
   static final short SW_REFERENCED_DATA_NOT_FOUND = (short) 0x6A88;
 
@@ -414,6 +417,9 @@ public class KeycardApplet extends Applet {
         case INS_PHONON_GET_RECEIVE_PUB_KEY:
           phononGetReceivePubKey(apdu);
           break;
+        case INS_PHONON_TRANSFER:
+          phononTransfer(apdu);
+          break;
         default:
           ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
           break;
@@ -509,7 +515,7 @@ public class KeycardApplet extends Applet {
     byte p2 = (byte) apduBuffer[ISO7816.OFFSET_P2];
     short i = PhononNetwork.bytesToShort(p1, p2);
     byte[] p = phonon.getSerializedPhonon(i);
-    apduBuffer[0] = TLV_PHONON;
+    apduBuffer[0] = TLV_PHONON_STATIC;
     apduBuffer[1] = (byte) p.length;
     Util.arrayCopyNonAtomic(p, (short) 0, apduBuffer, (short) 2, (short) p.length);
     apdu.setOutgoingAndSend((short) 0, (short) (p.length + 2));
@@ -635,6 +641,10 @@ public class KeycardApplet extends Applet {
     apdu.setOutgoingAndSend((short) 0, (short) 0);
   }
 
+  /**
+   * Get a receiving public key. This is used by a counterparty to encrypt a phonon for transfer
+   * @param apdu
+   */
   private void phononGetReceivePubKey(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
     short i = PhononNetwork.bytesToShort((byte) apduBuffer[ISO7816.OFFSET_P1], (byte) apduBuffer[ISO7816.OFFSET_P2]);
@@ -654,6 +664,65 @@ public class KeycardApplet extends Applet {
     Util.arrayCopyNonAtomic(pub, (short) 0, apduBuffer, (short) 2, (short) Crypto.KEY_PUB_SIZE);
     apdu.setOutgoingAndSend((short) 0, (short) (Crypto.KEY_PUB_SIZE + 2));
   }
+
+  /**
+   * Transfer a phonon given a receiving public key and an index
+   * @param apdu
+   */
+  private void phononTransfer(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+
+    byte p1 = (byte) apduBuffer[ISO7816.OFFSET_P1];
+    byte p2 = (byte) apduBuffer[ISO7816.OFFSET_P2];
+    short i = PhononNetwork.bytesToShort(p1, p2);
+
+    // Payload should include a receiving public key, which is used to derive
+    // the encryption secret
+    short len = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00FF);
+    if (len != (short) (Crypto.KEY_PUB_SIZE)) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+    byte[] pubKeyBuf = new byte[Crypto.KEY_PUB_SIZE];
+    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, pubKeyBuf, (short) 0, len);
+
+    // Ensure there is a phonon at the provided slot
+    if (phonon.canTransfer(i) == false) {
+      ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+    }
+    // Generate a random key (for encrypting the phonon)
+    KeyPair kp = new KeyPair(KeyPair.ALG_EC_FP, (short) 256);
+    secp256k1.setCurveParameters((ECKey) kp.getPrivate());
+    secp256k1.setCurveParameters((ECKey) kp.getPublic());
+    kp.genKeyPair();
+    
+    // Transfer out the phonon
+    byte[] encPhonon = new byte[Phonon.SERIALIZED_PHONON_LEN + 10];
+    short encPhononLen = phonon.transfer(i, pubKeyBuf, kp, crypto, encPhonon);
+    /*
+    // Ensure the encrypted length is what we would expect (the exported phonon payload size)
+    if (encPhononLen != Phonon.SERIALIZED_PHONON_LEN) {
+      ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+    }
+    */
+    // JCSystem.beginTransaction();
+    // // Remove the phonon
+    // phonon.delete(i);
+    // // Build response
+    // short off = 0;
+    // apduBuffer[off] = TLV_PUB_KEY; off++;
+    // apduBuffer[off] = Crypto.KEY_PUB_SIZE; off++;
+    // Util.arrayCopy(pubKeyBuf, (short) 0, apduBuffer, (short) off, Crypto.KEY_PUB_SIZE);
+    // off += Crypto.KEY_PUB_SIZE;
+    // apduBuffer[off] = TLV_PHONON_ENCRYPTED;
+    // apduBuffer[off] = (byte) encPhononLen;
+    // Util.arrayCopy(encPhonon, (short) 0, apduBuffer, (short) off, encPhononLen);
+    // off += encPhononLen;
+    // JCSystem.commitTransaction();
+
+    // apdu.setOutgoingAndSend((short) 0, (short) off);
+    apdu.setOutgoingAndSend((short) 0, (short) 0);
+  }
+
 
   /**
    * Processes the init command, this is invoked only if the applet has not yet been personalized with secrets.

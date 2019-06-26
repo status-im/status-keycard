@@ -1,4 +1,7 @@
 package im.status.keycard;
+import javacard.security.KeyPair;
+import javacard.security.ECKey;
+import javacardx.crypto.Cipher;
 import javacard.framework.*;
 
 public class PhononNetwork {
@@ -66,6 +69,14 @@ public class PhononNetwork {
         Util.arrayCopy(d, off, extraData, (short) 0, EXTRA_DATA_LEN);
         Phonon p = new Phonon(networkId, assetId, priv, amount, decimals, extraData);
         return p;
+    }
+
+    // Given a private and public key, generate the ECDH shared secret
+    private static byte[] ecdhSharedSecret(Crypto crypto, KeyPair kp, byte[] pub) {
+        byte[] secret = new byte[Crypto.KEY_SECRET_SIZE];
+        crypto.ecdh.init(kp.getPrivate());
+        crypto.ecdh.generateSecret(pub, (short) 0, (short) Crypto.KEY_PUB_SIZE, secret, (short) 0);
+        return secret;
     }
 
     //==========================================================================================================
@@ -206,18 +217,32 @@ public class PhononNetwork {
     //==========================================================================================================
     // TRANSFER
     //==========================================================================================================
+    public boolean canTransfer(short i) {
+        return phonons[i] != null;
+    }
 
-/*
-    public byte[] transfer(short i, byte[] nonce) {
+    public short transfer(short i, byte[] receivingPub, KeyPair kp, Crypto crypto, byte[] output) {
+        // Sanity check - this should never get hit because canTransfer should be called first
         if (phonons[i] == null) {
-            byte[] e = {};
-            return e;
+            return 0;
         }
         // Export the phonon and delete it on card
         byte[] p = phonons[i].export();
-        phonons[i] = null;
-        // Encrypt the phonon with the nonce
-        return p;
+        // Generate the ECDH key
+        byte[] secret = ecdhSharedSecret(crypto, kp, receivingPub);
+        
+
+        // Encrypt the phonon and return the payload
+        // THIS IS THE OFFENDING LINE
+        // short encLen = crypto.oneShotAES(Cipher.MODE_ENCRYPT, p, (short) 0, (short) p.length, output, (short) 0, secret, (short) 0);
+        // NOT SURE WHY 10 WORKS BUT 100 DOESNT. NEED TO INVESTIGATE THE BUFFER SIZE
+        short encLen = crypto.oneShotAES(Cipher.MODE_ENCRYPT, p, (short) 0, (short) 10, output, (short) 0, secret, (short) 0);
+        // return encLen;
+        return (short) 5;
     }
-*/
+
+    public void delete(short i) {
+        phonons[i] = null;
+    }
+
 }

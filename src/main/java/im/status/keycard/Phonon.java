@@ -53,7 +53,7 @@ public class Phonon {
         off += pubLen;
         return d;
     }
-/*
+
     // Export the phonon (with private key)
     public byte[] export() {
         byte[] d = JCSystem.makeTransientByteArray(SERIALIZED_PHONON_LEN, JCSystem.CLEAR_ON_RESET);
@@ -69,5 +69,5 @@ public class Phonon {
         this.owner.getS(d, off);
         return d;
     }
-*/
+
 }
