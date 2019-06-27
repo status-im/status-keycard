@@ -308,6 +308,20 @@ public class PhononTest {
         }
         return b;
     }
+
+    // Unpackage a phonon which has been transfered out of a card. This will contain
+    // a public key and an encrypted packet.
+    // Returns the encrypted payload
+    private byte[] unpackTransferedPhonon(byte[] ph) {
+        // Quick validation checks
+        short off = 0;
+        assertEquals(ph[off], KeycardApplet.TLV_PUB_KEY); off++;
+        assertEquals(ph[off], Crypto.KEY_PUB_SIZE); off += (short) (1 + Crypto.KEY_PUB_SIZE);
+        assertEquals(ph[off], KeycardApplet.TLV_PHONON_ENCRYPTED); off++;
+        short encLen = (short) ph[off];
+        // Slice out the packet and return
+        return arraySlice(ph, off, encLen);
+    } 
     //=================================================================
     // TESTS
     //=================================================================
@@ -538,8 +552,13 @@ public class PhononTest {
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_TRANSFER, (byte) 0, (byte) depositSlot, receivePubKey);
         assertEquals(0x9000, response.getSw());
         d = response.getData();
-        System.out.println("Transfer data " + Arrays.toString(d));
-
+        // Extract the encrypted phonon packet and the public key needed to decrypt it
+        byte[] encPhonon = unpackTransferedPhonon(d);
+        byte[] encPhononPubKey = arraySlice(d, (short) 2, Crypto.KEY_PUB_SIZE);
+    
+        // Ensure the phonon has been deleted
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_TRANSFER, (byte) 0, (byte) depositSlot, receivePubKey);
+        assertEquals(ISO7816.SW_COMMAND_NOT_ALLOWED, response.getSw());
     }
 
 }

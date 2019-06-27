@@ -1,6 +1,5 @@
 package im.status.keycard;
-import javacard.security.KeyPair;
-import javacard.security.ECKey;
+import javacard.security.*;
 import javacardx.crypto.Cipher;
 import javacard.framework.*;
 
@@ -231,14 +230,16 @@ public class PhononNetwork {
         // Generate the ECDH key
         byte[] secret = ecdhSharedSecret(crypto, kp, receivingPub);
         
+        // Encrypt the payoad
 
-        // Encrypt the phonon and return the payload
-        // THIS IS THE OFFENDING LINE
-        // short encLen = crypto.oneShotAES(Cipher.MODE_ENCRYPT, p, (short) 0, (short) p.length, output, (short) 0, secret, (short) 0);
-        // NOT SURE WHY 10 WORKS BUT 100 DOESNT. NEED TO INVESTIGATE THE BUFFER SIZE
-        short encLen = crypto.oneShotAES(Cipher.MODE_ENCRYPT, p, (short) 0, (short) 10, output, (short) 0, secret, (short) 0);
-        // return encLen;
-        return (short) 5;
+        Cipher aesEcbCipher;
+        AESKey key = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
+        key.setKey(secret, (short) 0);
+        aesEcbCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_ECB_NOPAD, false);
+        aesEcbCipher.init(key, Cipher.MODE_ENCRYPT);
+        short encLen = aesEcbCipher.doFinal(p, (short) 0, (short) p.length, output, (short) 0);
+
+        return encLen;
     }
 
     public void delete(short i) {

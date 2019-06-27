@@ -694,33 +694,32 @@ public class KeycardApplet extends Applet {
     secp256k1.setCurveParameters((ECKey) kp.getPrivate());
     secp256k1.setCurveParameters((ECKey) kp.getPublic());
     kp.genKeyPair();
-    
-    // Transfer out the phonon
-    byte[] encPhonon = new byte[Phonon.SERIALIZED_PHONON_LEN + 10];
-    short encPhononLen = phonon.transfer(i, pubKeyBuf, kp, crypto, encPhonon);
-    /*
-    // Ensure the encrypted length is what we would expect (the exported phonon payload size)
-    if (encPhononLen != Phonon.SERIALIZED_PHONON_LEN) {
-      ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-    }
-    */
-    // JCSystem.beginTransaction();
-    // // Remove the phonon
-    // phonon.delete(i);
-    // // Build response
-    // short off = 0;
-    // apduBuffer[off] = TLV_PUB_KEY; off++;
-    // apduBuffer[off] = Crypto.KEY_PUB_SIZE; off++;
-    // Util.arrayCopy(pubKeyBuf, (short) 0, apduBuffer, (short) off, Crypto.KEY_PUB_SIZE);
-    // off += Crypto.KEY_PUB_SIZE;
-    // apduBuffer[off] = TLV_PHONON_ENCRYPTED;
-    // apduBuffer[off] = (byte) encPhononLen;
-    // Util.arrayCopy(encPhonon, (short) 0, apduBuffer, (short) off, encPhononLen);
-    // off += encPhononLen;
-    // JCSystem.commitTransaction();
 
-    // apdu.setOutgoingAndSend((short) 0, (short) off);
-    apdu.setOutgoingAndSend((short) 0, (short) 0);
+    // Export the phonon
+    // It will be left-padded with zeros up to an AES block size
+    byte[] encPhonon = new byte[Phonon.EXPORTED_PHONON_LEN + Crypto.AES_BLOCK_SIZE];
+    short encPhononLen = phonon.transfer(i, pubKeyBuf, kp, crypto, encPhonon);
+
+    JCSystem.beginTransaction();
+    // Remove the phonon
+    phonon.delete(i);
+    // Build response
+    short off = 0;
+    apduBuffer[off] = TLV_PUB_KEY; off++;
+    apduBuffer[off] = Crypto.KEY_PUB_SIZE; off++;
+    ECPublicKey kpPub = (ECPublicKey) kp.getPublic();
+    byte[] kpPubBuf = new byte[Crypto.KEY_PUB_SIZE];
+    kpPub.getW(kpPubBuf, (short) 0);
+
+    Util.arrayCopy(kpPubBuf, (short) 0, apduBuffer, (short) off, Crypto.KEY_PUB_SIZE);
+    off += Crypto.KEY_PUB_SIZE;
+    apduBuffer[off] = TLV_PHONON_ENCRYPTED; off++;
+    apduBuffer[off] = (byte) encPhononLen; off++;
+    Util.arrayCopy(encPhonon, (short) 0, apduBuffer, (short) off, encPhononLen);
+    off += encPhononLen;
+    JCSystem.commitTransaction();
+
+    apdu.setOutgoingAndSend((short) 0, (short) off);
   }
 
 

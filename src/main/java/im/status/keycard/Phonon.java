@@ -8,6 +8,7 @@ public class Phonon {
     static final public byte DEPOSIT_DATA_LEN = 38;
     static final public byte SERIALIZED_PHONON_LEN = (short) (DEPOSIT_DATA_LEN + Crypto.KEY_PUB_SIZE);
     static final public byte SERIALIZED_DEPOSIT_LEN = (short) (DEPOSIT_DATA_LEN + Crypto.KEY_SECRET_SIZE);
+    static final public byte EXPORTED_PHONON_LEN = (short) (DEPOSIT_DATA_LEN + Crypto.KEY_SECRET_SIZE);
 
     private byte networkId;
     private byte assetId;
@@ -56,8 +57,11 @@ public class Phonon {
 
     // Export the phonon (with private key)
     public byte[] export() {
-        byte[] d = JCSystem.makeTransientByteArray(SERIALIZED_PHONON_LEN, JCSystem.CLEAR_ON_RESET);
-        short off = 0;
+        // We need to pad this buffer to the AES block size (16 bytes)
+        short extra = (short) (16 - EXPORTED_PHONON_LEN % 16);
+        byte[] d = JCSystem.makeTransientByteArray((short) (EXPORTED_PHONON_LEN + extra), JCSystem.CLEAR_ON_RESET);
+        // We will left pad with zeros
+        short off = extra;
         d[off] = this.networkId; off++;
         d[off] = this.assetId; off++;
         byte[] a = PhononNetwork.shortToBytes(this.amount);
