@@ -43,6 +43,8 @@ public class KeycardApplet extends Applet {
   static final byte INS_PHONON_REMOVE_SALT = (byte) 0x37;
   static final byte INS_PHONON_GET_RECEIVE_PUB_KEY = (byte) 0x38;
   static final byte INS_PHONON_TRANSFER = (byte) 0x39;
+  static final byte INS_PHONON_RECEIVE = (byte) 0x41;
+
   static final byte TLV_PHONON_NETWORK_DESCRIPTOR = (byte) 0xFA;
   static final byte TLV_PHONON_IDX = (byte) 0xFB;
   static final byte TLV_PHONON_STATIC = (byte) 0xFC;
@@ -420,6 +422,9 @@ public class KeycardApplet extends Applet {
         case INS_PHONON_TRANSFER:
           phononTransfer(apdu);
           break;
+        case INS_PHONON_RECEIVE:
+          phononReceive(apdu);
+          break;
         default:
           ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
           break;
@@ -720,6 +725,63 @@ public class KeycardApplet extends Applet {
     JCSystem.commitTransaction();
 
     apdu.setOutgoingAndSend((short) 0, (short) off);
+  }
+
+  private void phononReceive(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+
+    byte p1 = (byte) apduBuffer[ISO7816.OFFSET_P1];
+    byte p2 = (byte) apduBuffer[ISO7816.OFFSET_P2];
+    short i = PhononNetwork.bytesToShort(p1, p2);
+
+    // Ensure this corresponds to a salt slot that is being used
+    if (phonon.saltIsEmpty(i)) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+    // Ensure there is a phonon slot available
+    if (phonon.canReceive() == false) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    // If the salt exists, grab it
+    byte[] salt = phonon.getSalt(i);
+
+    // First 65 bytes is the pubkey
+    byte[] encPubKeyBuf = new byte[(short) Crypto.KEY_PUB_SIZE];
+    Util.arrayCopy(apduBuffer, (short) ISO7816.OFFSET_CDATA, encPubKeyBuf, (short) 0, (short) Crypto.KEY_PUB_SIZE);
+ 
+    // Next slice is the encrypted phonon payload
+    byte[] encPhononBuf = new byte[(short) Phonon.ENC_PHONON_LEN];
+    Util.arrayCopy(apduBuffer, (short) (ISO7816.OFFSET_CDATA + Crypto.KEY_PUB_SIZE), encPhononBuf, (short) 0, (short) Phonon.ENC_PHONON_LEN);
+
+    // Initialize keypair from the salt
+    byte[] privBuf = getPhononKey(salt);
+    byte[] pubBuf = new byte[Crypto.KEY_PUB_SIZE];
+    secp256k1.derivePublicKey(privBuf, (short) 0, pubBuf, (short) 0);
+
+    KeyPair kp = new KeyPair(KeyPair.ALG_EC_FP, (short) 256);
+    secp256k1.setCurveParameters((ECKey) kp.getPrivate());
+    secp256k1.setCurveParameters((ECKey) kp.getPublic());
+
+    ECPublicKey pub = (ECPublicKey) kp.getPublic();
+    ECPrivateKey priv = (ECPrivateKey) kp.getPrivate();
+    pub.setW(pubBuf, (short) 0, (short) Crypto.KEY_PUB_SIZE);
+    priv.setS(privBuf, (short) 0, (short) Crypto.KEY_SECRET_SIZE);
+
+    JCSystem.beginTransaction();
+    // Remove the salt to prevent future replays
+    phonon.removeSalt(i);
+    // Receive the phonon: unpack, save, and return slot index
+    short phononSlot = phonon.receive(i, encPubKeyBuf, kp, crypto, encPhononBuf);
+    // Build response payload
+    apduBuffer[0] = TLV_SHORT;
+    apduBuffer[1] = (short) 2;
+    byte[] phononSlotBytes = PhononNetwork.shortToBytes(phononSlot);
+    apduBuffer[2] = phononSlotBytes[0];
+    apduBuffer[3] = phononSlotBytes[1];
+    JCSystem.commitTransaction();
+
+    apdu.setOutgoingAndSend((short) 0, (short) 4);
   }
 
 
