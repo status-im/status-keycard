@@ -62,7 +62,7 @@ public class Phonon {
     public byte[] export() {
         byte[] d = JCSystem.makeTransientByteArray((short) (ENC_PHONON_LEN), JCSystem.CLEAR_ON_RESET);
         // We will left pad with zeros
-        short off = (short) ENC_PHONON_PADDING;
+        short off = (short) (ENC_PHONON_PADDING - 1);
         d[off] = this.networkId; off++;
         d[off] = this.assetId; off++;
         byte[] a = PhononNetwork.shortToBytes(this.amount);
@@ -72,6 +72,7 @@ public class Phonon {
         Util.arrayCopy(this.extraData, (short) 0, d, (short) off, (short) this.extraData.length);
         off += this.extraData.length;
         this.owner.getS(d, off);
+
         return d;
     }
 

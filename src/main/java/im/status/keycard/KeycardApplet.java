@@ -773,7 +773,7 @@ public class KeycardApplet extends Applet {
     phonon.removeSalt(i);
     // Receive the phonon: unpack, save, and return slot index
     short phononSlot = phonon.receive(i, encPubKeyBuf, kp, crypto, encPhononBuf);
-    // Build response payload
+   
     apduBuffer[0] = TLV_SHORT;
     apduBuffer[1] = (short) 2;
     byte[] phononSlotBytes = PhononNetwork.shortToBytes(phononSlot);

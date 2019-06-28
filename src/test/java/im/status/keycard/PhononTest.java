@@ -329,7 +329,8 @@ public class PhononTest {
         assertEquals(ph[off], KeycardApplet.TLV_PUB_KEY); off++;
         assertEquals(ph[off], Crypto.KEY_PUB_SIZE); off += (short) (1 + Crypto.KEY_PUB_SIZE);
         assertEquals(ph[off], KeycardApplet.TLV_PHONON_ENCRYPTED); off++;
-        short encLen = (short) ph[off];
+        assertEquals(ph[off], Phonon.ENC_PHONON_LEN);
+        short encLen = (short) ph[off]; off++;
         // Slice out the packet and return
         return arraySlice(ph, off, encLen);
     } 
@@ -423,7 +424,6 @@ public class PhononTest {
     @Test
     @DisplayName("Test Phonon Deposits, Transfers, and Receipts")
     void depositTest() throws Exception {
-        System.out.println("depositText\n");
         APDUResponse response;
         Random random = new Random();
         byte[] p;
@@ -492,7 +492,6 @@ public class PhononTest {
         response = cmdSet.sendCommand(KeycardApplet.INS_GET_PHONON, (byte) 0, (byte) 0, emptyData);
         assertEquals(0x9000, response.getSw());
         d = response.getData();
-        System.out.println("\n\nPhonon to be expected: "+ Arrays.toString(d));
         validatePhonon(networkId, assetId, amount, decimals, extraData, d);
 
         //-----------------------------
@@ -565,7 +564,7 @@ public class PhononTest {
         // Extract the encrypted phonon packet and the public key needed to decrypt it
         byte[] encPhonon = unpackTransferedPhonon(d);
         byte[] encPhononPubKey = arraySlice(d, (short) 2, Crypto.KEY_PUB_SIZE);
-    
+
         // Ensure the phonon has been deleted
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_TRANSFER, (byte) 0, (byte) depositSlot, receivePubKey);
         assertEquals(ISO7816.SW_COMMAND_NOT_ALLOWED, response.getSw());
@@ -574,7 +573,6 @@ public class PhononTest {
         // 4: Receive
         //-----------------------------
         byte[] receivePayload = arrayConcat(encPhononPubKey, encPhonon);
-
         // Fail to receive the encrypted phonon + pubkey at the wrong salt slot
 
         // Receive the encrypted phonon + pubkey at the correct slot
@@ -583,14 +581,13 @@ public class PhononTest {
         d = response.getData();
         assertEquals(d[0], KeycardApplet.TLV_SHORT);
         assertEquals(d[1], (short) 2);
-        // short receiptPhononSlot = PhononNetwork.bytesToShort(d[2], d[3]);
 
         // Verify that there is now a phonon in this slot
         response = cmdSet.sendCommand(KeycardApplet.INS_GET_PHONON, d[2], d[3], emptyData);
         assertEquals(0x9000, response.getSw());
         d = response.getData();
-        System.out.println("\n\nreceived phonon " + Arrays.toString(d));
         validatePhonon(networkId, assetId, amount, decimals, extraData, d);
+
     }
 
 }

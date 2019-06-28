@@ -78,6 +78,13 @@ public class PhononNetwork {
         return secret;
     }
 
+    private static AESKey buildAESKey(Crypto crypto, KeyPair kp, byte[] pubBytes) {
+        byte[] secret = ecdhSharedSecret(crypto, kp, pubBytes);
+        AESKey key = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
+        key.setKey(secret, (short) 0);
+        return key;
+    }
+
     //==========================================================================================================
     // PUBLIC HELPERS
     //==========================================================================================================    
@@ -226,18 +233,18 @@ public class PhononNetwork {
         }
         // Export the phonon and delete it on card
         byte[] p = phonons[i].export();
-        // Generate the ECDH key
-        byte[] secret = ecdhSharedSecret(crypto, kp, receivingPub);
         
         // Encrypt the payoad
         Cipher aesEcbCipher;
-        AESKey key = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
-        key.setKey(secret, (short) 0);
+        AESKey key = buildAESKey(crypto, kp, receivingPub);
         aesEcbCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_ECB_NOPAD, false);
         aesEcbCipher.init(key, Cipher.MODE_ENCRYPT);
-        short encLen = aesEcbCipher.doFinal(p, (short) 0, (short) p.length, output, (short) 0);
+        short encLen = aesEcbCipher.doFinal(p, (short) 0, (short) Phonon.ENC_PHONON_LEN, output, (short) 0);
 
         return encLen;
+        
+        // Util.arrayCopy(p, (short) 0, output, (short) 0, (short) p.length);
+        // return (short) p.length;
     }
 
     public void delete(short i) {
@@ -252,22 +259,22 @@ public class PhononNetwork {
     }
 
     public short receive(short i, byte[] decryptPub, KeyPair kp, Crypto crypto, byte[] encPhonon) {
+    
         // Recreate the keypair derived from the salt at slot i
-        byte[] secret = ecdhSharedSecret(crypto, kp, decryptPub);
+        // byte[] secret = ecdhSharedSecret(crypto, kp, decryptPub);
 
         // Decrypt payload
         byte[] decPhonon = new byte[Phonon.ENC_PHONON_LEN];
         Cipher aesEcbCipher;
-        AESKey key = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
-        key.setKey(secret, (short) 0);
+        AESKey key = buildAESKey(crypto, kp, decryptPub);
         aesEcbCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_ECB_NOPAD, false);
         aesEcbCipher.init(key, Cipher.MODE_DECRYPT);
-        short decLen = aesEcbCipher.doFinal(encPhonon, (short) 0, (short) encPhonon.length, decPhonon, (short) 0);
-        
+        aesEcbCipher.doFinal(encPhonon, (short) 0, (short) Phonon.ENC_PHONON_LEN, decPhonon, (short) 0);
+    
         // Unpack decrypted phonon
         // 1. Get static phonon data (without privkey)
         byte[] staticPhononData = new byte[Phonon.DEPOSIT_DATA_LEN];
-        Util.arrayCopy(decPhonon, (short) Phonon.ENC_PHONON_PADDING, staticPhononData, (short) 0, (short) Phonon.DEPOSIT_DATA_LEN);
+        Util.arrayCopy(decPhonon, (short) (Phonon.ENC_PHONON_PADDING - 1), staticPhononData, (short) 0, (short) Phonon.DEPOSIT_DATA_LEN);
         // 2. Get phonon private key
         byte[] phononPriv = new byte[Crypto.KEY_SECRET_SIZE];
         Util.arrayCopy(decPhonon, (short) (Phonon.ENC_PHONON_PADDING + Phonon.DEPOSIT_DATA_LEN), phononPriv, (short) 0, (short) Crypto.KEY_SECRET_SIZE);
