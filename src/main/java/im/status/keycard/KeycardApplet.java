@@ -44,13 +44,13 @@ public class KeycardApplet extends Applet {
   static final byte INS_PHONON_GET_RECEIVE_PUB_KEY = (byte) 0x38;
   static final byte INS_PHONON_TRANSFER = (byte) 0x39;
   static final byte INS_PHONON_RECEIVE = (byte) 0x41;
+  static final byte INS_PHONON_WITHDRAW = (byte) 0x42;
 
   static final byte TLV_PHONON_NETWORK_DESCRIPTOR = (byte) 0xFA;
   static final byte TLV_PHONON_IDX = (byte) 0xFB;
   static final byte TLV_PHONON_STATIC = (byte) 0xFC;
   static final byte TLV_PHONON_ENCRYPTED = (byte) 0xFD;
   static final byte TLV_PHONON_NEW_SALT = (byte) 0xFE;
-
 
   static final short SW_REFERENCED_DATA_NOT_FOUND = (short) 0x6A88;
 
@@ -425,6 +425,9 @@ public class KeycardApplet extends Applet {
         case INS_PHONON_RECEIVE:
           phononReceive(apdu);
           break;
+        case INS_PHONON_WITHDRAW:
+          phononWithdraw(apdu);
+          break;
         default:
           ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
           break;
@@ -783,6 +786,38 @@ public class KeycardApplet extends Applet {
     JCSystem.commitTransaction();
 
     apdu.setOutgoingAndSend((short) 0, (short) 4);
+  }
+
+  private void phononWithdraw(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    
+    // P1 and P2 combine to form the phonon slot index
+    byte p1 = (byte) apduBuffer[ISO7816.OFFSET_P1];
+    byte p2 = (byte) apduBuffer[ISO7816.OFFSET_P2];
+    short i = PhononNetwork.bytesToShort(p1, p2);
+
+    // Ensure there is a phonon in slot i
+    if (phonon.phononIsEmpty(i) == true) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    // Data contains the following:
+    // [WITHDRAWAL_TYPE][LEN_0][LEN_1][DATA]
+    // The phonon private key must sign `data`
+    short inOff = (short) ISO7816.OFFSET_CDATA;
+    byte len_0 = apduBuffer[inOff]; inOff++;
+    byte len_1 = apduBuffer[inOff]; inOff++;
+    short dataLen = PhononNetwork.bytesToShort(len_0, len_1);
+    byte[] dataToSign = new byte[dataLen];
+    Util.arrayCopy(apduBuffer, inOff, dataToSign, (short) 0, dataLen);
+    
+    short wSize = 0;
+    JCSystem.beginTransaction();
+    byte[] w = phonon.withdrawEth(i, dataToSign);
+    wSize = (short) w.length;
+    Util.arrayCopy(w, (short) 0, apduBuffer, (short) 0, (short) wSize);
+    JCSystem.commitTransaction();
+    apdu.setOutgoingAndSend((short) 0, wSize);
   }
 
 
@@ -2205,7 +2240,6 @@ public class KeycardApplet extends Applet {
     byte[] preImage = new byte[(short) (Crypto.KEY_SECRET_SIZE + saltLen)];
     byte[] privBuf = new byte[Crypto.KEY_SECRET_SIZE];
     idPrivate.getS(preImage, (short) saltLen);
-    // idPrivate.getS(privBuf, (short) 0);
     // Get the first and second bytes of the nonce
     // NOTE: This assumes little endian - if this were a big endian system, these byte values would be flipped
     Util.arrayCopyNonAtomic(salt, (short) 0, preImage, (short) 0, saltLen);

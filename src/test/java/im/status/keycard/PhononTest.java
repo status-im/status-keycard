@@ -334,6 +334,17 @@ public class PhononTest {
         // Slice out the packet and return
         return arraySlice(ph, off, encLen);
     } 
+
+    private void verifySig(byte[] preImage, byte[] pubKey, byte[] sig) throws Exception {
+        Signature tmpSig = Signature.getInstance("SHA256withECDSA", "BC");
+        ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
+        ECPublicKeySpec cardKeySpec = new ECPublicKeySpec(ecSpec.getCurve().decodePoint(pubKey), ecSpec);
+        ECPublicKey cardKey = (ECPublicKey) KeyFactory.getInstance("ECDSA", "BC").generatePublic(cardKeySpec);
+
+        tmpSig.initVerify(cardKey);
+        tmpSig.update(preImage);
+        assertTrue(tmpSig.verify(sig));
+    }
     //=================================================================
     // TESTS
     //=================================================================
@@ -586,6 +597,7 @@ public class PhononTest {
         d = response.getData();
         assertEquals(d[0], KeycardApplet.TLV_SHORT);
         assertEquals(d[1], (short) 2);
+        short phononSlot = PhononNetwork.bytesToShort(d[2], d[3]);
 
         // Verify that there is now a phonon in this slot
         response = cmdSet.sendCommand(KeycardApplet.INS_GET_PHONON, d[2], d[3], emptyData);
@@ -597,6 +609,34 @@ public class PhononTest {
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_RECEIVE, (byte) 0, (byte) receiveSlot, receivePayload);
         assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
         
+        //-----------------------------
+        // 4: Withdraw
+        //-----------------------------
+        // Build the request data to be signed
+        // In this case, we use a 20 byte Ethereum address
+        byte[] wReqData = {
+            (byte) 0x00, (byte) 0x14, // 20 byte address
+            (byte) 0x39, (byte) 0xcb, (byte) 0x02, (byte) 0x5b, (byte) 0x84, (byte) 0x26, (byte) 0xcf, (byte) 0xc4, (byte) 0x12, (byte) 0xf1, 
+            (byte) 0x31, (byte) 0x8b, (byte) 0x28, (byte) 0x1c, (byte) 0x8b, (byte) 0xab, (byte) 0xb4, (byte) 0xd4, (byte) 0x5a, (byte) 0x47
+        };
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_WITHDRAW, (byte) 0, (byte) phononSlot, wReqData); 
+        d = response.getData();
+        short off = (short) 0;
+
+        // Validate the signature template
+        assertEquals(d[off], KeycardApplet.TLV_SIGNATURE_TEMPLATE); off++;
+        assertEquals(d[off], KeycardApplet.TLV_PUB_KEY); off++;
+        assertEquals(d[off], Crypto.KEY_PUB_SIZE); off++;
+        byte[] phononPub = arraySlice(d, off, (short) Crypto.KEY_PUB_SIZE);
+        off += (short) Crypto.KEY_PUB_SIZE;
+        
+        // Validate the signature itself (within the template)
+        assertEquals(d[off], (short) 0x30); // Not sure why they didn't mark a TLV tag for the signature, but this is it
+        byte[] sig = arraySlice(d, (short) (off), (short) (d.length - off));
+        byte[] preImage = arraySlice(wReqData, (short) 2, (short) 20);
+
+        // Verify the signature
+        verifySig(preImage, phononPub, sig);
     }
 
 }

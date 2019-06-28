@@ -160,6 +160,10 @@ public class PhononNetwork {
         return false;
     }
 
+    public boolean phononIsEmpty(short i) {
+        return phonons[i] == null;
+    }
+
     //==========================================================================================================
     // DEPOSITS
     //==========================================================================================================
@@ -296,4 +300,29 @@ public class PhononNetwork {
         return phononSlot;
     }
 
+    //==========================================================================================================
+    // WITHDRAWALS
+    //==========================================================================================================
+    public byte[] withdrawEth(short i, byte[] data) {
+        // Sign the data 
+        byte[] sig = new byte[75];
+        short sigLen = phonons[i].sign(data, sig);
+        // Get the public key. We will return it with the sig
+        byte[] pub = phonons[i].getPubKey();
+        // Create signature template
+        byte[] out = new byte[(short) (Crypto.KEY_PUB_SIZE + sigLen + 3)];
+        short off = 0;
+        out[off] = KeycardApplet.TLV_SIGNATURE_TEMPLATE; off++;
+        // PubKey
+        out[off] = KeycardApplet.TLV_PUB_KEY; off++;
+        out[off] = Crypto.KEY_PUB_SIZE; off++;
+        Util.arrayCopy(pub, (short) 0, out, off, Crypto.KEY_PUB_SIZE);
+        off += (short) Crypto.KEY_PUB_SIZE;
+        // Signature
+        Util.arrayCopy(sig, (short) 0, out, off, sigLen);
+        off += sigLen;
+        // Remove the phonon and return withdrawal signature
+        delete(i);
+        return out;
+    }
 }

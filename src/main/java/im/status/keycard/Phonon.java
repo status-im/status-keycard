@@ -39,6 +39,14 @@ public class Phonon {
         this.owner.setS(_owner, (short) 0, Crypto.KEY_SECRET_SIZE);
     }
 
+    public byte[] getPubKey() {
+        byte[] pub = new byte[Crypto.KEY_PUB_SIZE];
+        Crypto crypto = new Crypto();
+        SECP256k1 secp256k1 = new SECP256k1(crypto);
+        secp256k1.derivePublicKey(this.owner, pub, (short) 0);
+        return pub;
+    }
+
     // Serialize static phonon data (NOT including private key)
     public byte[] serialize() {
         byte[] d = JCSystem.makeTransientByteArray(SERIALIZED_PHONON_LEN, JCSystem.CLEAR_ON_RESET);
@@ -51,10 +59,8 @@ public class Phonon {
         d[off] = this.decimals; off++;
         Util.arrayCopy(this.extraData, (short) 0, d, (short) off, (short) this.extraData.length);
         off += this.extraData.length;
-        Crypto crypto = new Crypto();
-        SECP256k1 secp256k1 = new SECP256k1(crypto);
-        short pubLen = secp256k1.derivePublicKey(this.owner, d, off);
-        off += pubLen;
+        byte[] pubBuf = getPubKey();
+        Util.arrayCopy(pubBuf, (short) 0, d, (short) off, (short) Crypto.KEY_PUB_SIZE);
         return d;
     }
 
@@ -77,8 +83,21 @@ public class Phonon {
         Crypto crypto = new Crypto();
         crypto.sha256.doFinal(d, (short) 0, off, checksum, (short) 0);
         Util.arrayCopyNonAtomic(checksum, (short) 0, d, off, (short) ENC_PHONON_PADDING);
-
         return d;
+    }
+
+    // Sign a message with this.owner (phonon key)
+    public short sign(byte[] data, byte[] output) {
+        // Create the message digest
+        byte[] msg = new byte[Crypto.KEY_SECRET_SIZE];
+        Crypto crypto = new Crypto();
+        crypto.sha256.doFinal(data, (short) 0, (short) data.length, msg, (short) 0);
+        // Sign
+        Signature tmpSig = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
+        tmpSig.init(this.owner, Signature.MODE_SIGN);
+        short sigLen = tmpSig.signPreComputedHash(msg, (short) 0, MessageDigest.LENGTH_SHA_256, output, (short) 0);
+        sigLen += crypto.fixS(output, (short) 0);
+        return sigLen;
     }
 
 }
