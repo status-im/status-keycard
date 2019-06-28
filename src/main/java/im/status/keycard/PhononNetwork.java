@@ -220,12 +220,17 @@ public class PhononNetwork {
         return i;
     }
 
+    // Get the salt at index `i`
+    // @returns 4 byte salt
     public byte[] getSalt(short i) {
         byte[] s = new byte[4];
         Util.arrayCopyNonAtomic(this.salts, (byte) (i * INT_LEN), s, (byte) 0, INT_LEN);
         return s;
     }
 
+    // Remove salt at index `i`. 
+    // WARNING: This should only be called if the salt has NOT been handed out. Removing 
+    // a salt means you will not be able to decrypt a phonon using it, obviously.
     public void removeSalt(short i) {
         byte[] empty = { 0, 0, 0, 0 };
         Util.arrayCopy(empty, (short) 0, this.salts, (short) (i * INT_LEN), INT_LEN);
@@ -236,10 +241,17 @@ public class PhononNetwork {
     //==========================================================================================================
     // TRANSFER
     //==========================================================================================================
+    // Ensure we can transfer out a phonon at the given index.
+    // @returns true if there is a phonon available at that index
     public boolean canTransfer(short i) {
         return phonons[i] != null;
     }
 
+    // Transfer phonon at index i out. This requires a public key derived from the recipient's salt
+    // as well as a random key pair (`kp`) generated before calling this function. `kp` is generated
+    // during this APDU transaction and is discarded immediately. It is returned along with the
+    // encrypted phonon.
+    //  @returns length of encrypted payload and copies that payload to `output`
     public short transfer(short i, byte[] receivingPub, KeyPair kp, Crypto crypto, byte[] output) {
         // Sanity check - this should never get hit because canTransfer should be called first
         if (phonons[i] == null) {
@@ -254,12 +266,10 @@ public class PhononNetwork {
         aesEcbCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_ECB_NOPAD, false);
         aesEcbCipher.init(key, Cipher.MODE_ENCRYPT);
         short encLen = aesEcbCipher.doFinal(p, (short) 0, (short) Phonon.ENC_PHONON_LEN, output, (short) 0);
-
         return encLen;
-        // Util.arrayCopy(p, (short) 0, output, (short) 0, (short) p.length);
-        // return (short) p.length;
     }
 
+    // Delete phonon at index i
     public void delete(short i) {
         phonons[i] = null;
     }
@@ -267,6 +277,11 @@ public class PhononNetwork {
     //==========================================================================================================
     // RECEIVE
     //==========================================================================================================
+    
+    // Ensure that a phonon may be received given the salt-based key pair. This function ensures
+    // that there is an available phonon slot and that the decrypted phonon checksum matches the
+    // payload.
+    // @returns true if the phonon can be properly decrypted and stored
     public boolean canReceive(byte[] decryptPub, KeyPair kp, Crypto crypto, byte[] encPhonon) {
         if (getNextPhononSlot() == NO_PHONON_SLOT) {
             return false;
@@ -283,6 +298,11 @@ public class PhononNetwork {
         return match == (byte) 0;
     }
 
+    // Receive a phonon in encrypted form. A public key must be provided, which is combined with
+    // the private key at the desired salt slot (already instantiated at `kp`) to derived the
+    // encryption secret via ECDH. Once the phonon is decrypted, it is unpacked and saved
+    // to storage at the next available phonon slot
+    // @returns phonon slot index
     public short receive(byte[] decryptPub, KeyPair kp, Crypto crypto, byte[] encPhonon) {
         // Decrypt payload
         byte[] decPhonon = decryptPhonon(crypto, kp, decryptPub, encPhonon);
@@ -303,7 +323,15 @@ public class PhononNetwork {
     //==========================================================================================================
     // WITHDRAWALS
     //==========================================================================================================
-    public byte[] withdrawEth(short i, byte[] data) {
+    
+    // Withdraw a phonon by signing `data` with its private key and removing it
+    // from storage. This produces a signature template containing:
+    // [TLV_SIGNATURE_TEMPLATE][TLV_PUB_KEY][pubKeyLen][pubKey][0x30][sigLen][sig]
+    // Where sig futher breaks down into
+    // [2][rLen][R][2][sLen][S]
+    // This provides all the data necessary for signature verification
+    // @returns signature template outlined above
+    public byte[] withdraw(short i, byte[] data) {
         // Sign the data 
         byte[] sig = new byte[75];
         short sigLen = phonons[i].sign(data, sig);

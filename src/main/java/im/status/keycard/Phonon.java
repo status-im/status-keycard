@@ -87,6 +87,7 @@ public class Phonon {
     }
 
     // Sign a message with this.owner (phonon key)
+    // This is required for withdrawals
     public short sign(byte[] data, byte[] output) {
         // Create the message digest
         byte[] msg = new byte[Crypto.KEY_SECRET_SIZE];

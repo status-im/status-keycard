@@ -637,6 +637,10 @@ public class PhononTest {
 
         // Verify the signature
         verifySig(preImage, phononPub, sig);
+
+        // Ensure the phonon was deleted
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_WITHDRAW, (byte) 0, (byte) phononSlot, wReqData); 
+        assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
     }
 
 }

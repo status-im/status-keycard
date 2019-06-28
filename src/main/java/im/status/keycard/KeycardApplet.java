@@ -813,7 +813,7 @@ public class KeycardApplet extends Applet {
     
     short wSize = 0;
     JCSystem.beginTransaction();
-    byte[] w = phonon.withdrawEth(i, dataToSign);
+    byte[] w = phonon.withdraw(i, dataToSign);
     wSize = (short) w.length;
     Util.arrayCopy(w, (short) 0, apduBuffer, (short) 0, (short) wSize);
     JCSystem.commitTransaction();
