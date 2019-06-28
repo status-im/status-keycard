@@ -738,10 +738,6 @@ public class KeycardApplet extends Applet {
     if (phonon.saltIsEmpty(i)) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
-    // Ensure there is a phonon slot available
-    if (phonon.canReceive() == false) {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-    }
 
     // If the salt exists, grab it
     byte[] salt = phonon.getSalt(i);
@@ -768,11 +764,16 @@ public class KeycardApplet extends Applet {
     pub.setW(pubBuf, (short) 0, (short) Crypto.KEY_PUB_SIZE);
     priv.setS(privBuf, (short) 0, (short) Crypto.KEY_SECRET_SIZE);
 
+    // Ensure there is a phonon slot available and that checksum holds
+    if (phonon.canReceive(encPubKeyBuf, kp, crypto, encPhononBuf) == false) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
     JCSystem.beginTransaction();
     // Remove the salt to prevent future replays
     phonon.removeSalt(i);
     // Receive the phonon: unpack, save, and return slot index
-    short phononSlot = phonon.receive(i, encPubKeyBuf, kp, crypto, encPhononBuf);
+    short phononSlot = phonon.receive(encPubKeyBuf, kp, crypto, encPhononBuf);
    
     apduBuffer[0] = TLV_SHORT;
     apduBuffer[1] = (short) 2;

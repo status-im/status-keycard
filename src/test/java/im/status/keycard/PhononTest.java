@@ -419,7 +419,7 @@ public class PhononTest {
     byte[] receivePubKey = new byte[Crypto.KEY_PUB_SIZE];
     short depositSlot;
     byte[] phononPayload;
-    byte receiveSlot = (byte) 3;
+    byte receiveSlot = (byte) 2;
     
     @Test
     @DisplayName("Test Phonon Deposits, Transfers, and Receipts")
@@ -528,26 +528,26 @@ public class PhononTest {
         assertEquals(ISO7816.SW_WRONG_DATA, response.getSw());
 
         // Get the 3rd receiving key and ensure it is non-null
-        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_RECEIVE_PUB_KEY, (byte) 0, receiveSlot, emptyData);
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_RECEIVE_PUB_KEY, (byte) 0, (byte) 3, emptyData);
         assertEquals(0x9000, response.getSw());
         d = response.getData();
         // Save the pubkey
         receivePubKey = arraySlice(d, (short) 2, Crypto.KEY_PUB_SIZE);
 
         // Remove the 3rd salt
-        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, receiveSlot, emptyData);
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, (byte) 3, emptyData);
         assertEquals(0x9000, response.getSw());
 
         // Get the 3rd receiving key and ensure it *is* null
-        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_RECEIVE_PUB_KEY, (byte) 0, receiveSlot, emptyData);
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_RECEIVE_PUB_KEY, (byte) 0, (byte) 3, emptyData);
         assertEquals(ISO7816.SW_RECORD_NOT_FOUND, response.getSw());
 
         // Fail to remove the 3rd salt again because it is empty
-        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, receiveSlot, emptyData);
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_REMOVE_SALT, (byte) 0, (byte) 3, emptyData);
         assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
 
-        // retreieve and save the first receiving keuy
-        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_RECEIVE_PUB_KEY, (byte) 0, (byte) 0, emptyData);
+        // retreieve and save the first receiving key
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_GET_RECEIVE_PUB_KEY, (byte) 0, receiveSlot, emptyData);
         assertEquals(0x9000, response.getSw());
         d = response.getData();
         // Save the pubkey
@@ -564,7 +564,6 @@ public class PhononTest {
         // Extract the encrypted phonon packet and the public key needed to decrypt it
         byte[] encPhonon = unpackTransferedPhonon(d);
         byte[] encPhononPubKey = arraySlice(d, (short) 2, Crypto.KEY_PUB_SIZE);
-
         // Ensure the phonon has been deleted
         response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_TRANSFER, (byte) 0, (byte) depositSlot, receivePubKey);
         assertEquals(ISO7816.SW_COMMAND_NOT_ALLOWED, response.getSw());
@@ -573,10 +572,16 @@ public class PhononTest {
         // 4: Receive
         //-----------------------------
         byte[] receivePayload = arrayConcat(encPhononPubKey, encPhonon);
-        // Fail to receive the encrypted phonon + pubkey at the wrong salt slot
+        // Fail to receive the encrypted phonon + pubkey in an empty slot
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_RECEIVE, (byte) 0, (byte) (receiveSlot+1), receivePayload);
+        assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
+
+        // Fail to receive the encrypted phonon + pubkey in the wrong slot
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_RECEIVE, (byte) 0, (byte) (receiveSlot-1), receivePayload);
+        assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
 
         // Receive the encrypted phonon + pubkey at the correct slot
-        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_RECEIVE, (byte) 0, (byte) depositSlot, receivePayload);
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_RECEIVE, (byte) 0, (byte) receiveSlot, receivePayload);
         assertEquals(0x9000, response.getSw());
         d = response.getData();
         assertEquals(d[0], KeycardApplet.TLV_SHORT);
@@ -588,6 +593,10 @@ public class PhononTest {
         d = response.getData();
         validatePhonon(networkId, assetId, amount, decimals, extraData, d);
 
+        // Fail to receive the encrypted phonon + pubkey in the wrong slot
+        response = cmdSet.sendCommand(KeycardApplet.INS_PHONON_RECEIVE, (byte) 0, (byte) receiveSlot, receivePayload);
+        assertEquals(ISO7816.SW_CONDITIONS_NOT_SATISFIED, response.getSw());
+        
     }
 
 }

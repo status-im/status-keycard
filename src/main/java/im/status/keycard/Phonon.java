@@ -62,7 +62,7 @@ public class Phonon {
     public byte[] export() {
         byte[] d = JCSystem.makeTransientByteArray((short) (ENC_PHONON_LEN), JCSystem.CLEAR_ON_RESET);
         // We will left pad with zeros
-        short off = (short) (ENC_PHONON_PADDING - 1);
+        short off = 0; //(short) (ENC_PHONON_PADDING - 1);
         d[off] = this.networkId; off++;
         d[off] = this.assetId; off++;
         byte[] a = PhononNetwork.shortToBytes(this.amount);
@@ -71,7 +71,12 @@ public class Phonon {
         d[off] = this.decimals; off++;
         Util.arrayCopy(this.extraData, (short) 0, d, (short) off, (short) this.extraData.length);
         off += this.extraData.length;
-        this.owner.getS(d, off);
+        this.owner.getS(d, off); off += (short) Crypto.KEY_SECRET_SIZE;
+        // Sha256 checksum (we will only use ENC_PHONON_PADDING bytes)
+        byte[] checksum = new byte[Crypto.KEY_SECRET_SIZE];
+        Crypto crypto = new Crypto();
+        crypto.sha256.doFinal(d, (short) 0, off, checksum, (short) 0);
+        Util.arrayCopyNonAtomic(checksum, (short) 0, d, off, (short) ENC_PHONON_PADDING);
 
         return d;
     }

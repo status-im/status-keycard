@@ -85,6 +85,16 @@ public class PhononNetwork {
         return key;
     }
 
+    private byte[] decryptPhonon(Crypto crypto, KeyPair kp, byte[] decryptPub, byte[] encPhonon) {
+        byte[] decPhonon = new byte[Phonon.ENC_PHONON_LEN];
+        Cipher aesEcbCipher;
+        AESKey key = buildAESKey(crypto, kp, decryptPub);
+        aesEcbCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_ECB_NOPAD, false);
+        aesEcbCipher.init(key, Cipher.MODE_DECRYPT);
+        aesEcbCipher.doFinal(encPhonon, (short) 0, (short) Phonon.ENC_PHONON_LEN, decPhonon, (short) 0);
+        return decPhonon;
+    }
+
     //==========================================================================================================
     // PUBLIC HELPERS
     //==========================================================================================================    
@@ -242,7 +252,6 @@ public class PhononNetwork {
         short encLen = aesEcbCipher.doFinal(p, (short) 0, (short) Phonon.ENC_PHONON_LEN, output, (short) 0);
 
         return encLen;
-        
         // Util.arrayCopy(p, (short) 0, output, (short) 0, (short) p.length);
         // return (short) p.length;
     }
@@ -254,30 +263,32 @@ public class PhononNetwork {
     //==========================================================================================================
     // RECEIVE
     //==========================================================================================================
-    public boolean canReceive() {
-        return getNextPhononSlot() != NO_PHONON_SLOT;
+    public boolean canReceive(byte[] decryptPub, KeyPair kp, Crypto crypto, byte[] encPhonon) {
+        if (getNextPhononSlot() == NO_PHONON_SLOT) {
+            return false;
+        }
+        // Validate checksum (ENC_PHONON_PADDING bytes)
+        byte[] decPhonon = decryptPhonon(crypto, kp, decryptPub, encPhonon);
+        // Checksum the decrypted phonon data
+        byte[] checksum = new byte[Crypto.KEY_SECRET_SIZE];
+        crypto.sha256.doFinal(decPhonon, (short) 0, (short) Phonon.EXPORTED_PHONON_LEN, checksum, (short) 0);
+        // Compare the included checksum
+        byte[] cs = new byte[Phonon.ENC_PHONON_PADDING];
+        Util.arrayCopyNonAtomic(decPhonon, (short) Phonon.EXPORTED_PHONON_LEN, cs, (short) 0, Phonon.ENC_PHONON_PADDING);
+        byte match = Util.arrayCompare(checksum, (short) 0, cs, (short) 0, (short) Phonon.ENC_PHONON_PADDING);
+        return match == (byte) 0;
     }
 
-    public short receive(short i, byte[] decryptPub, KeyPair kp, Crypto crypto, byte[] encPhonon) {
-    
-        // Recreate the keypair derived from the salt at slot i
-        // byte[] secret = ecdhSharedSecret(crypto, kp, decryptPub);
-
+    public short receive(byte[] decryptPub, KeyPair kp, Crypto crypto, byte[] encPhonon) {
         // Decrypt payload
-        byte[] decPhonon = new byte[Phonon.ENC_PHONON_LEN];
-        Cipher aesEcbCipher;
-        AESKey key = buildAESKey(crypto, kp, decryptPub);
-        aesEcbCipher = Cipher.getInstance(Cipher.ALG_AES_BLOCK_128_ECB_NOPAD, false);
-        aesEcbCipher.init(key, Cipher.MODE_DECRYPT);
-        aesEcbCipher.doFinal(encPhonon, (short) 0, (short) Phonon.ENC_PHONON_LEN, decPhonon, (short) 0);
-    
+        byte[] decPhonon = decryptPhonon(crypto, kp, decryptPub, encPhonon);
         // Unpack decrypted phonon
         // 1. Get static phonon data (without privkey)
         byte[] staticPhononData = new byte[Phonon.DEPOSIT_DATA_LEN];
-        Util.arrayCopy(decPhonon, (short) (Phonon.ENC_PHONON_PADDING - 1), staticPhononData, (short) 0, (short) Phonon.DEPOSIT_DATA_LEN);
+        Util.arrayCopy(decPhonon, (short) 0, staticPhononData, (short) 0, (short) Phonon.DEPOSIT_DATA_LEN);
         // 2. Get phonon private key
         byte[] phononPriv = new byte[Crypto.KEY_SECRET_SIZE];
-        Util.arrayCopy(decPhonon, (short) (Phonon.ENC_PHONON_PADDING + Phonon.DEPOSIT_DATA_LEN), phononPriv, (short) 0, (short) Crypto.KEY_SECRET_SIZE);
+        Util.arrayCopy(decPhonon, (short) (Phonon.DEPOSIT_DATA_LEN), phononPriv, (short) 0, (short) Crypto.KEY_SECRET_SIZE);
         // 3. Create Phonon object
         Phonon ph = unpackPhonon(phononPriv, staticPhononData);
         short phononSlot = getNextPhononSlot();
