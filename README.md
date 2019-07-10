@@ -83,3 +83,5 @@ Best performance is achieved if the card supports:
 Android installer https://github.com/status-im/keycard-installer-android/
 
 Java SDK for Android and Desktop https://github.com/status-im/status-keycard-java
+
+Swift SDK for iOS13 (WIP) https://github.com/status-im/Keycard.swift
