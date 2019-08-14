@@ -242,7 +242,7 @@ public class KeycardTest {
     assertEquals(0x6A86, response.getSw());
 
     // Wrong data
-    response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), new byte[65]);
+    response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), new byte[66]);
     assertEquals(0x6A80, response.getSw());
 
     // Good case
@@ -1278,7 +1278,7 @@ public class KeycardTest {
 
   @Test
   @DisplayName("STORE/GET DATA")
-  void storeGetData() throws Exception {
+  void storeGetDataTest() throws Exception {
     APDUResponse response;
 
     if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {

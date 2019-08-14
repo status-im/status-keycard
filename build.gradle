@@ -57,7 +57,7 @@ dependencies {
   testCompile(files("../jcardsim/jcardsim-3.0.5-SNAPSHOT.jar"))
   testCompile('org.web3j:core:2.3.1')
   testCompile('org.bitcoinj:bitcoinj-core:0.14.5')
-  testCompile('com.github.status-im.status-keycard-java:desktop:49ad217')
+  testCompile('com.github.status-im.status-keycard-java:desktop:239505b')
   testCompile('org.bouncycastle:bcprov-jdk15on:1.60')
   testCompile("org.junit.jupiter:junit-jupiter-api:5.1.1")
   testRuntime("org.junit.jupiter:junit-jupiter-engine:5.1.1")
