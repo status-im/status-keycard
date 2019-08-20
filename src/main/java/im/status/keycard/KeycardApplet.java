@@ -25,6 +25,7 @@ public class KeycardApplet extends Applet {
   static final byte INS_SIGN = (byte) 0xC0;
   static final byte INS_SET_PINLESS_PATH = (byte) 0xC1;
   static final byte INS_EXPORT_KEY = (byte) 0xC2;
+  static final byte INS_EXPORT_SEED = (byte) 0xC3;
 
   static final short SW_REFERENCED_DATA_NOT_FOUND = (short) 0x6A88;
 
@@ -74,8 +75,9 @@ public class KeycardApplet extends Applet {
   static final byte EXPORT_KEY_P1_DERIVE = 0x01;
   static final byte EXPORT_KEY_P1_DERIVE_AND_MAKE_CURRENT = 0x02;
 
-  static final byte EXPORT_KEY_P2_PRIVATE_AND_PUBLIC = 0x00;
+  // static final byte EXPORT_KEY_P2_PRIVATE_AND_PUBLIC = 0x00; // Unsupported
   static final byte EXPORT_KEY_P2_PUBLIC_ONLY = 0x01;
+  static final byte EXPORT_KEY_P2_PUBLIC_AND_CHAINCODE = 0x02;
 
   static final byte TLV_SIGNATURE_TEMPLATE = (byte) 0xA0;
 
@@ -1344,14 +1346,13 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    boolean publicOnly;
-
+    boolean withChaincode;
     switch (apduBuffer[ISO7816.OFFSET_P2]) {
-      case EXPORT_KEY_P2_PRIVATE_AND_PUBLIC:
-        publicOnly = false;
-        break;
       case EXPORT_KEY_P2_PUBLIC_ONLY:
-        publicOnly = true;
+        withChaincode = false;
+        break;
+      case EXPORT_KEY_P2_PUBLIC_AND_CHAINCODE:
+        withChaincode = true;
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -1384,10 +1385,6 @@ public class KeycardApplet extends Applet {
         return;
     }
 
-    if (!publicOnly && ((exportPathLen < (short)(((short) EIP_1581_PREFIX.length) + 8)) || (Util.arrayCompare(EIP_1581_PREFIX, (short) 0, exportPath, exportPathOff, (short) EIP_1581_PREFIX.length) != 0))) {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-    }
-
     if (derive) {
       doDerive(apduBuffer, (short) 0, dataLen, derivationSource, makeCurrent);
     }
@@ -1405,25 +1402,19 @@ public class KeycardApplet extends Applet {
       len = publicKey.getW(apduBuffer, off);
       apduBuffer[(short) (off - 1)] = (byte) len;
       off += len;
-    } else if (publicOnly) {
+    } else {
       apduBuffer[off++] = TLV_PUB_KEY;
       off++;
       len = secp256k1.derivePublicKey(derivationOutput, (short) 0, apduBuffer, off);
       apduBuffer[(short) (off - 1)] = (byte) len;
       off += len;
     }
-
-    if (!publicOnly) {
-      apduBuffer[off++] = TLV_PRIV_KEY;
+    
+    if (withChaincode) {
+      apduBuffer[off++] = TLV_CHAIN_CODE;
       off++;
-
-      if (!derive || makeCurrent) {
-        len = privateKey.getS(apduBuffer, off);
-      } else {
-        Util.arrayCopyNonAtomic(derivationOutput, (short) 0, apduBuffer, off, Crypto.KEY_SECRET_SIZE);
-        len = Crypto.KEY_SECRET_SIZE;
-      }
-
+      Util.arrayCopyNonAtomic(chainCode, (short) 0, apduBuffer, off, CHAIN_CODE_SIZE);
+      len = CHAIN_CODE_SIZE;
       apduBuffer[(short) (off - 1)] = (byte) len;
       off += len;
     }
