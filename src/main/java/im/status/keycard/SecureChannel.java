@@ -215,18 +215,7 @@ public class SecureChannel {
    * @return the length of the reply
    */
   private short pairStep1(byte[] apduBuffer) {
-    preassignedPairingOffset = -1;
-
-    for (short i = 0; i < (short) pairingKeys.length; i += PAIRING_KEY_LENGTH) {
-      if (pairingKeys[i] == 0) {
-        preassignedPairingOffset = i;
-        break;
-      }
-    }
-
-    if (preassignedPairingOffset == -1) {
-      ISOException.throwIt(ISO7816.SW_FILE_FULL);
-    }
+    preassignedPairingOffset = 0; // Always override pairing slot 0
 
     crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
     crypto.sha256.doFinal(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH, apduBuffer, (short) 0);

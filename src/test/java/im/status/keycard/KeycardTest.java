@@ -354,15 +354,15 @@ public class KeycardTest {
     assertTrue((0x6985 == response.getSw()) || (0x6982 == response.getSw()));
     cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
 
-    // Pair multiple indexes
-    for (int i = 1; i < 5; i++) {
+    // Fill max pairings
+    for (int i = 1; i < KeycardApplet.PAIRING_MAX_CLIENT_COUNT; i++) {
       cmdSet.autoPair(sharedSecret);
       assertEquals(i, secureChannel.getPairingIndex());
       cmdSet.autoOpenSecureChannel();
       cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
     }
 
-    // Too many paired indexes
+    // Too many paired clients
     response = cmdSet.pair(SecureChannel.PAIR_P1_FIRST_STEP, challenge);
     assertEquals(0x6A84, response.getSw());
 
