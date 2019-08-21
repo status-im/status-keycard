@@ -16,7 +16,7 @@ public class SecureChannel {
   static final short PUBKEY_LEN = 65;
 
   // certificate format: [certType, certLen, permType, permLen, permissions(2), pubkeyType, pubkeyLen, pubkey(65), ecdsa sig (DER)]
-  static final short CERTIFICATE_MAX_LEN = (short)(8 + PUBKEY_LEN + ECDSA_MAX_LEN); 
+  static final short CERTIFICATE_MAX_LEN = (short)(8 + PUBKEY_LEN + ECDSA_MAX_LEN);
 
   public static final short SC_KEY_LENGTH = 256;
   public static final short SC_SECRET_LENGTH = 32;
@@ -38,7 +38,8 @@ public class SecureChannel {
   // This is the maximum length acceptable for plaintext commands/responses for APDUs in short format
   public static final short SC_MAX_PLAIN_LENGTH = (short) 223;
 
-  // Card certificate
+  // Card identity key & certificate
+  private KeyPair idKeypair;
   private byte[] idCertificate;
   private byte idCertStatus; // EMPTY or LOCKED
 
@@ -46,6 +47,7 @@ public class SecureChannel {
   private AESKey scMacKey;
   private Signature scMac;
   private KeyPair scKeypair;
+  private Signature eccSig;
   private byte[] secret;
   private byte[] pairingSecret;
 
@@ -70,10 +72,16 @@ public class SecureChannel {
   public SecureChannel(byte pairingLimit, Crypto crypto, SECP256k1 secp256k1) {
     this.crypto = crypto;
 
+    idKeypair = new KeyPair(KeyPair.ALG_EC_FP, SC_KEY_LENGTH);
+    secp256k1.setCurveParameters((ECKey) idKeypair.getPrivate());
+    secp256k1.setCurveParameters((ECKey) idKeypair.getPublic());
+    idKeypair.genKeyPair();
+    
     idCertificate = new byte[CERTIFICATE_MAX_LEN];
     idCertStatus = ID_CERTIFICATE_EMPTY;
 
     scMac = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
+    eccSig = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
     scEncKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
     scMacKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
@@ -215,6 +223,38 @@ public class SecureChannel {
     } else {
       ISOException.throwIt(ISO7816.SW_DATA_INVALID);
     }
+  }
+  
+  /**
+   * Processes the IDENTIFY_CARD command. Returns the card public key, and a signature on the
+   * challenge salt, to prove ownership of the key.
+   * @param apdu the JCRE-owned APDU object.
+   */
+  public void identifyCard(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+
+    // Ensure the received challenge is appropriate length
+    if (apduBuffer[ISO7816.OFFSET_LC] != (byte) MessageDigest.LENGTH_SHA_256) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
+
+    short responseStart = (short) ISO7816.OFFSET_CDATA + (short) MessageDigest.LENGTH_SHA_256;
+    short off = responseStart;
+
+    // Copy card ID pubKey to the response buffer
+    ECPublicKey pk = (ECPublicKey) idKeypair.getPublic();
+    short pubkeyLen = pk.getW(apduBuffer, (short) (off + 2)); // Copy pubkey after TLV type and len
+    apduBuffer[off++] = (byte) 0x80; // TLV pubkey type
+    apduBuffer[off++] = (byte) pubkeyLen; // TLV pubkey len
+    off += pubkeyLen;
+
+    // Sign the challenge and copy signature to response buffer
+    eccSig.init(idKeypair.getPrivate(), Signature.MODE_SIGN);
+    short sigLen = eccSig.signPreComputedHash(apduBuffer, (short) ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, off);
+    off += sigLen;
+
+    // Send the response
+    apdu.setOutgoingAndSend(responseStart, (short)(off - responseStart));
   }
 
   /**

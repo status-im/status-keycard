@@ -251,10 +251,13 @@ public class KeycardApplet extends Applet {
       selectApplet(apdu);
       return;
     }
-
+    
     apdu.setIncomingAndReceive();
     try {
       switch (apduBuffer[ISO7816.OFFSET_INS]) {
+        case SecureChannel.INS_IDENTIFY_CARD:
+          secureChannel.identifyCard(apdu);
+          break;
         case SecureChannel.INS_LOAD_CERT:
           secureChannel.loadCert(apdu);
           break;
