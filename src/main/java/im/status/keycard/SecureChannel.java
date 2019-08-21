@@ -8,6 +8,14 @@ import javacardx.crypto.Cipher;
  * Implements all methods related to the secure channel as specified in the SECURE_CHANNEL.md document.
  */
 public class SecureChannel {
+  static final byte ID_CERTIFICATE_EMPTY = (byte) 0x00;
+  static final byte ID_CERTIFICATE_LOCKED = (byte) 0xFF;
+
+  // cert = [permissions (2), certified pubKey (65), ECDSA signature from CA (74)]
+  static final short ECDSA_MAX_LEN = 74;
+  static final short PUBKEY_LEN = 65;
+  static final short CERTIFICATE_LEN = (byte)(2 + PUBKEY_LEN + ECDSA_MAX_LEN); 
+
   public static final short SC_KEY_LENGTH = 256;
   public static final short SC_SECRET_LENGTH = 32;
   public static final short PAIRING_KEY_LENGTH = SC_SECRET_LENGTH + 1;
@@ -26,9 +34,16 @@ public class SecureChannel {
   // This is the maximum length acceptable for plaintext commands/responses for APDUs in short format
   public static final short SC_MAX_PLAIN_LENGTH = (short) 223;
 
+  // Card identity keys and certificate (for certificate based pairing)
+  private KeyPair idKeypair;
+  private byte[] idCertificate;
+  private byte idCertStatus; // EMPTY or LOCKED
+  private ECPublicKey caPublicKey;
+
   private AESKey scEncKey;
   private AESKey scMacKey;
   private Signature scMac;
+  private Signature eccSig;
   private KeyPair scKeypair;
   private byte[] secret;
   private byte[] pairingSecret;
@@ -54,7 +69,19 @@ public class SecureChannel {
   public SecureChannel(byte pairingLimit, Crypto crypto, SECP256k1 secp256k1) {
     this.crypto = crypto;
 
+    idKeypair = new KeyPair(KeyPair.ALG_EC_FP, SC_KEY_LENGTH);
+    secp256k1.setCurveParameters((ECKey) idKeypair.getPrivate());
+    secp256k1.setCurveParameters((ECKey) idKeypair.getPublic());
+    idKeypair.genKeyPair();
+    
+    caPublicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
+    secp256k1.setCurveParameters(caPublicKey);
+
+    idCertificate = new byte[CERTIFICATE_LEN];
+    idCertStatus = ID_CERTIFICATE_EMPTY;
+
     scMac = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
+    eccSig = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
     scEncKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
     scMacKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
@@ -174,6 +201,76 @@ public class SecureChannel {
 
     crypto.random.generateData(apduBuffer, SC_OUT_OFFSET, SC_SECRET_LENGTH);
     respond(apdu, len, ISO7816.SW_NO_ERROR);
+  }
+
+  /**
+   * Processes the IDENTIFY_CARD command. Returns the card public key, and a signature on the
+   * challenge salt, to prove ownership of the key.
+   * @param apdu the JCRE-owned APDU object.
+   */
+  public void identifyCard(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+    apdu.setIncomingAndReceive();
+
+    // Ensure the received challenge is appropriate length
+    if (apduBuffer[ISO7816.OFFSET_LC] != MessageDigest.LENGTH_SHA_256) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
+
+    // Copy card ID pubKey to the response buffer
+    short responseOffset = (short) ISO7816.OFFSET_CDATA + (short) MessageDigest.LENGTH_SHA_256;
+    short off = responseOffset;
+    ECPublicKey pk = (ECPublicKey) idKeypair.getPublic();
+    short len = pk.getW(apduBuffer, off);
+    off += len;
+
+    // Sign the challenge and copy signature to response buffer
+    eccSig.init(idKeypair.getPrivate(), Signature.MODE_SIGN);
+    len = eccSig.signPreComputedHash(apduBuffer, (short) ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, off);
+    off += len;
+
+    // Send the response
+    apdu.setOutgoingAndSend((short) responseOffset, (short)(off - responseOffset));
+  }
+
+  /**
+   * Processes the LOAD_CERTS command. Copies the APDU buffer into `certs`.
+   * This function expects a DER signature and may only be called once.
+   * @param apdu the JCRE-owned APDU object.
+   */
+  public void loadCert(APDU apdu) {
+    short caPubOffset = (short) ISO7816.OFFSET_CDATA;
+    short certOffset = (short) (caPubOffset + PUBKEY_LEN);
+    short certVerifyLen = CERTIFICATE_LEN - ECDSA_MAX_LEN;
+
+    byte[] apduBuffer = apdu.getBuffer();
+    apdu.setIncomingAndReceive();
+
+    if (idCertStatus != ID_CERTIFICATE_EMPTY) {
+      // Card cert may only be set once and never overwritten
+      ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+    }
+
+    // Make sure the received certificate is appropriate length
+    if (apduBuffer[ISO7816.OFFSET_LC] != (byte) (PUBKEY_LEN + CERTIFICATE_LEN)) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
+
+    JCSystem.beginTransaction();
+    // Save the CA public key
+    caPublicKey.setW(apduBuffer, caPubOffset, PUBKEY_LEN);
+    
+    // Verify the certificate signature against the CA pubkey
+    if (false == verifyCertificateCASig(apduBuffer, certOffset)) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
+
+    // Save the certificate
+    Util.arrayCopy(apduBuffer, certOffset, idCertificate, (short) 0, CERTIFICATE_LEN);
+
+    // Lock the certificate
+    idCertStatus = ID_CERTIFICATE_LOCKED;
+    JCSystem.commitTransaction();
   }
 
   /**
@@ -436,5 +533,24 @@ public class SecureChannel {
     }
 
     return off;
+  }  
+  
+  /**
+   * Returns true if the supplied certificate is signed by the same CA as the currently loaded card certificate
+   *
+   * @param certBuf Buffer containing certificate to be verified
+   * @param certOff Certificate offset within the buffer
+   * @return True if certificate signature is a valid signature from the known CA
+   */
+  private boolean verifyCertificateCASig(byte[] certBuf, short certOff) {
+    short certVerifyLen = CERTIFICATE_LEN - ECDSA_MAX_LEN;
+
+    if (idCertStatus != ID_CERTIFICATE_LOCKED) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    // Verify the certificate signature against the CA public key
+    eccSig.init(caPublicKey, Signature.MODE_VERIFY);
+    return eccSig.verify(certBuf, certOff, certVerifyLen, certBuf, (short) (certOff + certVerifyLen), ECDSA_MAX_LEN);
   }
 }
