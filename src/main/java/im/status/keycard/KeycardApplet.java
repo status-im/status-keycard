@@ -112,10 +112,10 @@ public class KeycardApplet extends Applet {
   static final byte APPLICATION_CAPABILITIES = (byte)(CAPABILITY_SECURE_CHANNEL | CAPABILITY_KEY_MANAGEMENT | CAPABILITY_CREDENTIALS_MANAGEMENT | CAPABILITY_NDEF);
 
   static final byte[] EIP_1581_PREFIX = { (byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D};
-  
-  static final byte MASTERSEED_EMPTY = 0;
-  static final byte MASTERSEED_NOT_EXPORTABLE = 1;
-  static final byte MASTERSEED_EXPORTABLE = 2;
+
+  static final byte MASTERSEED_EMPTY = (byte) 0x00;
+  static final byte MASTERSEED_NOT_EXPORTABLE = (byte) 0x01;
+  static final byte MASTERSEED_EXPORTABLE = (byte) 0x02;
 
   private OwnerPIN pin;
   private OwnerPIN puk;
@@ -124,6 +124,7 @@ public class KeycardApplet extends Applet {
 
   private byte[] masterSeed;
   private byte masterSeedStatus; // Invalid / valid, but non-exportable / valid and exportable
+
   private ECPublicKey masterPublic;
   private ECPrivateKey masterPrivate;
   private byte[] masterChainCode;
@@ -188,7 +189,7 @@ public class KeycardApplet extends Applet {
 
     uid = new byte[UID_LENGTH];
     crypto.random.generateData(uid, (short) 0, UID_LENGTH);
-    
+
     masterSeed = new byte[BIP39_SEED_SIZE];
     masterSeedStatus = MASTERSEED_EMPTY;
 
@@ -232,10 +233,17 @@ public class KeycardApplet extends Applet {
    * @throws ISOException any processing error
    */
   public void process(APDU apdu) throws ISOException {
-    // If we have no PIN it means we still have to initialize the applet.
-    if (pin == null) {
-      processInit(apdu);
-      return;
+    byte[] apduBuffer = apdu.getBuffer();
+
+    // If this is a factory command, bypass the PIN initialization check
+    // Factory provisioning should happen before the user has initialized the card.
+    if( apduBuffer[ISO7816.OFFSET_INS] != SecureChannel.INS_IDENTIFY_CARD &&
+        apduBuffer[ISO7816.OFFSET_INS] != SecureChannel.INS_LOAD_CERT ) {
+      // If we have no PIN it means we still have to initialize the applet.
+      if (pin == null) {
+        processInit(apdu);
+        return;
+      }
     }
 
     // Since selection can happen not only by a SELECT command, we check for that separately.
@@ -245,10 +253,11 @@ public class KeycardApplet extends Applet {
     }
 
     apdu.setIncomingAndReceive();
-    byte[] apduBuffer = apdu.getBuffer();
-
     try {
       switch (apduBuffer[ISO7816.OFFSET_INS]) {
+        case SecureChannel.INS_LOAD_CERT:
+          secureChannel.loadCert(apdu);
+          break;
         case SecureChannel.INS_OPEN_SECURE_CHANNEL:
           secureChannel.openSecureChannel(apdu);
           break;

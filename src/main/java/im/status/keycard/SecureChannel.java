@@ -8,6 +8,16 @@ import javacardx.crypto.Cipher;
  * Implements all methods related to the secure channel as specified in the SECURE_CHANNEL.md document.
  */
 public class SecureChannel {
+  static final byte ID_CERTIFICATE_EMPTY = (byte) 0x00;
+  static final byte ID_CERTIFICATE_LOCKED = (byte) 0xFF;
+
+  // cert = [permissions (2), certified pubKey (65), ECDSA signature from CA (74)]
+  static final short ECDSA_MAX_LEN = 74;
+  static final short PUBKEY_LEN = 65;
+
+  // certificate format: [certType, certLen, permType, permLen, permissions(2), pubkeyType, pubkeyLen, pubkey(65), ecdsa sig (DER)]
+  static final short CERTIFICATE_MAX_LEN = (short)(8 + PUBKEY_LEN + ECDSA_MAX_LEN); 
+
   public static final short SC_KEY_LENGTH = 256;
   public static final short SC_SECRET_LENGTH = 32;
   public static final short PAIRING_KEY_LENGTH = SC_SECRET_LENGTH + 1;
@@ -19,12 +29,18 @@ public class SecureChannel {
   public static final byte INS_MUTUALLY_AUTHENTICATE = 0x11;
   public static final byte INS_PAIR = 0x12;
   public static final byte INS_UNPAIR = 0x13;
+  public static final byte INS_IDENTIFY_CARD = 0x14;
+  public static final byte INS_LOAD_CERT = 0x15;
 
   public static final byte PAIR_P1_FIRST_STEP = 0x00;
   public static final byte PAIR_P1_LAST_STEP = 0x01;
 
   // This is the maximum length acceptable for plaintext commands/responses for APDUs in short format
   public static final short SC_MAX_PLAIN_LENGTH = (short) 223;
+
+  // Card certificate
+  private byte[] idCertificate;
+  private byte idCertStatus; // EMPTY or LOCKED
 
   private AESKey scEncKey;
   private AESKey scMacKey;
@@ -53,6 +69,9 @@ public class SecureChannel {
    */
   public SecureChannel(byte pairingLimit, Crypto crypto, SECP256k1 secp256k1) {
     this.crypto = crypto;
+
+    idCertificate = new byte[CERTIFICATE_MAX_LEN];
+    idCertStatus = ID_CERTIFICATE_EMPTY;
 
     scMac = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
 
@@ -174,6 +193,28 @@ public class SecureChannel {
 
     crypto.random.generateData(apduBuffer, SC_OUT_OFFSET, SC_SECRET_LENGTH);
     respond(apdu, len, ISO7816.SW_NO_ERROR);
+  }
+
+  /**
+   * Processes the LOAD_CERTS command. Copies the APDU buffer into `certs`.
+   * This function expects a DER signature and may only be called once.
+   * @param apdu the JCRE-owned APDU object.
+   */
+  public void loadCert(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+
+    if (idCertStatus != ID_CERTIFICATE_EMPTY) {
+      // Card cert may only be set once and never overwritten
+      ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+    }
+
+    // Save the certificate
+    if (apduBuffer[ISO7816.OFFSET_LC] <= (byte)CERTIFICATE_MAX_LEN) {
+      Util.arrayCopyNonAtomic(apduBuffer, ISO7816.OFFSET_CDATA, idCertificate, (short) 0, (short) (apduBuffer[ISO7816.OFFSET_LC] & 0xff));
+      idCertStatus = ID_CERTIFICATE_LOCKED;
+    } else {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
   }
 
   /**
