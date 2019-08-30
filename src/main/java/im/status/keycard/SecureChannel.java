@@ -269,10 +269,6 @@ public class SecureChannel {
 
     byte[] apduBuffer = apdu.getBuffer();
 
-    if (apduBuffer[ISO7816.OFFSET_LC] != SC_SECRET_LENGTH) {
-      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-    }
-
     short len;
 
     if (apduBuffer[ISO7816.OFFSET_P1] == PAIR_P1_FIRST_STEP) {
@@ -288,22 +284,70 @@ public class SecureChannel {
   }
 
   /**
-   * Performs the first step of pairing. In this step the card solves the challenge sent by the client, thus authenticating
-   * itself to the client. At the same time, it creates a challenge for the client. This can only fail if the card has
-   * already paired with the maximum allowed amount of clients.
+   * Performs the first step of certificate based pairing. In this step, the card provides a CA signed certificate
+   * of its card ID key, and proves ownership of this key with a signature on a challenge hash. The challenge hash
+   * to be signed is computed as the sha256 hash of the client salt (provided by client) and card salt (generated randomly).
+   * The card will also include its random salt in the response to the client, so that the client can reproduce the challenge
+   * hash and verify the card signature.
    *
    * @param apduBuffer the APDU buffer
    * @return the length of the reply
    */
   private short pairStep1(byte[] apduBuffer) {
-    preassignedPairingOffset = 0; // Always override pairing slot 0
+    // Validate command data length
+    if (apduBuffer[ISO7816.OFFSET_LC] != SC_SECRET_LENGTH + 2 + PUBKEY_LEN) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      return 0;
+    }
 
-    crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
-    crypto.sha256.doFinal(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH, apduBuffer, (short) 0);
-    crypto.random.generateData(secret, (short) 0, SC_SECRET_LENGTH);
-    Util.arrayCopyNonAtomic(secret, (short) 0, apduBuffer, SC_SECRET_LENGTH, SC_SECRET_LENGTH);
+    // Make sure certificate exisits
+    if (idCertStatus != ID_CERTIFICATE_LOCKED) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+      return 0;
+    }
 
-    return (SC_SECRET_LENGTH * 2);
+    // Override first pairing slot
+    preassignedPairingOffset = 0;
+
+    // Compute ECDH secret
+    final short pubKeyOff = (short)(ISO7816.OFFSET_CDATA + SC_SECRET_LENGTH);
+    try {
+      crypto.ecdh.init(idKeypair.getPrivate());
+      crypto.ecdh.generateSecret(apduBuffer, (short) (pubKeyOff + 2), apduBuffer[pubKeyOff + 1], secret, (short) 0);
+    } catch(Exception e) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      return 0;
+    }
+
+    // Hash client salt and ECDH secret and store in secret buffer
+    // secretHash = sha256(clientSalt, ECDH secret)
+    crypto.sha256.update(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH);
+    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+
+    // Response buffer offset (previous APDU buffer use was for temporary storage)
+    short off = 0;
+
+    // Generate random card salt, and copy to response buffer
+    crypto.random.generateData(apduBuffer, off, SC_SECRET_LENGTH);
+    off += SC_SECRET_LENGTH;
+    
+    // Copy card certificate to response buffer
+    short certLen = (short) (2 + (idCertificate[1] & 0xff));
+    Util.arrayCopyNonAtomic(idCertificate, (short) 0, apduBuffer, off, (short) certLen);
+    off += certLen;
+
+    // Sign the secret hash, and copy the signature into the response buffer
+    eccSig.init(idKeypair.getPrivate(), Signature.MODE_SIGN);
+    short sigLen = eccSig.signPreComputedHash(secret, (short) 0, (short) (SC_SECRET_LENGTH), apduBuffer, off);
+    off += sigLen;
+
+    // Compute the expected client cryptogram, by hashing the card salt and secret hash. Save in secret buffer.
+    // expectedCryptogram = sha256(cardSalt, secretHash)
+    crypto.sha256.update(apduBuffer, (short) 0, SC_SECRET_LENGTH);
+    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+
+    // Return total response length
+    return off;
   }
 
   /**
@@ -315,24 +359,29 @@ public class SecureChannel {
    * @return the length of the reply
    */
   private short pairStep2(byte[] apduBuffer) {
-    crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
-    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+    // Validate command data length
+    if (apduBuffer[ISO7816.OFFSET_LC] != SC_SECRET_LENGTH) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
 
+    // Compare client cryptogram to the expected cryptogram (stored in secret buffer)
     if (Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, secret, (short) 0, SC_SECRET_LENGTH) != 0) {
       preassignedPairingOffset = -1;
       ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
     }
 
+    // Generate random pairing salt & save pairing key. Copy pairing index and pairing salt into response buffer
+    // pairingKey = sha256(pairingSalt, cryptogram)
     crypto.random.generateData(apduBuffer, (short) 1, SC_SECRET_LENGTH);
-    crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
-    crypto.sha256.doFinal(apduBuffer, (short) 1, SC_SECRET_LENGTH, pairingKeys, (short) (preassignedPairingOffset + 1));
+    crypto.sha256.update(apduBuffer, (short) 1, SC_SECRET_LENGTH);
+    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, pairingKeys, (short) (preassignedPairingOffset + 1));
     pairingKeys[preassignedPairingOffset] = 1;
     remainingSlots--;
-    apduBuffer[0] = (byte) (preassignedPairingOffset / PAIRING_KEY_LENGTH);
+    apduBuffer[0] = (byte) (preassignedPairingOffset / PAIRING_KEY_LENGTH); // Pairing index
 
     preassignedPairingOffset = -1;
 
-    return (SC_SECRET_LENGTH + 1);
+    return (1 + SC_SECRET_LENGTH);
   }
 
   /**
