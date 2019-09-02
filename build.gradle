@@ -1,5 +1,4 @@
 apply plugin: 'javacard'
-apply plugin: 'org.junit.platform.gradle.plugin'
 
 buildscript {
   repositories {
@@ -10,7 +9,6 @@ buildscript {
 
   dependencies {
     classpath 'com.fidesmo:gradle-javacard:0.2.7'
-    classpath 'org.junit.platform:junit-platform-gradle-plugin:1.1.1'
     classpath 'com.github.status-im.status-keycard-java:desktop:2.0.0'
   }
 }
@@ -57,17 +55,15 @@ dependencies {
   testCompile(files("../jcardsim/jcardsim-3.0.5-SNAPSHOT.jar"))
   testCompile('org.web3j:core:2.3.1')
   testCompile('org.bitcoinj:bitcoinj-core:0.14.5')
-  testCompile('com.github.status-im.status-keycard-java:desktop:239505b')
+  testCompile('com.github.status-im.status-keycard-java:desktop:b50c12c')
   testCompile('org.bouncycastle:bcprov-jdk15on:1.60')
   testCompile("org.junit.jupiter:junit-jupiter-api:5.1.1")
   testRuntime("org.junit.jupiter:junit-jupiter-engine:5.1.1")
 }
 
-junitPlatform {
-  filters {
-    tags {
-      exclude 'manual'
-    }
+test {
+  useJUnitPlatform {
+    excludeTags 'manual'
   }
 }
 
@@ -99,6 +95,6 @@ afterEvaluate {
     jvmArgs.push('-noverify')
   }
 
-  def junitPlatformTestTask = tasks.getByName('junitPlatformTest')
+  def junitPlatformTestTask = tasks.getByName('test')
   junitPlatformTestTask.jvmArgs(jvmArgs)
 }

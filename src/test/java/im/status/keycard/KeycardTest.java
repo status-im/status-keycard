@@ -179,7 +179,7 @@ public class KeycardTest {
 
   private static void initIfNeeded() throws Exception {
     KeycardCommandSet cmdSet = new KeycardCommandSet(sdkChannel);
-    byte[] data = cmdSet.select().checkOK().getData();
+    cmdSet.select().checkOK();
 
     initCapabilities(cmdSet.getApplicationInfo());
 
@@ -187,6 +187,8 @@ public class KeycardTest {
 
     if (!cmdSet.getApplicationInfo().isInitializedCard()) {
       assertEquals(0x9000, cmdSet.init("000000", "123456789012", sharedSecret).getSw());
+      cmdSet.select().checkOK();
+      initCapabilities(cmdSet.getApplicationInfo());
     }
   }
 
