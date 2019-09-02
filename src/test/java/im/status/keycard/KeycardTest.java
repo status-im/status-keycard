@@ -30,6 +30,7 @@ import org.web3j.utils.Convert;
 import org.web3j.utils.Numeric;
 
 import javax.smartcardio.*;
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -129,13 +130,32 @@ public class KeycardTest {
 
   private static void openSimulatorChannel() throws Exception {
     simulator = new CardSimulator();
-    AID appletAID = AIDUtil.create(Identifiers.getKeycardInstanceAID());
-    AID ndefAID = AIDUtil.create(Identifiers.NDEF_AID);
-    AID cashAID = AIDUtil.create(Identifiers.CASH_AID);
 
-    simulator.installApplet(appletAID, KeycardApplet.class);
-    simulator.installApplet(ndefAID, NDEFApplet.class);
-    simulator.installApplet(cashAID, CashApplet.class);
+    // Install KeycardApplet
+    AID aid = AIDUtil.create(Identifiers.KEYCARD_AID);
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    bos.write(Identifiers.getKeycardInstanceAID().length);
+    bos.write(Identifiers.getKeycardInstanceAID());
+
+    simulator.installApplet(aid, KeycardApplet.class, bos.toByteArray(), (short) 0, (byte) bos.size());
+    bos.reset();
+
+    // Install NDEFApplet
+    aid = AIDUtil.create(Identifiers.NDEF_AID);
+    bos.write(Identifiers.NDEF_INSTANCE_AID.length);
+    bos.write(Identifiers.NDEF_INSTANCE_AID);
+    bos.write(new byte[] {0x01, 0x00, 0x02, (byte) 0xC9, 0x00});
+
+    simulator.installApplet(aid, NDEFApplet.class, bos.toByteArray(), (short) 0, (byte) bos.size());
+    bos.reset();
+
+    // Install CashApplet
+    aid = AIDUtil.create(Identifiers.CASH_AID);
+    bos.write(Identifiers.CASH_INSTANCE_AID.length);
+    bos.write(Identifiers.CASH_INSTANCE_AID);
+
+    simulator.installApplet(aid, CashApplet.class, bos.toByteArray(), (short) 0, (byte) bos.size());
+    bos.reset();
 
     cardTerminal = CardTerminalSimulator.terminal(simulator);
 

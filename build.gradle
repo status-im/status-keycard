@@ -62,6 +62,7 @@ dependencies {
 }
 
 test {
+  classpath = sourceSets.test.runtimeClasspath.filter { f -> f.name != "api_classic.jar" }
   useJUnitPlatform {
     excludeTags 'manual'
   }
@@ -95,6 +96,6 @@ afterEvaluate {
     jvmArgs.push('-noverify')
   }
 
-  def junitPlatformTestTask = tasks.getByName('test')
-  junitPlatformTestTask.jvmArgs(jvmArgs)
+  def testTask = tasks.getByName('test')
+  testTask.jvmArgs(jvmArgs)
 }
