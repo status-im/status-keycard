@@ -30,6 +30,7 @@ import org.web3j.utils.Convert;
 import org.web3j.utils.Numeric;
 
 import javax.smartcardio.*;
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -51,7 +52,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("Test the Keycard Applet")
 public class KeycardTest {
-  // Psiring key is KeycardTest
+  // Pairing key is KeycardTest
   private static CardTerminal cardTerminal;
   private static CardChannel apduChannel;
   private static im.status.keycard.io.CardChannel sdkChannel;
@@ -129,8 +130,33 @@ public class KeycardTest {
 
   private static void openSimulatorChannel() throws Exception {
     simulator = new CardSimulator();
-    AID appletAID = AIDUtil.create(Identifiers.getKeycardInstanceAID());
-    simulator.installApplet(appletAID, KeycardApplet.class);
+
+    // Install KeycardApplet
+    AID aid = AIDUtil.create(Identifiers.KEYCARD_AID);
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    bos.write(Identifiers.getKeycardInstanceAID().length);
+    bos.write(Identifiers.getKeycardInstanceAID());
+
+    simulator.installApplet(aid, KeycardApplet.class, bos.toByteArray(), (short) 0, (byte) bos.size());
+    bos.reset();
+
+    // Install NDEFApplet
+    aid = AIDUtil.create(Identifiers.NDEF_AID);
+    bos.write(Identifiers.NDEF_INSTANCE_AID.length);
+    bos.write(Identifiers.NDEF_INSTANCE_AID);
+    bos.write(new byte[] {0x01, 0x00, 0x02, (byte) 0xC9, 0x00});
+
+    simulator.installApplet(aid, NDEFApplet.class, bos.toByteArray(), (short) 0, (byte) bos.size());
+    bos.reset();
+
+    // Install CashApplet
+    aid = AIDUtil.create(Identifiers.CASH_AID);
+    bos.write(Identifiers.CASH_INSTANCE_AID.length);
+    bos.write(Identifiers.CASH_INSTANCE_AID);
+
+    simulator.installApplet(aid, CashApplet.class, bos.toByteArray(), (short) 0, (byte) bos.size());
+    bos.reset();
+
     cardTerminal = CardTerminalSimulator.terminal(simulator);
 
     openPCSCChannel();
@@ -173,7 +199,7 @@ public class KeycardTest {
 
   private static void initIfNeeded() throws Exception {
     KeycardCommandSet cmdSet = new KeycardCommandSet(sdkChannel);
-    byte[] data = cmdSet.select().checkOK().getData();
+    cmdSet.select().checkOK();
 
     initCapabilities(cmdSet.getApplicationInfo());
 
@@ -181,6 +207,8 @@ public class KeycardTest {
 
     if (!cmdSet.getApplicationInfo().isInitializedCard()) {
       assertEquals(0x9000, cmdSet.init("000000", "123456789012", sharedSecret).getSw());
+      cmdSet.select().checkOK();
+      initCapabilities(cmdSet.getApplicationInfo());
     }
   }
 
@@ -236,7 +264,7 @@ public class KeycardTest {
     assertEquals(0x6A86, response.getSw());
 
     // Wrong data
-    response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), new byte[65]);
+    response = cmdSet.openSecureChannel(secureChannel.getPairingIndex(), new byte[66]);
     assertEquals(0x6A80, response.getSw());
 
     // Good case
@@ -512,6 +540,13 @@ public class KeycardTest {
     assertEquals(0x6985, response.getSw());
 
     cmdSet.autoOpenSecureChannel();
+
+    // Wrong format
+    response = cmdSet.verifyPIN("12345");
+    assertEquals(0x6a80, response.getSw());
+
+    response = cmdSet.verifyPIN("12345a");
+    assertEquals(0x6a80, response.getSw());
 
     // Wrong PIN
     response = cmdSet.verifyPIN("123456");
@@ -1264,6 +1299,68 @@ public class KeycardTest {
   }
 
   @Test
+  @DisplayName("STORE/GET DATA")
+  void storeGetDataTest() throws Exception {
+    APDUResponse response;
+
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      // Security condition violation: SecureChannel not open
+      response = cmdSet.storePublicData(new byte[20]);
+      assertEquals(0x6985, response.getSw());
+
+      cmdSet.autoOpenSecureChannel();
+    }
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      // Security condition violation: PIN not verified
+      response = cmdSet.storePublicData(new byte[20]);
+      assertEquals(0x6985, response.getSw());
+
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
+    // Data too long
+    response = cmdSet.storePublicData(new byte[128]);
+    assertEquals(0x6A80, response.getSw());
+
+    byte[] data = new byte[127];
+
+    for (int i = 0; i < 127; i++) {
+      data[i] = (byte) i;
+    }
+
+    // Correct data
+    response = cmdSet.storePublicData(data);
+    assertEquals(0x9000, response.getSw());
+
+    // Read data back with secure channel
+    response = cmdSet.getPublicData();
+    assertEquals(0x9000, response.getSw());
+    assertArrayEquals(data, response.getData());
+
+    // Empty data
+    response = cmdSet.storePublicData(new byte[0]);
+    assertEquals(0x9000, response.getSw());
+
+    response = cmdSet.getPublicData();
+    assertEquals(0x9000, response.getSw());
+    assertEquals(0, response.getData().length);
+
+    // Shorter data
+    data = Arrays.copyOf(data, 20);
+    response = cmdSet.storePublicData(data);
+    assertEquals(0x9000, response.getSw());
+
+    // GET DATA without Secure Channel
+    cmdSet.select().checkOK();
+
+    response = cmdSet.getPublicData();
+    assertEquals(0x9000, response.getSw());
+    assertArrayEquals(data, response.getData());
+  }
+
+  @Test
   @DisplayName("DUPLICATE KEY command")
   @Capabilities("keyManagement")
   void duplicateTest() throws Exception {
@@ -1361,6 +1458,24 @@ public class KeycardTest {
     response = cmdSet.duplicateKeyImport(backup);
     assertEquals(0x9000, response.getSw());
     assertArrayEquals(keyUID, response.getData());
+  }
+
+  @Test
+  @DisplayName("Test the Cash applet")
+  @Tag("manual")
+  void cashTest() throws Exception {
+    CashCommandSet cashCmdSet = new CashCommandSet(sdkChannel);
+    APDUResponse response = cashCmdSet.select();
+    assertEquals(0x9000, response.getSw());
+
+    CashApplicationInfo info = new CashApplicationInfo(response.getData());
+    assertTrue(info.getAppVersion() > 0);
+
+    byte[] data = "some data to be hashed".getBytes();
+    byte[] hash = sha256(data);
+
+    response = cashCmdSet.sign(hash);
+    verifySignResp(data, response);
   }
 
   @Test
