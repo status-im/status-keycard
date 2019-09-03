@@ -51,7 +51,7 @@ public class Crypto {
 
     try {
       hmacSHA512 = Signature.getInstance(Signature.ALG_HMAC_SHA_512, false);
-      hmacKey = (HMACKey) KeyBuilder.buildKey(KeyBuilder.TYPE_HMAC_TRANSIENT_DESELECT, KEY_SECRET_SIZE, false);
+      hmacKey = (HMACKey) KeyBuilder.buildKey(KeyBuilder.TYPE_HMAC_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
     } catch (CryptoException e) {
       hmacSHA512 = null;
       hmacBlock = JCSystem.makeTransientByteArray(HMAC_BLOCK_SIZE, JCSystem.CLEAR_ON_RESET);
