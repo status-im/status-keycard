@@ -1180,7 +1180,8 @@ public class KeycardApplet extends Applet {
   private short exportDuplicate(byte[] apduBuffer) {
     finalizeDuplicationKey();
     crypto.random.generateData(apduBuffer, SecureChannel.SC_OUT_OFFSET, Crypto.AES_BLOCK_SIZE);
-    short off = (short) (SecureChannel.SC_OUT_OFFSET + Crypto.AES_BLOCK_SIZE);
+    short sOff = (short) (SecureChannel.SC_OUT_OFFSET + Crypto.AES_BLOCK_SIZE);
+    short off = sOff;
     Util.arrayCopyNonAtomic(apduBuffer, SecureChannel.SC_OUT_OFFSET, apduBuffer, off, Crypto.AES_BLOCK_SIZE);
     off += Crypto.AES_BLOCK_SIZE;
 
@@ -1200,7 +1201,7 @@ public class KeycardApplet extends Applet {
       off += CHAIN_CODE_SIZE;
     }
 
-    return (short) (Crypto.AES_BLOCK_SIZE + crypto.oneShotAES(Cipher.MODE_ENCRYPT, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + Crypto.AES_BLOCK_SIZE), off, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + Crypto.AES_BLOCK_SIZE), duplicationEncKey, (short) 0));
+    return (short) (Crypto.AES_BLOCK_SIZE + crypto.oneShotAES(Cipher.MODE_ENCRYPT, apduBuffer, sOff, (short)(off - sOff), apduBuffer, sOff, duplicationEncKey, (short) 0));
   }
 
   private void importDuplicate(byte[] apduBuffer) {

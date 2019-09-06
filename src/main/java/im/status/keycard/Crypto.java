@@ -62,7 +62,7 @@ public class Crypto {
   public short oneShotAES(byte mode, byte[] src, short sOff, short sLen, byte[] dst, short dOff, byte[] key, short keyOff) {
     tmpAES256.setKey(key, keyOff);
     aesCbcIso9797m2.init(tmpAES256, mode, src, sOff, AES_BLOCK_SIZE);
-    return aesCbcIso9797m2.doFinal(src, (short) (sOff + AES_BLOCK_SIZE), sLen, dst, dOff);
+    return aesCbcIso9797m2.doFinal(src, (short) (sOff + AES_BLOCK_SIZE), (short) (sLen - AES_BLOCK_SIZE), dst, dOff);
   }
 
   boolean bip32IsHardened(byte[] i, short iOff) {
