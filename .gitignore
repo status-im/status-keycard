@@ -1,8 +1,15 @@
+.project
+.vscode
+
 # IntelliJ IDEA project files
 .idea
 *.iml
+buildSrc/build
+bin
 
 # Gradle output
+buildSrc/build
 /.gradle
+buildSrc/.gradle
 /build
 /gradle.properties

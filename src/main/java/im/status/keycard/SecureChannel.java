@@ -8,6 +8,16 @@ import javacardx.crypto.Cipher;
  * Implements all methods related to the secure channel as specified in the SECURE_CHANNEL.md document.
  */
 public class SecureChannel {
+  static final byte ID_CERTIFICATE_EMPTY = (byte) 0x00;
+  static final byte ID_CERTIFICATE_LOCKED = (byte) 0xFF;
+
+  // cert = [permissions (2), certified pubKey (65), ECDSA signature from CA (74)]
+  static final short ECDSA_MAX_LEN = 74;
+  static final short PUBKEY_LEN = 65;
+
+  // certificate format: [certType, certLen, permType, permLen, permissions(2), pubkeyType, pubkeyLen, pubkey(65), ecdsa sig (DER)]
+  static final short CERTIFICATE_MAX_LEN = (short)(8 + PUBKEY_LEN + ECDSA_MAX_LEN);
+
   public static final short SC_KEY_LENGTH = 256;
   public static final short SC_SECRET_LENGTH = 32;
   public static final short PAIRING_KEY_LENGTH = SC_SECRET_LENGTH + 1;
@@ -19,6 +29,8 @@ public class SecureChannel {
   public static final byte INS_MUTUALLY_AUTHENTICATE = 0x11;
   public static final byte INS_PAIR = 0x12;
   public static final byte INS_UNPAIR = 0x13;
+  public static final byte INS_IDENTIFY_CARD = 0x14;
+  public static final byte INS_LOAD_CERT = 0x15;
 
   public static final byte PAIR_P1_FIRST_STEP = 0x00;
   public static final byte PAIR_P1_LAST_STEP = 0x01;
@@ -26,10 +38,16 @@ public class SecureChannel {
   // This is the maximum length acceptable for plaintext commands/responses for APDUs in short format
   public static final short SC_MAX_PLAIN_LENGTH = (short) 223;
 
+  // Card identity key & certificate
+  private KeyPair idKeypair;
+  private byte[] idCertificate;
+  private byte idCertStatus; // EMPTY or LOCKED
+
   private AESKey scEncKey;
   private AESKey scMacKey;
   private Signature scMac;
   private KeyPair scKeypair;
+  private Signature eccSig;
   private byte[] secret;
   private byte[] pairingSecret;
 
@@ -54,7 +72,16 @@ public class SecureChannel {
   public SecureChannel(byte pairingLimit, Crypto crypto, SECP256k1 secp256k1) {
     this.crypto = crypto;
 
+    idKeypair = new KeyPair(KeyPair.ALG_EC_FP, SC_KEY_LENGTH);
+    secp256k1.setCurveParameters((ECKey) idKeypair.getPrivate());
+    secp256k1.setCurveParameters((ECKey) idKeypair.getPublic());
+    idKeypair.genKeyPair();
+    
+    idCertificate = new byte[CERTIFICATE_MAX_LEN];
+    idCertStatus = ID_CERTIFICATE_EMPTY;
+
     scMac = Signature.getInstance(Signature.ALG_AES_MAC_128_NOPAD, false);
+    eccSig = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
 
     scEncKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
     scMacKey = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
@@ -177,6 +204,60 @@ public class SecureChannel {
   }
 
   /**
+   * Processes the LOAD_CERTS command. Copies the APDU buffer into `certs`.
+   * This function expects a DER signature and may only be called once.
+   * @param apdu the JCRE-owned APDU object.
+   */
+  public void loadCert(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+
+    if (idCertStatus != ID_CERTIFICATE_EMPTY) {
+      // Card cert may only be set once and never overwritten
+      ISOException.throwIt(ISO7816.SW_COMMAND_NOT_ALLOWED);
+    }
+
+    // Save the certificate
+    if (apduBuffer[ISO7816.OFFSET_LC] <= (byte)CERTIFICATE_MAX_LEN) {
+      Util.arrayCopyNonAtomic(apduBuffer, ISO7816.OFFSET_CDATA, idCertificate, (short) 0, (short) (apduBuffer[ISO7816.OFFSET_LC] & 0xff));
+      idCertStatus = ID_CERTIFICATE_LOCKED;
+    } else {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
+  }
+  
+  /**
+   * Processes the IDENTIFY_CARD command. Returns the card public key, and a signature on the
+   * challenge salt, to prove ownership of the key.
+   * @param apdu the JCRE-owned APDU object.
+   */
+  public void identifyCard(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+
+    // Ensure the received challenge is appropriate length
+    if (apduBuffer[ISO7816.OFFSET_LC] != (byte) MessageDigest.LENGTH_SHA_256) {
+      ISOException.throwIt(ISO7816.SW_DATA_INVALID);
+    }
+
+    short responseStart = (short) ISO7816.OFFSET_CDATA + (short) MessageDigest.LENGTH_SHA_256;
+    short off = responseStart;
+
+    // Copy card ID pubKey to the response buffer
+    ECPublicKey pk = (ECPublicKey) idKeypair.getPublic();
+    short pubkeyLen = pk.getW(apduBuffer, (short) (off + 2)); // Copy pubkey after TLV type and len
+    apduBuffer[off++] = (byte) 0x80; // TLV pubkey type
+    apduBuffer[off++] = (byte) pubkeyLen; // TLV pubkey len
+    off += pubkeyLen;
+
+    // Sign the challenge and copy signature to response buffer
+    eccSig.init(idKeypair.getPrivate(), Signature.MODE_SIGN);
+    short sigLen = eccSig.signPreComputedHash(apduBuffer, (short) ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, off);
+    off += sigLen;
+
+    // Send the response
+    apdu.setOutgoingAndSend(responseStart, (short)(off - responseStart));
+  }
+
+  /**
    * Processes the PAIR command.
    *
    * @param apdu the JCRE-owned APDU object.
@@ -187,10 +268,6 @@ public class SecureChannel {
     }
 
     byte[] apduBuffer = apdu.getBuffer();
-
-    if (apduBuffer[ISO7816.OFFSET_LC] != SC_SECRET_LENGTH) {
-      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-    }
 
     short len;
 
@@ -207,33 +284,70 @@ public class SecureChannel {
   }
 
   /**
-   * Performs the first step of pairing. In this step the card solves the challenge sent by the client, thus authenticating
-   * itself to the client. At the same time, it creates a challenge for the client. This can only fail if the card has
-   * already paired with the maximum allowed amount of clients.
+   * Performs the first step of certificate based pairing. In this step, the card provides a CA signed certificate
+   * of its card ID key, and proves ownership of this key with a signature on a challenge hash. The challenge hash
+   * to be signed is computed as the sha256 hash of the client salt (provided by client) and card salt (generated randomly).
+   * The card will also include its random salt in the response to the client, so that the client can reproduce the challenge
+   * hash and verify the card signature.
    *
    * @param apduBuffer the APDU buffer
    * @return the length of the reply
    */
   private short pairStep1(byte[] apduBuffer) {
-    preassignedPairingOffset = -1;
-
-    for (short i = 0; i < (short) pairingKeys.length; i += PAIRING_KEY_LENGTH) {
-      if (pairingKeys[i] == 0) {
-        preassignedPairingOffset = i;
-        break;
-      }
+    // Validate command data length
+    if (apduBuffer[ISO7816.OFFSET_LC] != SC_SECRET_LENGTH + 2 + PUBKEY_LEN) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      return 0;
     }
 
-    if (preassignedPairingOffset == -1) {
-      ISOException.throwIt(ISO7816.SW_FILE_FULL);
+    // Make sure certificate exisits
+    if (idCertStatus != ID_CERTIFICATE_LOCKED) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+      return 0;
     }
 
-    crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
-    crypto.sha256.doFinal(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH, apduBuffer, (short) 0);
-    crypto.random.generateData(secret, (short) 0, SC_SECRET_LENGTH);
-    Util.arrayCopyNonAtomic(secret, (short) 0, apduBuffer, SC_SECRET_LENGTH, SC_SECRET_LENGTH);
+    // Override first pairing slot
+    preassignedPairingOffset = 0;
 
-    return (SC_SECRET_LENGTH * 2);
+    // Compute ECDH secret
+    final short pubKeyOff = (short)(ISO7816.OFFSET_CDATA + SC_SECRET_LENGTH);
+    try {
+      crypto.ecdh.init(idKeypair.getPrivate());
+      crypto.ecdh.generateSecret(apduBuffer, (short) (pubKeyOff + 2), apduBuffer[pubKeyOff + 1], secret, (short) 0);
+    } catch(Exception e) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+      return 0;
+    }
+
+    // Hash client salt and ECDH secret and store in secret buffer
+    // secretHash = sha256(clientSalt, ECDH secret)
+    crypto.sha256.update(apduBuffer, ISO7816.OFFSET_CDATA, SC_SECRET_LENGTH);
+    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+
+    // Response buffer offset (previous APDU buffer use was for temporary storage)
+    short off = 0;
+
+    // Generate random card salt, and copy to response buffer
+    crypto.random.generateData(apduBuffer, off, SC_SECRET_LENGTH);
+    off += SC_SECRET_LENGTH;
+    
+    // Copy card certificate to response buffer
+    short certLen = (short) (2 + (idCertificate[1] & 0xff));
+    Util.arrayCopyNonAtomic(idCertificate, (short) 0, apduBuffer, off, (short) certLen);
+    off += certLen;
+
+    // Sign the secret hash, and copy the signature into the response buffer
+    eccSig.init(idKeypair.getPrivate(), Signature.MODE_SIGN);
+    short sigLen = eccSig.signPreComputedHash(secret, (short) 0, (short) (SC_SECRET_LENGTH), apduBuffer, off);
+    off += sigLen;
+
+    // Compute the expected client cryptogram, by hashing the card salt and secret hash. Save in secret buffer.
+    // expectedCryptogram = sha256(cardSalt, secretHash)
+    crypto.sha256.update(apduBuffer, (short) 0, SC_SECRET_LENGTH);
+    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+
+    // Return total response length
+    return off;
   }
 
   /**
@@ -245,24 +359,29 @@ public class SecureChannel {
    * @return the length of the reply
    */
   private short pairStep2(byte[] apduBuffer) {
-    crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
-    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+    // Validate command data length
+    if (apduBuffer[ISO7816.OFFSET_LC] != SC_SECRET_LENGTH) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
 
+    // Compare client cryptogram to the expected cryptogram (stored in secret buffer)
     if (Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, secret, (short) 0, SC_SECRET_LENGTH) != 0) {
       preassignedPairingOffset = -1;
       ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
     }
 
+    // Generate random pairing salt & save pairing key. Copy pairing index and pairing salt into response buffer
+    // pairingKey = sha256(pairingSalt, cryptogram)
     crypto.random.generateData(apduBuffer, (short) 1, SC_SECRET_LENGTH);
-    crypto.sha256.update(pairingSecret, (short) 0, SC_SECRET_LENGTH);
-    crypto.sha256.doFinal(apduBuffer, (short) 1, SC_SECRET_LENGTH, pairingKeys, (short) (preassignedPairingOffset + 1));
+    crypto.sha256.update(apduBuffer, (short) 1, SC_SECRET_LENGTH);
+    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, pairingKeys, (short) (preassignedPairingOffset + 1));
     pairingKeys[preassignedPairingOffset] = 1;
     remainingSlots--;
-    apduBuffer[0] = (byte) (preassignedPairingOffset / PAIRING_KEY_LENGTH);
+    apduBuffer[0] = (byte) (preassignedPairingOffset / PAIRING_KEY_LENGTH); // Pairing index
 
     preassignedPairingOffset = -1;
 
-    return (SC_SECRET_LENGTH + 1);
+    return (1 + SC_SECRET_LENGTH);
   }
 
   /**
