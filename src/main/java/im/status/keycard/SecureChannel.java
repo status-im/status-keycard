@@ -341,10 +341,11 @@ public class SecureChannel {
     short sigLen = eccSig.signPreComputedHash(secret, (short) 0, (short) (SC_SECRET_LENGTH), apduBuffer, off);
     off += sigLen;
 
-    // Compute the expected client cryptogram, by hashing the card salt and secret hash. Save in secret buffer.
+    // Compute the expected client cryptogram, by hashing the card salt and secret hash. Save
+    // in second half of the secret buffer.
     // expectedCryptogram = sha256(cardSalt, secretHash)
     crypto.sha256.update(apduBuffer, (short) 0, SC_SECRET_LENGTH);
-    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, secret, (short) 0);
+    crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, secret, SC_SECRET_LENGTH);
 
     // Return total response length
     return off;
@@ -358,20 +359,22 @@ public class SecureChannel {
    * @param apduBuffer the APDU buffer
    * @return the length of the reply
    */
-  private short pairStep2(byte[] apduBuffer) {
+  private short pairStep2(byte[] apduBuffer) { 
     // Validate command data length
     if (apduBuffer[ISO7816.OFFSET_LC] != SC_SECRET_LENGTH) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
+    // At this point, the `secret` contains: [secretHash(32), cryptogram(32)]
+
     // Compare client cryptogram to the expected cryptogram (stored in secret buffer)
-    if (Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, secret, (short) 0, SC_SECRET_LENGTH) != 0) {
+    if (Util.arrayCompare(apduBuffer, ISO7816.OFFSET_CDATA, secret, SC_SECRET_LENGTH, SC_SECRET_LENGTH) != 0) {
       preassignedPairingOffset = -1;
       ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
     }
 
     // Generate random pairing salt & save pairing key. Copy pairing index and pairing salt into response buffer
-    // pairingKey = sha256(pairingSalt, cryptogram)
+    // pairingKey = sha256(pairingSalt, secretHash)
     crypto.random.generateData(apduBuffer, (short) 1, SC_SECRET_LENGTH);
     crypto.sha256.update(apduBuffer, (short) 1, SC_SECRET_LENGTH);
     crypto.sha256.doFinal(secret, (short) 0, SC_SECRET_LENGTH, pairingKeys, (short) (preassignedPairingOffset + 1));
