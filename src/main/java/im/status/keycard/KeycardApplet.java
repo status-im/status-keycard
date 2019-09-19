@@ -70,8 +70,8 @@ public class KeycardApplet extends Applet {
   static final byte DUPLICATE_KEY_P1_IMPORT = 0x03;
 
   static final byte GENERATE_KEY_P1_EXPORTABLE_NEVER = 0x00;
-  static final byte GENERATE_KEY_P1_EXPORTABLE_ONCE = 0x01;
-  static final byte GENERATE_KEY_P1_EXPORTABLE_ALWAYS = 0x02;
+  static final byte GENERATE_KEY_P1_EXPORTABLE_ALWAYS = 0x01; // For Status compatibility
+  static final byte GENERATE_KEY_P1_EXPORTABLE_ONCE = 0x02;
 
   static final byte SIGN_P1_CURRENT_KEY = 0x00;
   static final byte SIGN_P1_DERIVE = 0x01;
