@@ -36,8 +36,6 @@ public class Crypto {
   private Signature hmacSHA512;
   private HMACKey hmacKey;
 
-  private AESKey tmpAES256;
-
   private byte[] hmacBlock;
 
   Crypto() {
@@ -47,8 +45,6 @@ public class Crypto {
     sha512 = MessageDigest.getInstance(MessageDigest.ALG_SHA_512, false);
     aesCbcIso9797m2 = Cipher.getInstance(Cipher.ALG_AES_CBC_ISO9797_M2,false);
 
-    tmpAES256 = (AESKey) KeyBuilder.buildKey(KeyBuilder.TYPE_AES_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
-
     try {
       hmacSHA512 = Signature.getInstance(Signature.ALG_HMAC_SHA_512, false);
       hmacKey = (HMACKey) KeyBuilder.buildKey(KeyBuilder.TYPE_HMAC_TRANSIENT_DESELECT, KeyBuilder.LENGTH_AES_256, false);
@@ -57,12 +53,6 @@ public class Crypto {
       hmacBlock = JCSystem.makeTransientByteArray(HMAC_BLOCK_SIZE, JCSystem.CLEAR_ON_RESET);
     }
 
-  }
-
-  public short oneShotAES(byte mode, byte[] src, short sOff, short sLen, byte[] dst, short dOff, byte[] key, short keyOff) {
-    tmpAES256.setKey(key, keyOff);
-    aesCbcIso9797m2.init(tmpAES256, mode, src, sOff, AES_BLOCK_SIZE);
-    return aesCbcIso9797m2.doFinal(src, (short) (sOff + AES_BLOCK_SIZE), (short) (sLen - AES_BLOCK_SIZE), dst, dOff);
   }
 
   boolean bip32IsHardened(byte[] i, short iOff) {
