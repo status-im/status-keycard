@@ -5,6 +5,7 @@ import javacard.security.*;
 
 public class CashApplet extends Applet {
   private static final short SIGN_OUT_OFF = ISO7816.OFFSET_CDATA + MessageDigest.LENGTH_SHA_256;
+  private static final byte TLV_PUB_DATA = (byte) 0x82;
 
   private KeyPair keypair;
   private ECPublicKey publicKey;
@@ -50,6 +51,14 @@ public class CashApplet extends Applet {
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
     signature.init(privateKey, Signature.MODE_SIGN);
+
+    short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
+    c9Off += (short)(bArray[c9Off] + 1); // Skip Privileges and parameter length
+
+    short dataLen = Util.makeShort((byte) 0x00, bArray[c9Off]);
+    if (dataLen > 0) {
+      Util.arrayCopyNonAtomic(bArray, c9Off, SharedMemory.cashDataFile, (short) 0, (short)(dataLen + 1));
+    }
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
@@ -98,6 +107,11 @@ public class CashApplet extends Applet {
     apduBuffer[off++] = 2;
     Util.setShort(apduBuffer, off, KeycardApplet.APPLICATION_VERSION);
     off += 2;
+
+    apduBuffer[off++] = TLV_PUB_DATA;
+    apduBuffer[off++] = SharedMemory.cashDataFile[0];
+    Util.arrayCopyNonAtomic(SharedMemory.cashDataFile, (short) 1, apduBuffer, off, SharedMemory.cashDataFile[0]);
+    off += SharedMemory.cashDataFile[0];
 
     apduBuffer[lenoff] = (byte)(off - lenoff - 1);
     apdu.setOutgoingAndSend((short) 0, off);

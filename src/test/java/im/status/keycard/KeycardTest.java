@@ -153,6 +153,7 @@ public class KeycardTest {
     aid = AIDUtil.create(Identifiers.CASH_AID);
     bos.write(Identifiers.CASH_INSTANCE_AID.length);
     bos.write(Identifiers.CASH_INSTANCE_AID);
+    bos.write(new byte[] {0x01, 0x00, 0x02, (byte) 0xC9, 0x00});
 
     simulator.installApplet(aid, CashApplet.class, bos.toByteArray(), (short) 0, (byte) bos.size());
     bos.reset();
@@ -495,40 +496,6 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
     KeyPath path = new KeyPath(response.getData());
     assertNotEquals(null, path);
-  }
-
-  @Test
-  @DisplayName("SET NDEF command")
-  @Capabilities("ndef")
-  void setNDEFTest() throws Exception {
-    byte[] ndefData = {
-        (byte) 0x00, (byte) 0x24, (byte) 0xd4, (byte) 0x0f, (byte) 0x12, (byte) 0x61, (byte) 0x6e, (byte) 0x64,
-        (byte) 0x72, (byte) 0x6f, (byte) 0x69, (byte) 0x64, (byte) 0x2e, (byte) 0x63, (byte) 0x6f, (byte) 0x6d,
-        (byte) 0x3a, (byte) 0x70, (byte) 0x6b, (byte) 0x67, (byte) 0x69, (byte) 0x6d, (byte) 0x2e, (byte) 0x73,
-        (byte) 0x74, (byte) 0x61, (byte) 0x74, (byte) 0x75, (byte) 0x73, (byte) 0x2e, (byte) 0x65, (byte) 0x74,
-        (byte) 0x68, (byte) 0x65, (byte) 0x72, (byte) 0x65, (byte) 0x75, (byte) 0x6d
-    };
-
-    // Security condition violation: SecureChannel not open
-    APDUResponse response = cmdSet.setNDEF(ndefData);
-    assertEquals(0x6985, response.getSw());
-
-    cmdSet.autoOpenSecureChannel();
-
-    // Security condition violation: PIN not verified
-    response = cmdSet.setNDEF(ndefData);
-    assertEquals(0x6985, response.getSw());
-
-    response = cmdSet.verifyPIN("000000");
-    assertEquals(0x9000, response.getSw());
-
-    // Good case.
-    response = cmdSet.setNDEF(ndefData);
-    assertEquals(0x9000, response.getSw());
-
-    // Good case with no length.
-    response = cmdSet.setNDEF(Arrays.copyOfRange(ndefData, 2, ndefData.length));
-    assertEquals(0x9000, response.getSw());
   }
 
   @Test
@@ -1305,7 +1272,7 @@ public class KeycardTest {
 
     if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
       // Security condition violation: SecureChannel not open
-      response = cmdSet.storePublicData(new byte[20]);
+      response = cmdSet.storeData(new byte[20], KeycardCommandSet.STORE_DATA_P1_PUBLIC);
       assertEquals(0x6985, response.getSw());
 
       cmdSet.autoOpenSecureChannel();
@@ -1313,7 +1280,7 @@ public class KeycardTest {
 
     if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
       // Security condition violation: PIN not verified
-      response = cmdSet.storePublicData(new byte[20]);
+      response = cmdSet.storeData(new byte[20], KeycardCommandSet.STORE_DATA_P1_PUBLIC);
       assertEquals(0x6985, response.getSw());
 
       response = cmdSet.verifyPIN("000000");
@@ -1321,7 +1288,7 @@ public class KeycardTest {
     }
 
     // Data too long
-    response = cmdSet.storePublicData(new byte[128]);
+    response = cmdSet.storeData(new byte[128], KeycardCommandSet.STORE_DATA_P1_PUBLIC);
     assertEquals(0x6A80, response.getSw());
 
     byte[] data = new byte[127];
@@ -1331,38 +1298,80 @@ public class KeycardTest {
     }
 
     // Correct data
-    response = cmdSet.storePublicData(data);
+    response = cmdSet.storeData(data, KeycardCommandSet.STORE_DATA_P1_PUBLIC);
+
     assertEquals(0x9000, response.getSw());
 
     // Read data back with secure channel
-    response = cmdSet.getPublicData();
+    response = cmdSet.getData(KeycardCommandSet.STORE_DATA_P1_PUBLIC);
     assertEquals(0x9000, response.getSw());
     assertArrayEquals(data, response.getData());
 
     // Empty data
-    response = cmdSet.storePublicData(new byte[0]);
+    response = cmdSet.storeData(new byte[0], KeycardCommandSet.STORE_DATA_P1_PUBLIC);
     assertEquals(0x9000, response.getSw());
 
-    response = cmdSet.getPublicData();
+    response = cmdSet.getData(KeycardCommandSet.STORE_DATA_P1_PUBLIC);
     assertEquals(0x9000, response.getSw());
     assertEquals(0, response.getData().length);
 
     // Shorter data
     data = Arrays.copyOf(data, 20);
-    response = cmdSet.storePublicData(data);
+    response = cmdSet.storeData(data, KeycardCommandSet.STORE_DATA_P1_PUBLIC);
     assertEquals(0x9000, response.getSw());
 
     // GET DATA without Secure Channel
     cmdSet.select().checkOK();
 
-    response = cmdSet.getPublicData();
+    response = cmdSet.getData(KeycardCommandSet.STORE_DATA_P1_PUBLIC);
     assertEquals(0x9000, response.getSw());
     assertArrayEquals(data, response.getData());
+
+    if (cmdSet.getApplicationInfo().hasNDEFCapability()) {
+      byte[] ndefData = {
+              (byte) 0x00, (byte) 0x24, (byte) 0xd4, (byte) 0x0f, (byte) 0x12, (byte) 0x61, (byte) 0x6e, (byte) 0x64,
+              (byte) 0x72, (byte) 0x6f, (byte) 0x69, (byte) 0x64, (byte) 0x2e, (byte) 0x63, (byte) 0x6f, (byte) 0x6d,
+              (byte) 0x3a, (byte) 0x70, (byte) 0x6b, (byte) 0x67, (byte) 0x69, (byte) 0x6d, (byte) 0x2e, (byte) 0x73,
+              (byte) 0x74, (byte) 0x61, (byte) 0x74, (byte) 0x75, (byte) 0x73, (byte) 0x2e, (byte) 0x65, (byte) 0x74,
+              (byte) 0x68, (byte) 0x65, (byte) 0x72, (byte) 0x65, (byte) 0x75, (byte) 0x6d
+      };
+
+      // Security condition violation: SecureChannel not open
+      response = cmdSet.setNDEF(ndefData);
+      assertEquals(0x6985, response.getSw());
+
+      cmdSet.autoOpenSecureChannel();
+
+      // Security condition violation: PIN not verified
+      response = cmdSet.setNDEF(ndefData);
+      assertEquals(0x6985, response.getSw());
+
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+
+      // Good case.
+      response = cmdSet.setNDEF(ndefData);
+      assertEquals(0x9000, response.getSw());
+
+      // Good case with no length.
+      response = cmdSet.setNDEF(Arrays.copyOfRange(ndefData, 2, ndefData.length));
+      assertEquals(0x9000, response.getSw());
+    }
+
+    data[0] = (byte) 0xAA;
+
+    response = cmdSet.storeData(data, KeycardCommandSet.STORE_DATA_P1_CASH);
+    assertEquals(0x9000, response.getSw());
+
+    CashCommandSet cashCmdSet = new CashCommandSet(sdkChannel);
+    response = cashCmdSet.select();
+    assertEquals(0x9000, response.getSw());
+    CashApplicationInfo info = new CashApplicationInfo(response.getData());
+    assertArrayEquals(data, info.getPubData());
   }
 
   @Test
   @DisplayName("Test the Cash applet")
-  @Tag("manual")
   void cashTest() throws Exception {
     CashCommandSet cashCmdSet = new CashCommandSet(sdkChannel);
     APDUResponse response = cashCmdSet.select();

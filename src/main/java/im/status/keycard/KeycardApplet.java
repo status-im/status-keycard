@@ -4,14 +4,15 @@ import javacard.framework.*;
 import javacard.security.*;
 import javacardx.crypto.Cipher;
 
+import static javacard.framework.ISO7816.OFFSET_P1;
+
 /**
  * The applet's main class. All incoming commands a processed by this class.
  */
 public class KeycardApplet extends Applet {
-  static final short APPLICATION_VERSION = (short) 0x0203;
+  static final short APPLICATION_VERSION = (short) 0x0300;
 
   static final byte INS_GET_STATUS = (byte) 0xF2;
-  static final byte INS_SET_NDEF = (byte) 0xF3;
   static final byte INS_INIT = (byte) 0xFE;
   static final byte INS_VERIFY_PIN = (byte) 0x20;
   static final byte INS_CHANGE_PIN = (byte) 0x21;
@@ -73,6 +74,10 @@ public class KeycardApplet extends Applet {
 
   static final byte EXPORT_KEY_P2_PRIVATE_AND_PUBLIC = 0x00;
   static final byte EXPORT_KEY_P2_PUBLIC_ONLY = 0x01;
+
+  static final byte STORE_DATA_P1_PUBLIC = 0x00;
+  static final byte STORE_DATA_P1_NDEF = 0x01;
+  static final byte STORE_DATA_P1_CASH = 0x02;
 
   static final byte TLV_SIGNATURE_TEMPLATE = (byte) 0xA0;
 
@@ -238,9 +243,6 @@ public class KeycardApplet extends Applet {
           break;
         case INS_GET_STATUS:
           getStatus(apdu);
-          break;
-        case INS_SET_NDEF:
-          setNDEF(apdu);
           break;
         case INS_VERIFY_PIN:
           verifyPIN(apdu);
@@ -434,9 +436,9 @@ public class KeycardApplet extends Applet {
 
     short len;
 
-    if (apduBuffer[ISO7816.OFFSET_P1] == GET_STATUS_P1_APPLICATION) {
+    if (apduBuffer[OFFSET_P1] == GET_STATUS_P1_APPLICATION) {
       len = getApplicationStatus(apduBuffer, SecureChannel.SC_OUT_OFFSET);
-    } else if (apduBuffer[ISO7816.OFFSET_P1] == GET_STATUS_P1_KEY_PATH) {
+    } else if (apduBuffer[OFFSET_P1] == GET_STATUS_P1_KEY_PATH) {
       len = getKeyStatus(apduBuffer, SecureChannel.SC_OUT_OFFSET);
     } else {
       ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -444,36 +446,6 @@ public class KeycardApplet extends Applet {
     }
 
     secureChannel.respond(apdu, len, ISO7816.SW_NO_ERROR);
-  }
-
-  /**
-   * Sets the content of the NDEF data file returned by the NDEF applet. Requires a secure channel to be already open
-   * and the PIN to be verified.
-   *
-   * @param apdu the JCRE-owned APDU object.
-   */
-  private void setNDEF(APDU apdu) {
-    byte[] apduBuffer = apdu.getBuffer();
-    secureChannel.preprocessAPDU(apduBuffer);
-
-    if (!pin.isValidated()) {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-    }
-
-    short dataLen = Util.makeShort((byte) 0x00, apduBuffer[ISO7816.OFFSET_LC]);
-    short offset;
-
-    if (Util.makeShort(apduBuffer[ISO7816.OFFSET_CDATA], apduBuffer[(short)(ISO7816.OFFSET_CDATA + 1)]) != (short)(dataLen - 2)) {
-      offset = ISO7816.OFFSET_P2;
-      apduBuffer[ISO7816.OFFSET_P2] = 0;
-      dataLen += 2;
-    } else {
-      offset = ISO7816.OFFSET_CDATA;
-    }
-
-    JCSystem.beginTransaction();
-    Util.arrayCopy(apduBuffer, offset, SharedMemory.ndefDataFile, (short) 0, dataLen);
-    JCSystem.commitTransaction();
   }
 
   /**
@@ -550,7 +522,7 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    switch(apduBuffer[ISO7816.OFFSET_P1]) {
+    switch(apduBuffer[OFFSET_P1]) {
       case CHANGE_PIN_P1_USER_PIN:
         changeUserPIN(apduBuffer, len);
         break;
@@ -653,7 +625,7 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    switch (apduBuffer[ISO7816.OFFSET_P1])  {
+    switch (apduBuffer[OFFSET_P1])  {
       case LOAD_KEY_P1_EC:
       case LOAD_KEY_P1_EXT_EC:
         loadKeyPair(apduBuffer);
@@ -814,7 +786,7 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    doDerive(apduBuffer, (short) 0, len, apduBuffer[ISO7816.OFFSET_P1], true);
+    doDerive(apduBuffer, (short) 0, len, apduBuffer[OFFSET_P1], true);
   }
 
   /**
@@ -968,7 +940,7 @@ public class KeycardApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     secureChannel.preprocessAPDU(apduBuffer);
 
-    short csLen = apduBuffer[ISO7816.OFFSET_P1];
+    short csLen = apduBuffer[OFFSET_P1];
 
     if (csLen < GENERATE_MNEMONIC_P1_CS_MIN || csLen > GENERATE_MNEMONIC_P1_CS_MAX)  {
       ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -1105,7 +1077,7 @@ public class KeycardApplet extends Applet {
     ECPrivateKey signingKey;
     ECPublicKey outputKey;
 
-    switch((byte) (apduBuffer[ISO7816.OFFSET_P1] & ~DERIVE_P1_SOURCE_MASK)) {
+    switch((byte) (apduBuffer[OFFSET_P1] & ~DERIVE_P1_SOURCE_MASK)) {
       case SIGN_P1_CURRENT_KEY:
         signingKey = privateKey;
         outputKey = publicKey;
@@ -1154,7 +1126,7 @@ public class KeycardApplet extends Applet {
         ISOException.throwIt(ISO7816.SW_WRONG_DATA);
       }
 
-      byte derivationSource = (byte) (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_SOURCE_MASK);
+      byte derivationSource = (byte) (apduBuffer[OFFSET_P1] & DERIVE_P1_SOURCE_MASK);
       doDerive(apduBuffer, MessageDigest.LENGTH_SHA_256, pathLen, derivationSource, makeCurrent);
     } else {
       if (len != MessageDigest.LENGTH_SHA_256) {
@@ -1257,9 +1229,9 @@ public class KeycardApplet extends Applet {
 
     boolean derive = false;
     boolean makeCurrent = false;
-    byte derivationSource = (byte) (apduBuffer[ISO7816.OFFSET_P1] & DERIVE_P1_SOURCE_MASK);
+    byte derivationSource = (byte) (apduBuffer[OFFSET_P1] & DERIVE_P1_SOURCE_MASK);
 
-    switch ((byte) (apduBuffer[ISO7816.OFFSET_P1] & ~DERIVE_P1_SOURCE_MASK)) {
+    switch ((byte) (apduBuffer[OFFSET_P1] & ~DERIVE_P1_SOURCE_MASK)) {
       case EXPORT_KEY_P1_CURRENT:
         break;
       case EXPORT_KEY_P1_DERIVE_AND_MAKE_CURRENT:
@@ -1339,8 +1311,25 @@ public class KeycardApplet extends Applet {
       secureChannel.preprocessAPDU(apduBuffer);
     }
 
-    short outLen = Util.makeShort((byte) 0x00, data[0]);
-    Util.arrayCopyNonAtomic(data, (short) 1, apduBuffer, SecureChannel.SC_OUT_OFFSET, outLen);
+    byte[] dst;
+
+    switch (apduBuffer[OFFSET_P1]) {
+      case STORE_DATA_P1_PUBLIC:
+        dst = data;
+        break;
+      case STORE_DATA_P1_NDEF:
+        dst = SharedMemory.ndefDataFile;
+        break;
+      case STORE_DATA_P1_CASH:
+        dst = SharedMemory.cashDataFile;
+        break;
+      default:
+        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        return;
+    }
+
+    short outLen = Util.makeShort((byte) 0x00, dst[0]);
+    Util.arrayCopyNonAtomic(dst, (short) 1, apduBuffer, SecureChannel.SC_OUT_OFFSET, outLen);
 
     if (secureChannel.isOpen()) {
       secureChannel.respond(apdu, outLen, ISO7816.SW_NO_ERROR);
@@ -1362,14 +1351,31 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
+    byte[] dst;
+
+    switch (apduBuffer[OFFSET_P1]) {
+      case STORE_DATA_P1_PUBLIC:
+        dst = data;
+        break;
+      case STORE_DATA_P1_NDEF:
+        dst = SharedMemory.ndefDataFile;
+        break;
+      case STORE_DATA_P1_CASH:
+        dst = SharedMemory.cashDataFile;
+        break;
+      default:
+        ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+        return;
+    }
+
     short dataLen = Util.makeShort((byte) 0x00, apduBuffer[ISO7816.OFFSET_LC]);
 
-    if (dataLen > MAX_DATA_LENGTH) {
+    if (dataLen >= (short) dst.length) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
     JCSystem.beginTransaction();
-    Util.arrayCopy(apduBuffer, ISO7816.OFFSET_LC, data, (short) 0, (short)(dataLen + 1));
+    Util.arrayCopy(apduBuffer, ISO7816.OFFSET_LC, dst, (short) 0, (short)(dataLen + 1));
     JCSystem.commitTransaction();
   }
 
