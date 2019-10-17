@@ -1388,6 +1388,38 @@ public class KeycardTest {
   }
 
   @Test
+  @DisplayName("Mnemonic load and derivation")
+  @Tag("manual")
+  void mnemonicTest() throws Exception {
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      cmdSet.autoOpenSecureChannel();
+    }
+
+    APDUResponse response;
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
+    byte[] seed = Mnemonic.toBinarySeed("legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth useful legal will", "");
+    response = cmdSet.loadKey(seed);
+    assertEquals(0x9000, response.getSw());
+
+    response = cmdSet.exportCurrentKey(true);
+    assertEquals(0x9000, response.getSw());
+
+    BIP32KeyPair pubKey = BIP32KeyPair.fromTLV(response.getData());
+    assertEquals("04cc620f846055ed43995391ca5e490c52251ea40453f64a0515bef84c24a653a7c4e02b9de56f66d9ee58dc6b591b534f5a20c0550b2c33a086b90b866cf70799", Hex.toHexString(pubKey.getPublicKey()));
+
+    response = cmdSet.exportKey("m/43'/60'/1581'/0'/0", false, true);
+    assertEquals(0x9000, response.getSw());
+
+    pubKey = BIP32KeyPair.fromTLV(response.getData());
+    assertEquals("04e7370d118461e1ab01f3e86e88c4b0c7b92cecb79c5e320cef73dda912f173beae74df15090b6405a274963c054cdfe6ac7843a302c260390d1fe776008f310e", Hex.toHexString(pubKey.getPublicKey()));
+  }
+
+  @Test
   @DisplayName("Sign actual Ethereum transaction")
   @Tag("manual")
   void signTransactionTest() throws Exception {
