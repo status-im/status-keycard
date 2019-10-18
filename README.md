@@ -5,7 +5,6 @@ Keycard is a an implementation of a BIP-32 HD wallet running on Javacard 3.0.4+ 
 It supports among others
 - key generation, derivation and signing
 - exporting keys defined in the context of EIP-1581 https://eips.ethereum.org/EIPS/eip-1581
-- card duplication
 - setting up a NFC NDEF tag
 
 Communication with the Keycard happens through a simple APDU interface, together with a Secure Channel guaranteeing confidentiality, authentication and integrity of all commands. It supports both NFC and ISO7816 physical interfaces, meaning that it is compatible with any Android phone equipped with NFC, and all USB Smartcard readers.
