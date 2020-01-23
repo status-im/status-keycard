@@ -54,14 +54,12 @@ public class SECP256k1 {
 
 
   private KeyAgreement ecPointMultiplier;
-  private Crypto crypto;
   ECPrivateKey tmpECPrivateKey;
 
   /**
    * Allocates objects needed by this class. Must be invoked during the applet installation exactly 1 time.
    */
-  SECP256k1(Crypto crypto) {
-    this.crypto = crypto;
+  SECP256k1() {
     this.ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
     this.tmpECPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256K1_KEY_SIZE, false);
     setCurveParameters(tmpECPrivateKey);

@@ -40,7 +40,7 @@ public class CashApplet extends Applet {
    */
   public CashApplet(byte[] bArray, short bOffset, byte bLength) {
     crypto = new Crypto();
-    secp256k1 = new SECP256k1(crypto);
+    secp256k1 = new SECP256k1();
 
     keypair = new KeyPair(KeyPair.ALG_EC_FP, SECP256k1.SECP256K1_KEY_SIZE);
     publicKey = (ECPublicKey) keypair.getPublic();

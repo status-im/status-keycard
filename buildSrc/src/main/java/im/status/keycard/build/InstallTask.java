@@ -64,11 +64,11 @@ public class InstallTask extends DefaultTask {
         }
       });
       logger.info("Installing the Keycard Applet");
-      cmdSet.installKeycardApplet();
+      cmdSet.installKeycardApplet().checkOK();
       logger.info("Installing the NDEF Applet");
-      cmdSet.installNDEFApplet(new byte[0]);
+      cmdSet.installNDEFApplet(new byte[0]).checkOK();
       logger.info("Installing the Cash Applet");
-      cmdSet.installCashApplet();
+      cmdSet.installCashApplet().checkOK();
     } catch (IOException e) {
       throw new GradleException("I/O error", e);
     } catch (APDUException e) {

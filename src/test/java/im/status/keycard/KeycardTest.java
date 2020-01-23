@@ -289,19 +289,7 @@ public class KeycardTest {
     response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSw());
 
-    // Verify that the keys are changed correctly. Since we do not know the internal counter we just iterate until that
-    // happens for a maximum of SC_COUNTER_MAX times
-    byte[] initialKey = new ApplicationInfo(cmdSet.select().getData()).getSecureChannelPubKey();
 
-    for (int i = 0; i < SecureChannel.SC_COUNTER_MAX; i++) {
-      byte[] otherKey = new ApplicationInfo(cmdSet.select().getData()).getSecureChannelPubKey();
-
-      if (!Arrays.equals(initialKey, otherKey)) {
-        secureChannel.generateSecret(otherKey);
-        cmdSet.autoOpenSecureChannel();
-        break;
-      }
-    }
   }
 
   @Test
@@ -384,7 +372,7 @@ public class KeycardTest {
     cmdSet.openSecureChannel(secureChannel.getPairingIndex(), secureChannel.getPublicKey());
 
     // Pair multiple indexes
-    for (int i = 1; i < 5; i++) {
+    for (int i = 1; i < KeycardApplet.PAIRING_MAX_CLIENT_COUNT; i++) {
       cmdSet.autoPair(sharedSecret);
       assertEquals(i, secureChannel.getPairingIndex());
       cmdSet.autoOpenSecureChannel();
@@ -403,7 +391,7 @@ public class KeycardTest {
       assertEquals(0x9000, response.getSw());
     }
 
-    for (byte i = 0; i < 4; i++) {
+    for (byte i = 0; i < (KeycardApplet.PAIRING_MAX_CLIENT_COUNT - 1); i++) {
       response = cmdSet.unpair(i);
       assertEquals(0x9000, response.getSw());
     }

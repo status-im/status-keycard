@@ -167,8 +167,7 @@ public class KeycardApplet extends Applet {
    */
   public KeycardApplet(byte[] bArray, short bOffset, byte bLength) {
     crypto = new Crypto();
-    secp256k1 = new SECP256k1(crypto);
-    secureChannel = new SecureChannel(PAIRING_MAX_CLIENT_COUNT, crypto, secp256k1);
+    secp256k1 = new SECP256k1();
 
     uid = new byte[UID_LENGTH];
     crypto.random.generateData(uid, (short) 0, UID_LENGTH);
@@ -199,7 +198,7 @@ public class KeycardApplet extends Applet {
 
     derivationOutput = JCSystem.makeTransientByteArray((short) (Crypto.KEY_SECRET_SIZE + CHAIN_CODE_SIZE), JCSystem.CLEAR_ON_RESET);
 
-    data = new byte[MAX_DATA_LENGTH + 1];
+    data = new byte[(short)(MAX_DATA_LENGTH + 1)];
 
     register(bArray, (short) (bOffset + 1), bArray[bOffset]);
   }
@@ -214,6 +213,9 @@ public class KeycardApplet extends Applet {
   public void process(APDU apdu) throws ISOException {
     // If we have no PIN it means we still have to initialize the applet.
     if (pin == null) {
+      if (secureChannel == null) {
+        secureChannel = new SecureChannel(PAIRING_MAX_CLIENT_COUNT, crypto, secp256k1);
+      }
       processInit(apdu);
       return;
     }
