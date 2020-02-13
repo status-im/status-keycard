@@ -2,7 +2,6 @@ package im.status.keycard;
 
 import javacard.framework.*;
 import javacard.security.*;
-import javacardx.crypto.Cipher;
 
 import static javacard.framework.ISO7816.OFFSET_P1;
 
@@ -30,10 +29,15 @@ public class KeycardApplet extends Applet {
 
   static final short SW_REFERENCED_DATA_NOT_FOUND = (short) 0x6A88;
 
+  static final byte PIN_MIN_RETRIES = 2;
+  static final byte PIN_MAX_RETRIES = 10;
+  static final byte PUK_MIN_RETRIES = 3;
+  static final byte PUK_MAX_RETRIES = 12;
+
   static final byte PUK_LENGTH = 12;
-  static final byte PUK_MAX_RETRIES = 5;
+  static final byte DEFAULT_PUK_MAX_RETRIES = 5;
   static final byte PIN_LENGTH = 6;
-  static final byte PIN_MAX_RETRIES = 3;
+  static final byte DEFAULT_PIN_MAX_RETRIES = 3;
   static final byte KEY_PATH_MAX_DEPTH = 10;
   static final byte PAIRING_MAX_CLIENT_COUNT = 5;
   static final byte UID_LENGTH = 16;
@@ -326,17 +330,36 @@ public class KeycardApplet extends Applet {
     } else if (apduBuffer[ISO7816.OFFSET_INS] == INS_INIT) {
       secureChannel.oneShotDecrypt(apduBuffer);
 
-      if ((apduBuffer[ISO7816.OFFSET_LC] != (byte)(PIN_LENGTH + PUK_LENGTH + SecureChannel.SC_SECRET_LENGTH)) || !allDigits(apduBuffer, ISO7816.OFFSET_CDATA, (short)(PIN_LENGTH + PUK_LENGTH))) {
+      byte defaultLimitsLen = (byte)(PIN_LENGTH + PUK_LENGTH + SecureChannel.SC_SECRET_LENGTH);
+      byte withLimitsLen = (byte) (defaultLimitsLen + 2);
+
+      if (((apduBuffer[ISO7816.OFFSET_LC] != defaultLimitsLen) && (apduBuffer[ISO7816.OFFSET_LC] != withLimitsLen)) || !allDigits(apduBuffer, ISO7816.OFFSET_CDATA, (short)(PIN_LENGTH + PUK_LENGTH))) {
         ISOException.throwIt(ISO7816.SW_WRONG_DATA);
       }
 
-      JCSystem.beginTransaction();
+      byte pinLimit;
+      byte pukLimit;
+
+      if (apduBuffer[ISO7816.OFFSET_LC] == withLimitsLen) {
+        pinLimit = apduBuffer[(short) (ISO7816.OFFSET_CDATA + defaultLimitsLen)];
+        pukLimit = apduBuffer[(short) (ISO7816.OFFSET_CDATA + defaultLimitsLen + 1)];
+
+        if (pinLimit < PIN_MIN_RETRIES || pinLimit > PIN_MAX_RETRIES || pukLimit < PUK_MIN_RETRIES || pukLimit > PUK_MAX_RETRIES) {
+          ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+        }
+      } else {
+        pinLimit = DEFAULT_PIN_MAX_RETRIES;
+        pukLimit = DEFAULT_PUK_MAX_RETRIES;
+      }
+
       secureChannel.initSecureChannel(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH + PUK_LENGTH));
 
-      pin = new OwnerPIN(PIN_MAX_RETRIES, PIN_LENGTH);
+      JCSystem.beginTransaction();
+
+      pin = new OwnerPIN(pinLimit, PIN_LENGTH);
       pin.update(apduBuffer, ISO7816.OFFSET_CDATA, PIN_LENGTH);
 
-      puk = new OwnerPIN(PUK_MAX_RETRIES, PUK_LENGTH);
+      puk = new OwnerPIN(pukLimit, PUK_LENGTH);
       puk.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PUK_LENGTH);
 
       JCSystem.commitTransaction();
