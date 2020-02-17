@@ -13,7 +13,7 @@ The most obvious case for integration of Keycard is crypto wallets (ETH, BTC, et
 
 # Where to start?
 
-A good place to start is our documentation site https://keycard.status.im/api/
+A good place to start is our documentation site https://keycard.tech/docs/
 
 You can also join the dicussion about this project on Status channel: https://get.status.im/chat/public/status-keycard
 
@@ -79,8 +79,8 @@ Best performance is achieved if the card supports:
 
 # Other related repositories
 
-Android installer https://github.com/status-im/keycard-installer-android/
-
 Java SDK for Android and Desktop https://github.com/status-im/status-keycard-java
 
 Swift SDK for iOS13 https://github.com/status-im/Keycard.swift
+
+Keycard CLI for Desktop https://github.com/status-im/keycard-cli
