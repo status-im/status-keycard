@@ -17,6 +17,13 @@ A good place to start is our documentation site https://keycard.tech/docs/
 
 You can also join the dicussion about this project on Status channel: https://get.status.im/chat/public/status-keycard
 
+If you just want to use the Keycard as your hardware wallet there are currently two apps supporting it
+
+1. WallETH [[Android](https://play.google.com/store/apps/details?id=org.walleth)]
+2. Gnosis Safe [[Android](https://play.google.com/store/apps/details?id=pm.gnosis.heimdall)][[iOS](https://apps.apple.com/us/app/gnosis-safe-smart-wallet/id1447390375)]
+
+support in [Status](https://status.im/) is coming soon too!
+
 # How to contribute? 
 
 Anyone is welcome to contribute to Keycard! 
