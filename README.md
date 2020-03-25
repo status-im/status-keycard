@@ -22,7 +22,7 @@ If you just want to use the Keycard as your hardware wallet there are currently 
 1. WallETH [[Android](https://play.google.com/store/apps/details?id=org.walleth)]
 2. Gnosis Safe [[Android](https://play.google.com/store/apps/details?id=pm.gnosis.heimdall)][[iOS](https://apps.apple.com/us/app/gnosis-safe-smart-wallet/id1447390375)]
 
-support in [Status](https://status.im/) is coming soon too!
+support in [Status](https://status.im/) is coming soon too! If you feel adventurous, you can try a [nightly build](https://ci.status.im/job/status-react/job/nightly/) already.
 
 # How to contribute? 
 
