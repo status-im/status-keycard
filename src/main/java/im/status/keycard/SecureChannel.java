@@ -65,7 +65,7 @@ public class SecureChannel {
     scKeypair.genKeyPair();
 
     remainingSlots = pairingLimit;
-
+    pairingSecret = new byte[SC_SECRET_LENGTH];
   }
 
   /**
@@ -75,9 +75,6 @@ public class SecureChannel {
    * @param off the offset in the buffer
    */
   public void initSecureChannel(byte[] aPairingSecret, short off) {
-    if (pairingSecret != null) return;
-
-    pairingSecret = new byte[SC_SECRET_LENGTH];
     Util.arrayCopy(aPairingSecret, off, pairingSecret, (short) 0, SC_SECRET_LENGTH);
     scKeypair.genKeyPair();
   }
