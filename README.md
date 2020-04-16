@@ -13,9 +13,16 @@ The most obvious case for integration of Keycard is crypto wallets (ETH, BTC, et
 
 # Where to start?
 
-A good place to start is our documentation site https://keycard.status.im/api/
+A good place to start is our documentation site https://keycard.tech/docs/
 
 You can also join the dicussion about this project on Status channel: https://get.status.im/chat/public/status-keycard
+
+If you just want to use the Keycard as your hardware wallet there are currently two apps supporting it
+
+1. WallETH [[Android](https://play.google.com/store/apps/details?id=org.walleth)]
+2. Gnosis Safe [[Android](https://play.google.com/store/apps/details?id=pm.gnosis.heimdall)][[iOS](https://apps.apple.com/us/app/gnosis-safe-smart-wallet/id1447390375)]
+
+support in [Status](https://status.im/) is coming soon too! If you feel adventurous, you can try a [nightly build](https://ci.status.im/job/status-react/job/nightly/) already.
 
 # How to contribute? 
 
@@ -61,6 +68,7 @@ In order to test with the simulator with an IDE, you need to pass these addition
 * The applet requires JavaCard 3.0.4 (with the addition of KeyAgreement.ALG_EC_SVDP_DH_PLAIN_XY
 ) or later.
 * The class byte of the APDU is not checked since there are no conflicting INS code.
+* The GlobalPlatform ISD keys are set to c212e073ff8b4bbfaff4de8ab655221f.
 
 The algorithms the card must support are at least:
 * Cipher.ALG_AES_BLOCK_128_CBC_NOPAD
@@ -79,8 +87,8 @@ Best performance is achieved if the card supports:
 
 # Other related repositories
 
-Android installer https://github.com/status-im/keycard-installer-android/
-
 Java SDK for Android and Desktop https://github.com/status-im/status-keycard-java
 
 Swift SDK for iOS13 https://github.com/status-im/Keycard.swift
+
+Keycard CLI for Desktop https://github.com/status-im/keycard-cli
