@@ -42,7 +42,6 @@ import java.security.*;
 
 import org.bouncycastle.jce.interfaces.ECPublicKey;
 
-import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Random;
@@ -283,13 +282,16 @@ public class KeycardTest {
     secureChannel.setOpen();
     response = cmdSet.mutuallyAuthenticate();
     assertEquals(0x9000, response.getSw());
-    assertTrue(secureChannel.verifyMutuallyAuthenticateResponse(response));
+
+    try {
+      secureChannel.verifyMutuallyAuthenticateResponse(response);
+    } catch (Exception e) {
+      fail("invalid mutually authenticate response");
+    }
 
     // Verify that the channel is open
     response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_APPLICATION);
     assertEquals(0x9000, response.getSw());
-
-
   }
 
   @Test
