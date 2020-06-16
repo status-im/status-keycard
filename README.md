@@ -1,6 +1,6 @@
 # What is Keycard?
 
-Keycard is a an implementation of a BIP-32 HD wallet running on Javacard 3.0.4+ (see implementation notes)
+Keycard is an implementation of a BIP-32 HD wallet running on Javacard 3.0.4+ (see implementation notes)
 
 It supports among others
 - key generation, derivation and signing
