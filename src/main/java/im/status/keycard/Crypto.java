@@ -36,7 +36,7 @@ public class Crypto {
   private Signature hmacSHA512;
   private HMACKey hmacKey;
 
-  private byte[] hmacBlock;
+  protected byte[] hmacBlock;
 
   Crypto() {
     random = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
@@ -150,7 +150,7 @@ public class Crypto {
    * @param out the output buffer
    * @param outOff the offset in the output buffer
    */
-  private void hmacSHA512(byte[] key, short keyOff, short keyLen, byte[] in, short inOff, short inLen, byte[] out, short outOff) {
+  void hmacSHA512(byte[] key, short keyOff, short keyLen, byte[] in, short inOff, short inLen, byte[] out, short outOff) {
     if (hmacSHA512 != null) {
       hmacKey.setKey(key, keyOff, keyLen);
       hmacSHA512.init(hmacKey, Signature.MODE_SIGN);
@@ -186,7 +186,7 @@ public class Crypto {
    * @param out the output buffer
    * @param outOff the offset in the output buffer
    */
-  private void addm256(byte[] a, short aOff, byte[] b, short bOff, byte[] n, short nOff, byte[] out, short outOff) {
+  void addm256(byte[] a, short aOff, byte[] b, short bOff, byte[] n, short nOff, byte[] out, short outOff) {
     if ((add256(a, aOff, b, bOff, out, outOff) != 0) || (ucmp256(out, outOff, n, nOff) > 0)) {
       sub256(out, outOff, n, nOff, out, outOff);
     }
@@ -201,7 +201,7 @@ public class Crypto {
    * @param bOff the offset of the b operand
    * @return the comparison result
    */
-  private short ucmp256(byte[] a, short aOff, byte[] b, short bOff) {
+  short ucmp256(byte[] a, short aOff, byte[] b, short bOff) {
     short ai, bi;
     for (short i = 0 ; i < 32; i++) {
       ai = (short)(a[(short)(aOff + i)] & 0x00ff);
@@ -222,7 +222,7 @@ public class Crypto {
    * @param aOff the offset of the a operand
    * @return true if a is 0, false otherwise
    */
-  private boolean isZero256(byte[] a, short aOff) {
+  boolean isZero256(byte[] a, short aOff) {
     boolean isZero = true;
 
     for (short i = 0; i < (byte) 32; i++) {
@@ -246,11 +246,11 @@ public class Crypto {
    * @param outOff the offset in the output buffer
    * @return the carry of the addition
    */
-  private short add256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
+  short add256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
     short outI = 0;
     for (short i = 31 ; i >= 0 ; i--) {
       outI = (short) ((short)(a[(short)(aOff + i)] & 0xFF) + (short)(b[(short)(bOff + i)] & 0xFF) + outI);
-      out[(short)(outOff + i)] = (byte)outI ;
+      out[(short)(outOff + i)] = (byte)outI;
       outI = (short)(outI >> 8);
     }
     return outI;
@@ -267,10 +267,33 @@ public class Crypto {
    * @param outOff the offset in the output buffer
    * @return the carry of the subtraction
    */
-  private short sub256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
+  short sub256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
     short outI = 0;
 
     for (short i = 31 ; i >= 0 ; i--) {
+      outI = (short)  ((short)(a[(short)(aOff + i)] & 0xFF) - (short)(b[(short)(bOff + i)] & 0xFF) - outI);
+      out[(short)(outOff + i)] = (byte)outI ;
+      outI = (short)(((outI >> 8) != 0) ? 1 : 0);
+    }
+
+    return outI;
+  }
+
+  /**
+   * Subtraction of two 512-bit numbers.
+   *
+   * @param a the a operand
+   * @param aOff the offset of the a operand
+   * @param b the b operand
+   * @param bOff the offset of the b operand
+   * @param out the output buffer
+   * @param outOff the offset in the output buffer
+   * @return the carry of the subtraction
+   */
+  short sub512(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
+    short outI = 0;
+
+    for (short i = 63 ; i >= 0 ; i--) {
       outI = (short)  ((short)(a[(short)(aOff + i)] & 0xFF) - (short)(b[(short)(bOff + i)] & 0xFF) - outI);
       out[(short)(outOff + i)] = (byte)outI ;
       outI = (short)(((outI >> 8) != 0) ? 1 : 0);

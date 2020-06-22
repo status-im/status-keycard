@@ -2,9 +2,9 @@ package im.status.keycard;
 
 import javacard.framework.*;
 import javacard.security.*;
-import javacardx.crypto.Cipher;
 
 import static javacard.framework.ISO7816.OFFSET_P1;
+import static javacard.framework.ISO7816.OFFSET_P2;
 
 /**
  * The applet's main class. All incoming commands a processed by this class.
@@ -67,6 +67,9 @@ public class KeycardApplet extends Applet {
   static final byte SIGN_P1_DERIVE = 0x01;
   static final byte SIGN_P1_DERIVE_AND_MAKE_CURRENT = 0x02;
   static final byte SIGN_P1_PINLESS = 0x03;
+
+  static final byte SIGN_P2_ECDSA = 0x00;
+  static final byte SIGN_P2_SCHNORR = 0x01;
 
   static final byte EXPORT_KEY_P1_CURRENT = 0x00;
   static final byte EXPORT_KEY_P1_DERIVE = 0x01;
@@ -167,7 +170,7 @@ public class KeycardApplet extends Applet {
    */
   public KeycardApplet(byte[] bArray, short bOffset, byte bLength) {
     crypto = new Crypto();
-    secp256k1 = new SECP256k1();
+    secp256k1 = new SECP256k1(crypto);
 
     uid = new byte[UID_LENGTH];
     crypto.random.generateData(uid, (short) 0, UID_LENGTH);
@@ -1104,6 +1107,20 @@ public class KeycardApplet extends Applet {
         return;
     }
 
+    boolean schnorr;
+
+    switch(apduBuffer[OFFSET_P2]) {
+      case SIGN_P2_ECDSA:
+        schnorr = false;
+        break;
+      case SIGN_P2_SCHNORR:
+        schnorr = true;
+        break;
+      default:
+        ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
+        return;
+    }
+
     short len;
 
     if (usePinless && !secureChannel.isOpen()) {
@@ -1148,10 +1165,13 @@ public class KeycardApplet extends Applet {
     outLen += 5;
     short sigOff = (short) (SecureChannel.SC_OUT_OFFSET + outLen);
 
-    signature.init(signingKey, Signature.MODE_SIGN);
-
-    outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
-    outLen += crypto.fixS(apduBuffer, sigOff);
+    if (schnorr) {
+      outLen += secp256k1.signSchnorr(signingKey, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5), apduBuffer, ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
+    } else {
+      signature.init(signingKey, Signature.MODE_SIGN);
+      outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
+      outLen += crypto.fixS(apduBuffer, sigOff);
+    }
 
     apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) 0x81;
     apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 2)] = (byte) (outLen - 3);
@@ -1212,7 +1232,7 @@ public class KeycardApplet extends Applet {
 
     boolean publicOnly;
 
-    switch (apduBuffer[ISO7816.OFFSET_P2]) {
+    switch (apduBuffer[OFFSET_P2]) {
       case EXPORT_KEY_P2_PRIVATE_AND_PUBLIC:
         publicOnly = false;
         break;

@@ -17,6 +17,8 @@ import org.bitcoinj.crypto.HDKeyDerivation;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.jce.spec.ECPublicKeySpec;
+import org.bouncycastle.math.ec.ECCurve;
+import org.bouncycastle.math.ec.ECPoint;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.jupiter.api.*;
 import org.web3j.crypto.*;
@@ -1006,6 +1008,16 @@ public class KeycardTest {
     response = cmdSet.sign(hash);
     verifySignResp(data, response);
 
+    // Schnorr
+    APDUCommand sign = secureChannel.protectedCommand(0x80, 0xC0, 0x00, 0x01, hash);
+    long time = System.currentTimeMillis();
+    response = secureChannel.transmit(sdkChannel, sign);
+    System.out.print("Schnorr time: ");
+    System.out.println(System.currentTimeMillis() - time);
+    response.checkOK();
+
+    verifySchnorr(hash, response.getData());
+
     // Sign and derive
     String currentPath = new KeyPath(cmdSet.getStatus(KeycardCommandSet.GET_STATUS_P1_KEY_PATH).checkOK().getData()).toString();
     String updatedPath = new KeyPath(currentPath + "/2").toString();
@@ -1046,6 +1058,67 @@ public class KeycardTest {
 
     response = cmdSet.signPinless(hash);
     assertEquals(0x6A88, response.getSw());
+  }
+
+  private void schnorrTest() throws Exception {
+    byte[] m = new byte[32];
+    SecureRandom.getInstanceStrong().nextBytes(m);
+    MessageDigest dg = MessageDigest.getInstance("SHA256");
+    ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
+
+    byte[] sk = new byte[32];
+    SecureRandom.getInstanceStrong().nextBytes(sk);
+    BigInteger d = new BigInteger(1, sk);
+    ECPoint P = ecSpec.getG().multiply(d);
+
+    byte[] _k = new byte[32];
+    SecureRandom.getInstanceStrong().nextBytes(_k);
+    BigInteger k = new BigInteger(1, _k);
+    ECPoint R = ecSpec.getG().multiply(k);
+
+    dg.update(R.getEncoded(false));
+    dg.update(P.getEncoded(false));
+    dg.update(m);
+    BigInteger e = new BigInteger(1, dg.digest());
+
+    BigInteger s = e.multiply(d).add(k);
+
+    ECPoint R2 = ecSpec.getG().multiply(s).subtract(P.multiply(e));
+
+    System.out.println("Rt = " + Hex.toHexString(R.getEncoded(false)));
+    System.out.println("R2t = " + Hex.toHexString(R2.getEncoded(false)));
+
+    assertTrue(R.equals(R2));
+  }
+
+  private void verifySchnorr(byte[] m, byte[] sig) throws Exception {
+    schnorrTest();
+
+    byte[] p = extractPublicKeyFromSignature(sig);
+
+    int off = sig[4] + 5;
+    byte[] rawSig = Arrays.copyOfRange(sig, off, sig.length);
+
+    byte[] r = Arrays.copyOf(rawSig, 65);
+
+    System.out.println("p = " + Hex.toHexString(p));
+    System.out.println("r = " + Hex.toHexString(r));
+    System.out.println("s = " + Hex.toHexString(Arrays.copyOfRange(rawSig, 65, rawSig.length)));
+
+    MessageDigest dg = MessageDigest.getInstance("SHA256");
+    dg.update(r);
+    dg.update(p);
+    dg.update(m);
+    BigInteger e = new BigInteger(1, dg.digest());
+
+    ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
+    ECPoint P = ecSpec.getCurve().decodePoint(p);
+    ECPoint G = ecSpec.getG();
+    BigInteger s = new BigInteger(1, Arrays.copyOfRange(rawSig, 65, rawSig.length));
+    s = s.mod(ecSpec.getCurve().getOrder());
+    ECPoint R = G.multiply(s).subtract(P.multiply(e));
+    System.out.println("R = " + Hex.toHexString(R.getEncoded(false)));
+    assertTrue(R.equals(ecSpec.getCurve().decodePoint(r)));
   }
 
   private void verifySignResp(byte[] data, APDUResponse response) throws Exception {
