@@ -1085,9 +1085,6 @@ public class KeycardTest {
 
     ECPoint R2 = ecSpec.getG().multiply(s).subtract(P.multiply(e));
 
-    System.out.println("Rt = " + Hex.toHexString(R.getEncoded(false)));
-    System.out.println("R2t = " + Hex.toHexString(R2.getEncoded(false)));
-
     assertTrue(R.equals(R2));
   }
 
@@ -1114,8 +1111,10 @@ public class KeycardTest {
     ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
     ECPoint P = ecSpec.getCurve().decodePoint(p);
     ECPoint G = ecSpec.getG();
+
     BigInteger s = new BigInteger(1, Arrays.copyOfRange(rawSig, 65, rawSig.length));
     s = s.mod(ecSpec.getCurve().getOrder());
+
     ECPoint R = G.multiply(s).subtract(P.multiply(e));
     System.out.println("R = " + Hex.toHexString(R.getEncoded(false)));
     assertTrue(R.equals(ecSpec.getCurve().decodePoint(r)));

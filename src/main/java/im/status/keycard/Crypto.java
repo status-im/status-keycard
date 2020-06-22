@@ -280,7 +280,7 @@ public class Crypto {
   }
 
   /**
-   * Subtraction of two 512-bit numbers.
+   * Subtraction of two 768-bit numbers.
    *
    * @param a the a operand
    * @param aOff the offset of the a operand
@@ -290,10 +290,10 @@ public class Crypto {
    * @param outOff the offset in the output buffer
    * @return the carry of the subtraction
    */
-  short sub512(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
+  short sub768(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
     short outI = 0;
 
-    for (short i = 63 ; i >= 0 ; i--) {
+    for (short i = 95; i >= 0; i--) {
       outI = (short)  ((short)(a[(short)(aOff + i)] & 0xFF) - (short)(b[(short)(bOff + i)] & 0xFF) - outI);
       out[(short)(outOff + i)] = (byte)outI ;
       outI = (short)(((outI >> 8) != 0) ? 1 : 0);

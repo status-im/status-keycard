@@ -1166,6 +1166,7 @@ public class KeycardApplet extends Applet {
     short sigOff = (short) (SecureChannel.SC_OUT_OFFSET + outLen);
 
     if (schnorr) {
+      //TODO: output BER-TLV!
       outLen += secp256k1.signSchnorr(signingKey, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5), apduBuffer, ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
     } else {
       signature.init(signingKey, Signature.MODE_SIGN);
