@@ -1085,7 +1085,6 @@ public class KeycardTest {
     ECPoint G = ecSpec.getG();
 
     BigInteger s = new BigInteger(1, Arrays.copyOfRange(rawSig, 65, rawSig.length));
-    s = s.mod(ecSpec.getCurve().getOrder());
 
     ECPoint R = G.multiply(s).subtract(P.multiply(e));
     System.out.println("R = " + Hex.toHexString(R.getEncoded(false)));
