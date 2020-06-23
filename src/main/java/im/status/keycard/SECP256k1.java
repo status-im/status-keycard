@@ -65,12 +65,12 @@ public class SECP256k1 {
   static final short SCHNORR_K_OUT_OFF = (short) 0;
   static final short SCHNORR_E_OUT_OFF = (short) (SECP256K1_BYTE_SIZE + SCHNORR_K_OUT_OFF);
   static final short SCHNORR_D_OUT_OFF = (short) (SCHNORR_COMPONENT_SIZE + SCHNORR_E_OUT_OFF);
-  static final short SCHNORR_TMP1_OUT_OFF = (short) (SCHNORR_COMPONENT_SIZE + SCHNORR_D_OUT_OFF);
+  static final short SCHNORR_RES_OUT_OFF = (short) (SCHNORR_COMPONENT_SIZE + SCHNORR_D_OUT_OFF);
 
   static final short SCHNORR_E_32_OFF = (short) (SCHNORR_COMPONENT_SIZE - SECP256K1_BYTE_SIZE + SCHNORR_E_OUT_OFF);
   static final short SCHNORR_D_32_OFF = (short) (SCHNORR_COMPONENT_SIZE - SECP256K1_BYTE_SIZE + SCHNORR_D_OUT_OFF);
-  static final short SCHNORR_TMP1_32_OFF = (short) (SCHNORR_COMPONENT_SIZE - SECP256K1_BYTE_SIZE + SCHNORR_TMP1_OUT_OFF);
-  static final short SCHNORR_TMP1_64_OFF = (short) (SCHNORR_COMPONENT_SIZE - SCHNORR_S_OUT_SIZE + SCHNORR_TMP1_OUT_OFF);
+  static final short SCHNORR_RES_32_OFF = (short) (SCHNORR_COMPONENT_SIZE - SECP256K1_BYTE_SIZE + SCHNORR_RES_OUT_OFF);
+  static final short SCHNORR_RES_64_OFF = (short) (SCHNORR_COMPONENT_SIZE - SCHNORR_S_OUT_SIZE + SCHNORR_RES_OUT_OFF);
 
   static final short TMP_LEN = (short) (SECP256K1_BYTE_SIZE + (SCHNORR_COMPONENT_SIZE * 3));
 
@@ -182,27 +182,26 @@ public class SECP256k1 {
     crypto.sha256.doFinal(data, dataOff, dataLen, tmp, SCHNORR_E_32_OFF);
     privKey.getS(tmp, SCHNORR_D_32_OFF);
 
-    tmp[(short)(SCHNORR_TMP1_32_OFF - 1)] = (byte) crypto.addBig(tmp, SCHNORR_E_32_OFF, tmp, SCHNORR_D_32_OFF, tmp, SCHNORR_TMP1_32_OFF, SECP256K1_BYTE_SIZE);
-    multCipher.doFinal(tmp, SCHNORR_TMP1_OUT_OFF, SCHNORR_COMPONENT_SIZE, tmp, SCHNORR_TMP1_OUT_OFF);
+    tmp[(short)(SCHNORR_RES_32_OFF - 1)] = (byte) crypto.addBig(tmp, SCHNORR_E_32_OFF, tmp, SCHNORR_D_32_OFF, tmp, SCHNORR_RES_32_OFF, SECP256K1_BYTE_SIZE);
+    multCipher.doFinal(tmp, SCHNORR_RES_OUT_OFF, SCHNORR_COMPONENT_SIZE, tmp, SCHNORR_RES_OUT_OFF);
     multCipher.doFinal(tmp, SCHNORR_D_OUT_OFF, SCHNORR_COMPONENT_SIZE, tmp, SCHNORR_D_OUT_OFF);
-    crypto.subBig(tmp, SCHNORR_TMP1_OUT_OFF, tmp, SCHNORR_D_OUT_OFF, tmp, SCHNORR_TMP1_OUT_OFF, SCHNORR_COMPONENT_SIZE);
+    crypto.subBig(tmp, SCHNORR_RES_OUT_OFF, tmp, SCHNORR_D_OUT_OFF, tmp, SCHNORR_RES_OUT_OFF, SCHNORR_COMPONENT_SIZE);
     multCipher.doFinal(tmp, SCHNORR_E_OUT_OFF, SCHNORR_COMPONENT_SIZE, tmp, SCHNORR_E_OUT_OFF);
-    crypto.subBig(tmp, SCHNORR_TMP1_OUT_OFF, tmp, SCHNORR_E_OUT_OFF, tmp, SCHNORR_TMP1_OUT_OFF, SCHNORR_COMPONENT_SIZE);
+    crypto.subBig(tmp, SCHNORR_RES_OUT_OFF, tmp, SCHNORR_E_OUT_OFF, tmp, SCHNORR_RES_OUT_OFF, SCHNORR_COMPONENT_SIZE);
 
-    short res, res2;
+    divideResBy2();
 
-    for (short i = (short) (SCHNORR_COMPONENT_SIZE - 1); i >= 0; i--) {
-      res = (short) ((short) (tmp[(short)(SCHNORR_TMP1_OUT_OFF + i)] & 0xff) >> 1);
-      res2 = (short) ((short) (tmp[(short)(SCHNORR_TMP1_OUT_OFF + i - 1)] & 0xff) << 7);
-      tmp[(short)(SCHNORR_TMP1_OUT_OFF + i)] = (byte) ((short) (res | res2));
-    }
-
-    tmp[SCHNORR_TMP1_OUT_OFF] &= (byte) 0x7f;
-
-    crypto.addBig(tmp, SCHNORR_TMP1_OUT_OFF, SCHNORR_COMPONENT_SIZE, tmp, SCHNORR_K_OUT_OFF, SECP256K1_BYTE_SIZE, tmp, SCHNORR_TMP1_OUT_OFF);
-    Util.arrayCopyNonAtomic(tmp, SCHNORR_TMP1_64_OFF, output, (short) (outOff + Crypto.KEY_PUB_SIZE), SCHNORR_S_OUT_SIZE);
+    crypto.addBig(tmp, SCHNORR_RES_64_OFF, SCHNORR_S_OUT_SIZE, tmp, SCHNORR_K_OUT_OFF, SECP256K1_BYTE_SIZE, output, (short) (outOff + Crypto.KEY_PUB_SIZE));
     return (short) (3 + Crypto.KEY_PUB_SIZE  + SCHNORR_S_OUT_SIZE);
   }
 
+  private void divideResBy2() {
+    short res, res2;
 
+    for (short i = (short) (SCHNORR_COMPONENT_SIZE - 1); i >= (short) (SCHNORR_COMPONENT_SIZE - SCHNORR_S_OUT_SIZE - 1); i--) {
+      res = (short) ((short) (tmp[(short)(SCHNORR_RES_OUT_OFF + i)] & 0xff) >> 1);
+      res2 = (short) ((short) (tmp[(short)(SCHNORR_RES_OUT_OFF + i - 1)] & 0xff) << 7);
+      tmp[(short)(SCHNORR_RES_OUT_OFF + i)] = (byte) ((short) (res | res2));
+    }
+  }
 }
