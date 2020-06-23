@@ -1064,15 +1064,14 @@ public class KeycardTest {
 
   private void verifySchnorr(byte[] m, byte[] sig) throws Exception {
     byte[] p = extractPublicKeyFromSignature(sig);
+    byte[] rawSig = extractSignature(sig);
 
-    int off = sig[4] + 5 + 3;
-    byte[] rawSig = Arrays.copyOfRange(sig, off, sig.length);
-
-    byte[] r = Arrays.copyOf(rawSig, 65);
+    byte[] r = Arrays.copyOfRange(rawSig, 2, 67);
+    byte[] rawS = Arrays.copyOfRange(rawSig, 67, rawSig.length);
 
     System.out.println("p = " + Hex.toHexString(p));
     System.out.println("r = " + Hex.toHexString(r));
-    System.out.println("s = " + Hex.toHexString(Arrays.copyOfRange(rawSig, 65, rawSig.length)));
+    System.out.println("s = " + Hex.toHexString(rawS));
 
     MessageDigest dg = MessageDigest.getInstance("SHA256");
     dg.update(r);
@@ -1084,7 +1083,7 @@ public class KeycardTest {
     ECPoint P = ecSpec.getCurve().decodePoint(p);
     ECPoint G = ecSpec.getG();
 
-    BigInteger s = new BigInteger(1, Arrays.copyOfRange(rawSig, 65, rawSig.length));
+    BigInteger s = new BigInteger(1, rawS);
 
     ECPoint R = G.multiply(s).subtract(P.multiply(e));
     System.out.println("R = " + Hex.toHexString(R.getEncoded(false)));

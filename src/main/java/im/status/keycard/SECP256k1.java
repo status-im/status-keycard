@@ -174,8 +174,7 @@ public class SECP256k1 {
 
   short signSchnorr(ECPrivateKey privKey, byte[] pubKey, short pubOff, byte[] data, short dataOff, short dataLen, byte[] output, short outOff) {
     output[outOff++] = TLV_SCHNORR_SIGNATURE;
-    output[outOff++] = (byte) 0x81;
-    output[outOff++] = (byte) (Crypto.KEY_PUB_SIZE  + MULT_OUT_SIZE);
+    output[outOff++] = (byte) (Crypto.KEY_PUB_SIZE  + SECP256K1_BYTE_SIZE);
 
     crypto.random.generateData(tmp, SCHNORR_K_OUT_OFF, SECP256K1_BYTE_SIZE);
     Util.arrayFillNonAtomic(tmp, SCHNORR_E_OUT_OFF, (short)(TMP_LEN - SCHNORR_E_OUT_OFF), (byte) 0x00);
@@ -195,9 +194,11 @@ public class SECP256k1 {
 
     divideResBy2();
 
-    crypto.addBig(tmp, SCHNORR_RES_64_OFF, MULT_OUT_SIZE, tmp, SCHNORR_K_OUT_OFF, SECP256K1_BYTE_SIZE, output, (short) (outOff + Crypto.KEY_PUB_SIZE));
-    secp256k1Mod(output, (short) (outOff + Crypto.KEY_PUB_SIZE));
-    return (short) (3 + Crypto.KEY_PUB_SIZE  + MULT_OUT_SIZE);
+    crypto.addBig(tmp, SCHNORR_RES_64_OFF, MULT_OUT_SIZE, tmp, SCHNORR_K_OUT_OFF, SECP256K1_BYTE_SIZE, tmp, SCHNORR_RES_64_OFF);
+    secp256k1Mod(tmp, SCHNORR_RES_64_OFF);
+    Util.arrayCopyNonAtomic(tmp, SCHNORR_RES_32_OFF, output, (short) (outOff + Crypto.KEY_PUB_SIZE), SECP256K1_BYTE_SIZE);
+
+    return (short) (2 + Crypto.KEY_PUB_SIZE  + SECP256K1_BYTE_SIZE);
   }
 
   private void divideResBy2() {
