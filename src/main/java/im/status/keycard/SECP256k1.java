@@ -93,11 +93,13 @@ public class SECP256k1 {
   SECP256k1(Crypto crypto) {
     this.crypto = crypto;
 
-    this.tmp = JCSystem.makeTransientByteArray(TMP_LEN, JCSystem.CLEAR_ON_RESET);
-
     this.ecPointMultiplier = KeyAgreement.getInstance(ALG_EC_SVDP_DH_PLAIN_XY, false);
     this.tmpECPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256K1_KEY_SIZE, false);
     setCurveParameters(tmpECPrivateKey);
+  }
+
+  void initSchnorr() {
+    this.tmp = JCSystem.makeTransientByteArray(TMP_LEN, JCSystem.CLEAR_ON_RESET);
 
     multPair = new KeyPair(KeyPair.ALG_RSA_CRT, SCHNORR_MULT_KEY_SIZE);
     multPair.genKeyPair();

@@ -343,6 +343,8 @@ public class KeycardApplet extends Applet {
       puk.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PUK_LENGTH);
 
       JCSystem.commitTransaction();
+
+      secp256k1.initSchnorr();
     } else {
       ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
     }

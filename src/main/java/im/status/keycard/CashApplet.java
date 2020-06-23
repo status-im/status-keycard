@@ -19,6 +19,7 @@ public class CashApplet extends Applet {
   private SECP256k1 secp256k1;
 
   private Signature signature;
+  private boolean schnorrInitialized;
 
   /**
    * Invoked during applet installation. Creates an instance of this class. The installation parameters are passed in
@@ -55,6 +56,7 @@ public class CashApplet extends Applet {
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
     signature.init(privateKey, Signature.MODE_SIGN);
+    schnorrInitialized = false;
 
     short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
     c9Off += (short)(bArray[c9Off] + 1); // Skip Privileges and parameter length
@@ -95,6 +97,11 @@ public class CashApplet extends Applet {
   }
 
   private void selectApplet(APDU apdu) {
+    if (!schnorrInitialized) {
+      secp256k1.initSchnorr();
+      schnorrInitialized = true;
+    }
+
     byte[] apduBuffer = apdu.getBuffer();
 
     short off = 0;
