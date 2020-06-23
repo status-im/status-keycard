@@ -131,7 +131,7 @@ public class Crypto {
     sOff++;
 
     if (ret == -1 || ucmp256(sig, sOff, MAX_S, (short) 0) > 0) {
-      sub256(S_SUB, (short) 0, sig, sOff, sig, sOff);
+      subBig(S_SUB, (short) 0, sig, sOff, sig, sOff, KEY_SECRET_SIZE);
     }
 
     return ret;
@@ -187,8 +187,8 @@ public class Crypto {
    * @param outOff the offset in the output buffer
    */
   void addm256(byte[] a, short aOff, byte[] b, short bOff, byte[] n, short nOff, byte[] out, short outOff) {
-    if ((add256(a, aOff, b, bOff, out, outOff) != 0) || (ucmp256(out, outOff, n, nOff) > 0)) {
-      sub256(out, outOff, n, nOff, out, outOff);
+    if ((addBig(a, aOff, b, bOff, out, outOff, KEY_SECRET_SIZE) != 0) || (ucmp256(out, outOff, n, nOff) > 0)) {
+      subBig(out, outOff, n, nOff, out, outOff, KEY_SECRET_SIZE);
     }
   }
 
@@ -236,7 +236,7 @@ public class Crypto {
   }
 
   /**
-   * Addition of two 256-bit numbers.
+   * Addition of two big numbers.
    *
    * @param a the a operand
    * @param aOff the offset of the a operand
@@ -244,11 +244,12 @@ public class Crypto {
    * @param bOff the offset of the b operand
    * @param out the output buffer
    * @param outOff the offset in the output buffer
+   * @param i the size of number in bytes
    * @return the carry of the addition
    */
-  short add256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
+  short addBig(byte[] a, short aOff, byte[] b, short bOff, byte[] out, short outOff, short i) {
     short outI = 0;
-    for (short i = 31 ; i >= 0 ; i--) {
+    for (i--; i >= 0; i--) {
       outI = (short) ((short)(a[(short)(aOff + i)] & 0xFF) + (short)(b[(short)(bOff + i)] & 0xFF) + outI);
       out[(short)(outOff + i)] = (byte)outI;
       outI = (short)(outI >> 8);
@@ -257,7 +258,7 @@ public class Crypto {
   }
 
   /**
-   * Subtraction of two 256-bit numbers.
+   * Subtraction of two big numbers.
    *
    * @param a the a operand
    * @param aOff the offset of the a operand
@@ -265,12 +266,13 @@ public class Crypto {
    * @param bOff the offset of the b operand
    * @param out the output buffer
    * @param outOff the offset in the output buffer
+   * @param i the size of number in bytes
    * @return the carry of the subtraction
    */
-  short sub256(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
+  short subBig(byte[] a, short aOff, byte[] b, short bOff, byte[] out, short outOff, short i) {
     short outI = 0;
 
-    for (short i = 31 ; i >= 0 ; i--) {
+    for (i--; i >= 0; i--) {
       outI = (short)  ((short)(a[(short)(aOff + i)] & 0xFF) - (short)(b[(short)(bOff + i)] & 0xFF) - outI);
       out[(short)(outOff + i)] = (byte)outI ;
       outI = (short)(((outI >> 8) != 0) ? 1 : 0);
@@ -280,25 +282,34 @@ public class Crypto {
   }
 
   /**
-   * Subtraction of two 768-bit numbers.
+   * Addition of two big numbers of different size. A must be larger than B and the result will be
+   * the size of A
    *
    * @param a the a operand
    * @param aOff the offset of the a operand
+   * @param aLen the length of a
    * @param b the b operand
    * @param bOff the offset of the b operand
+   * @param bLen the length of b
    * @param out the output buffer
    * @param outOff the offset in the output buffer
-   * @return the carry of the subtraction
+   * @return the carry of the addition
    */
-  short sub768(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
+  short addBig(byte[] a, short aOff, short aLen, byte[] b, short bOff, short bLen, byte[] out, short outOff) {
     short outI = 0;
+    short diff = (short) (aLen - bLen);
 
-    for (short i = 95; i >= 0; i--) {
-      outI = (short)  ((short)(a[(short)(aOff + i)] & 0xFF) - (short)(b[(short)(bOff + i)] & 0xFF) - outI);
-      out[(short)(outOff + i)] = (byte)outI ;
-      outI = (short)(((outI >> 8) != 0) ? 1 : 0);
+    for (aLen--; aLen >= diff; aLen--) {
+      outI = (short) ((short)(a[(short)(aOff + aLen)] & 0xFF) + (short)(b[(short)(bOff + (aLen - diff))] & 0xFF) + outI);
+      out[(short)(outOff + aLen)] = (byte) outI;
+      outI = (short)(outI >> 8);
     }
 
+    for (; aLen >= 0; aLen--) {
+      outI = (short) ((short)(a[(short)(aOff + aLen)] & 0xFF) + outI);
+      out[(short)(outOff + aLen)] = (byte)outI;
+      outI = (short)(outI >> 8);
+    }
     return outI;
   }
 }

@@ -1008,7 +1008,8 @@ public class KeycardTest {
     response = cmdSet.sign(hash);
     verifySignResp(data, response);
 
-    // Schnorr
+    //TODO: Integrate in SDK!
+    // START SCHNORR
     APDUCommand sign = secureChannel.protectedCommand(0x80, 0xC0, 0x00, 0x01, hash);
     long time = System.currentTimeMillis();
     response = secureChannel.transmit(sdkChannel, sign);
@@ -1017,6 +1018,7 @@ public class KeycardTest {
     response.checkOK();
 
     verifySchnorr(hash, response.getData());
+    // END SCHNORR
 
     // Sign and derive
     String currentPath = new KeyPath(cmdSet.getStatus(KeycardCommandSet.GET_STATUS_P1_KEY_PATH).checkOK().getData()).toString();
@@ -1417,6 +1419,18 @@ public class KeycardTest {
 
     response = cashCmdSet.sign(hash);
     verifySignResp(data, response);
+
+    //TODO: Integrate in SDK!
+    // START SCHNORR
+    APDUCommand sign = new APDUCommand(0x80, 0xC0, 0x00, 0x01, hash);
+    long time = System.currentTimeMillis();
+    response = sdkChannel.send(sign);
+    System.out.print("Schnorr time: ");
+    System.out.println(System.currentTimeMillis() - time);
+    response.checkOK();
+
+    verifySchnorr(hash, response.getData());
+    // END SCHNORR
   }
 
   @Test
