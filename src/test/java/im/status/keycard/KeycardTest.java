@@ -1060,40 +1060,10 @@ public class KeycardTest {
     assertEquals(0x6A88, response.getSw());
   }
 
-  private void schnorrTest() throws Exception {
-    byte[] m = new byte[32];
-    SecureRandom.getInstanceStrong().nextBytes(m);
-    MessageDigest dg = MessageDigest.getInstance("SHA256");
-    ECParameterSpec ecSpec = ECNamedCurveTable.getParameterSpec("secp256k1");
-
-    byte[] sk = new byte[32];
-    SecureRandom.getInstanceStrong().nextBytes(sk);
-    BigInteger d = new BigInteger(1, sk);
-    ECPoint P = ecSpec.getG().multiply(d);
-
-    byte[] _k = new byte[32];
-    SecureRandom.getInstanceStrong().nextBytes(_k);
-    BigInteger k = new BigInteger(1, _k);
-    ECPoint R = ecSpec.getG().multiply(k);
-
-    dg.update(R.getEncoded(false));
-    dg.update(P.getEncoded(false));
-    dg.update(m);
-    BigInteger e = new BigInteger(1, dg.digest());
-
-    BigInteger s = e.multiply(d).add(k);
-
-    ECPoint R2 = ecSpec.getG().multiply(s).subtract(P.multiply(e));
-
-    assertTrue(R.equals(R2));
-  }
-
   private void verifySchnorr(byte[] m, byte[] sig) throws Exception {
-    schnorrTest();
-
     byte[] p = extractPublicKeyFromSignature(sig);
 
-    int off = sig[4] + 5;
+    int off = sig[4] + 5 + 3;
     byte[] rawSig = Arrays.copyOfRange(sig, off, sig.length);
 
     byte[] r = Arrays.copyOf(rawSig, 65);

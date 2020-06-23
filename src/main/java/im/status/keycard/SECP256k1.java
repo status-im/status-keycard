@@ -56,6 +56,9 @@ public class SECP256k1 {
   static final short SECP256K1_KEY_SIZE = 256;
   static final short SECP256K1_BYTE_SIZE = (short) (SECP256K1_KEY_SIZE / 8);
 
+
+  static final byte TLV_SCHNORR_SIGNATURE = (byte) 0x8f;
+
   static final short SCHNORR_K_OUT_OFF = (short) 0;
   static final short SCHNORR_E_OUT_OFF = (short) (32 + SCHNORR_K_OUT_OFF);
   static final short SCHNORR_E_32_OFF = (short) (64 + SCHNORR_E_OUT_OFF);
@@ -63,9 +66,8 @@ public class SECP256k1 {
   static final short SCHNORR_D_32_OFF = (short) (64 + SCHNORR_D_OUT_OFF);
   static final short SCHNORR_TMP1_OUT_OFF = (short) (96 + SCHNORR_D_OUT_OFF);
   static final short SCHNORR_TMP1_32_OFF = (short) (64 + SCHNORR_TMP1_OUT_OFF);
-  static final short SCHNORR_TMP2_OUT_OFF = (short) (96 + SCHNORR_TMP1_OUT_OFF);
 
-  static final short TMP_LEN = 416;
+  static final short TMP_LEN = 320;
 
   private static final byte ALG_EC_SVDP_DH_PLAIN_XY = 6; // constant from JavaCard 3.0.5
 
@@ -77,8 +79,7 @@ public class SECP256k1 {
   private RSAPublicKey pow2;
   private Cipher multCipher;
 
-  static final byte[] CONST_TWO = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02};
-
+  static final byte[] CONST_TWO = { 0x02 };
   private byte[] tmp;
 
   /**
@@ -162,6 +163,10 @@ public class SECP256k1 {
   }
 
   short signSchnorr(ECPrivateKey privKey, byte[] pubKey, short pubOff, byte[] data, short dataOff, short dataLen, byte[] output, short outOff) {
+    output[outOff++] = TLV_SCHNORR_SIGNATURE;
+    output[outOff++] = (byte) 0x81;
+    output[outOff++] = (byte) (Crypto.KEY_PUB_SIZE  + 66);;
+
     crypto.random.generateData(tmp, SCHNORR_K_OUT_OFF, SECP256K1_BYTE_SIZE);
     Util.arrayFillNonAtomic(tmp, SCHNORR_E_OUT_OFF, (short)(TMP_LEN - SCHNORR_E_OUT_OFF), (byte) 0x00);
 
@@ -173,24 +178,24 @@ public class SECP256k1 {
 
     tmp[(short)(SCHNORR_TMP1_32_OFF - 1)] = (byte) crypto.add256(tmp, SCHNORR_E_32_OFF, tmp, SCHNORR_D_32_OFF, tmp, SCHNORR_TMP1_32_OFF);
     multCipher.doFinal(tmp, SCHNORR_TMP1_OUT_OFF, (short) 96, tmp, SCHNORR_TMP1_OUT_OFF);
-    multCipher.doFinal(tmp, SCHNORR_D_OUT_OFF, (short) 96, tmp, SCHNORR_TMP2_OUT_OFF);
-    crypto.sub768(tmp, SCHNORR_TMP1_OUT_OFF, tmp, SCHNORR_TMP2_OUT_OFF, tmp, SCHNORR_TMP1_OUT_OFF);
-    multCipher.doFinal(tmp, SCHNORR_E_OUT_OFF, (short) 96, tmp, SCHNORR_TMP2_OUT_OFF);
-    crypto.sub768(tmp, SCHNORR_TMP1_OUT_OFF, tmp, SCHNORR_TMP2_OUT_OFF, tmp, SCHNORR_TMP1_OUT_OFF);
+    multCipher.doFinal(tmp, SCHNORR_D_OUT_OFF, (short) 96, tmp, SCHNORR_D_OUT_OFF);
+    crypto.sub768(tmp, SCHNORR_TMP1_OUT_OFF, tmp, SCHNORR_D_OUT_OFF, tmp, SCHNORR_TMP1_OUT_OFF);
+    multCipher.doFinal(tmp, SCHNORR_E_OUT_OFF, (short) 96, tmp, SCHNORR_E_OUT_OFF);
+    crypto.sub768(tmp, SCHNORR_TMP1_OUT_OFF, tmp, SCHNORR_E_OUT_OFF, tmp, SCHNORR_TMP1_OUT_OFF);
 
     short res, res2;
 
     for (short i = (short) 95; i >= 0; i--) {
       res = (short) ((short) (tmp[(short)(SCHNORR_TMP1_OUT_OFF + i)] & 0xff) >> 1);
       res2 = (short) ((short) (tmp[(short)(SCHNORR_TMP1_OUT_OFF + i - 1)] & 0xff) << 7);
-      tmp[(short)(SCHNORR_TMP1_OUT_OFF + i)] = (byte) (short) (res | res2);
+      tmp[(short)(SCHNORR_TMP1_OUT_OFF + i)] = (byte) ((short) (res | res2));
     }
 
     tmp[SCHNORR_TMP1_OUT_OFF] &= (byte) 0x7f;
 
-    add256to768(tmp, SCHNORR_TMP1_OUT_OFF, tmp, SCHNORR_K_OUT_OFF, tmp, SCHNORR_TMP2_OUT_OFF);
-    Util.arrayCopyNonAtomic(tmp, (short) (SCHNORR_TMP2_OUT_OFF + 30), output, (short) (outOff + Crypto.KEY_PUB_SIZE), (short) 66);
-    return (short) (Crypto.KEY_PUB_SIZE  + 66);
+    add256to768(tmp, SCHNORR_TMP1_OUT_OFF, tmp, SCHNORR_K_OUT_OFF, tmp, SCHNORR_TMP1_OUT_OFF);
+    Util.arrayCopyNonAtomic(tmp, (short) (SCHNORR_TMP1_OUT_OFF + 30), output, (short) (outOff + Crypto.KEY_PUB_SIZE), (short) 66);
+    return (short) (3 + Crypto.KEY_PUB_SIZE  + 66);
   }
 
   short add256to768(byte[] a, short aOff,  byte[] b, short bOff, byte[] out, short outOff) {
