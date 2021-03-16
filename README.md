@@ -20,9 +20,7 @@ You can also join the dicussion about this project on Status channel: https://ge
 If you just want to use the Keycard as your hardware wallet there are currently two apps supporting it
 
 1. WallETH [[Android](https://play.google.com/store/apps/details?id=org.walleth)]
-2. Gnosis Safe [[Android](https://play.google.com/store/apps/details?id=pm.gnosis.heimdall)][[iOS](https://apps.apple.com/us/app/gnosis-safe-smart-wallet/id1447390375)]
-
-support in [Status](https://status.im/) is coming soon too! If you feel adventurous, you can try a [nightly build](https://ci.status.im/job/status-react/job/nightly/) already.
+2. Status [[Android](https://play.google.com/store/apps/details?id=im.status.ethereum)][[iOS](https://apps.apple.com/us/app/status-private-communication/id1178893006)]
 
 # How to contribute? 
 
@@ -89,6 +87,6 @@ Best performance is achieved if the card supports:
 
 Java SDK for Android and Desktop https://github.com/status-im/status-keycard-java
 
-Swift SDK for iOS13 https://github.com/status-im/Keycard.swift
+Swift SDK for iOS13 and above https://github.com/status-im/Keycard.swift
 
 Keycard CLI for Desktop https://github.com/status-im/keycard-cli
