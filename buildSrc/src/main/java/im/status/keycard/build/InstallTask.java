@@ -57,7 +57,7 @@ public class InstallTask extends DefaultTask {
       logger.info("Deleting the old instances and package (if present)");
       cmdSet.deleteKeycardInstancesAndPackage();
       logger.info("Loading the new package");
-      cmdSet.loadKeycardPackage(new FileInputStream("build/javacard/im/status/keycard/javacard/keycard.cap"), new LoadCallback() {
+      cmdSet.loadKeycardPackage(new FileInputStream(this.getProject().file("build/javacard/im/status/keycard/javacard/keycard.cap")), new LoadCallback() {
         @Override
         public void blockLoaded(int loadedBlock, int blockCount) {
           logger.info("Loaded block " + loadedBlock + "/" + blockCount);
