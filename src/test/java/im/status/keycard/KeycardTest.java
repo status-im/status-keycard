@@ -4,6 +4,7 @@ import com.licel.jcardsim.smartcardio.CardSimulator;
 import com.licel.jcardsim.smartcardio.CardTerminalSimulator;
 import com.licel.jcardsim.utils.AIDUtil;
 import im.status.keycard.applet.*;
+import im.status.keycard.applet.Certificate;
 import im.status.keycard.desktop.LedgerUSBManager;
 import im.status.keycard.desktop.PCSCCardChannel;
 import im.status.keycard.io.APDUCommand;
@@ -56,6 +57,7 @@ public class KeycardTest {
   private static CardChannel apduChannel;
   private static im.status.keycard.io.CardChannel sdkChannel;
   private static CardSimulator simulator;
+  private static KeyPair caKeyPair;
 
   private static LedgerUSBManager usbManager;
 
@@ -101,6 +103,8 @@ public class KeycardTest {
       default:
         throw new IllegalStateException("Unknown target");
     }
+
+    caKeyPair = Certificate.generateIdentKeyPair();
 
     initIfNeeded();
   }
@@ -157,6 +161,15 @@ public class KeycardTest {
     simulator.installApplet(aid, CashApplet.class, bos.toByteArray(), (short) 0, (byte) bos.size());
     bos.reset();
 
+    // Install CashApplet
+    aid = AIDUtil.create(Identifiers.IDENT_AID);
+    bos.write(Identifiers.IDENT_INSTANCE_AID.length);
+    bos.write(Identifiers.IDENT_INSTANCE_AID);
+    bos.write(new byte[] {0x01, 0x00, 0x02, (byte) 0xC9, 0x00});
+
+    simulator.installApplet(aid, IdentApplet.class, bos.toByteArray(), (short) 0, (byte) bos.size());
+    bos.reset();    
+
     cardTerminal = CardTerminalSimulator.terminal(simulator);
 
     openPCSCChannel();
@@ -198,6 +211,12 @@ public class KeycardTest {
   }
 
   private static void initIfNeeded() throws Exception {
+    KeyPair identKeyPair = Certificate.generateIdentKeyPair();
+    Certificate cert = Certificate.createCertificate(caKeyPair, identKeyPair);
+    IdentCommandSet idCmdSet = new IdentCommandSet(sdkChannel);
+    idCmdSet.select().checkOK();
+    idCmdSet.storeData(cert.toStoreData()).checkOK();
+
     KeycardCommandSet cmdSet = new KeycardCommandSet(sdkChannel);
     cmdSet.select().checkOK();
 
@@ -254,6 +273,19 @@ public class KeycardTest {
     byte[] data = response.getData();
     assertTrue(new ApplicationInfo(data).isInitializedCard());
   }
+
+  @Test
+  @DisplayName("IDENT command")
+  void identTest() throws Exception {
+    byte[] challenge = new byte[32];
+    Random random = new Random();
+    random.nextBytes(challenge);
+    APDUResponse response = cmdSet.identifyCard(challenge);
+    assertEquals(0x9000, response.getSw());
+    byte[] caPub = Certificate.verifyIdentity(challenge, response.getData());
+    byte[] expectedCaPub = ((ECPublicKey) caKeyPair.getPublic()).getQ().getEncoded(true);
+    assertArrayEquals(expectedCaPub, caPub);
+  }  
 
   @Test
   @DisplayName("OPEN SECURE CHANNEL command")
