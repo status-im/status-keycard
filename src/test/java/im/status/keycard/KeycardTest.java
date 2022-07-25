@@ -277,13 +277,26 @@ public class KeycardTest {
   @Test
   @DisplayName("IDENT command")
   void identTest() throws Exception {
+    APDUResponse response = cmdSet.identifyCard(new byte[33]);
+    assertEquals(0x6a80, response.getSw());
+
     byte[] challenge = new byte[32];
     Random random = new Random();
+    byte[] expectedCaPub = ((ECPublicKey) caKeyPair.getPublic()).getQ().getEncoded(true);
+
+
     random.nextBytes(challenge);
-    APDUResponse response = cmdSet.identifyCard(challenge);
+    response = cmdSet.identifyCard(challenge);
     assertEquals(0x9000, response.getSw());
     byte[] caPub = Certificate.verifyIdentity(challenge, response.getData());
-    byte[] expectedCaPub = ((ECPublicKey) caKeyPair.getPublic()).getQ().getEncoded(true);
+    assertArrayEquals(expectedCaPub, caPub);
+
+    cmdSet.autoOpenSecureChannel();
+
+    random.nextBytes(challenge);
+    response = cmdSet.identifyCard(challenge);
+    assertEquals(0x9000, response.getSw());
+    caPub = Certificate.verifyIdentity(challenge, response.getData());
     assertArrayEquals(expectedCaPub, caPub);
   }  
 
