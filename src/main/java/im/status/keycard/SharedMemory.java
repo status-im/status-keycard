@@ -6,7 +6,6 @@ import javacard.security.*;
  * Keep references to data structures shared across applet instances of this package.
  */
 class SharedMemory {
-  static final byte CERT_VALID = (byte) 0xAA;
   static final short CERT_LEN = 98;
 
   /** The NDEF data file. Read through the NDEFApplet. **/

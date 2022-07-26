@@ -298,6 +298,15 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
     caPub = Certificate.verifyIdentity(challenge, response.getData());
     assertArrayEquals(expectedCaPub, caPub);
+
+    random.nextBytes(challenge);
+    CashCommandSet cashCmdSet = new CashCommandSet(sdkChannel);
+    response = cashCmdSet.select();
+    assertEquals(0x9000, response.getSw());
+    response = cashCmdSet.identifyCard(challenge);
+    assertEquals(0x9000, response.getSw());
+    caPub = Certificate.verifyIdentity(challenge, response.getData());
+    assertArrayEquals(expectedCaPub, caPub);
   }  
 
   @Test

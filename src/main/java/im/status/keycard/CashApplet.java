@@ -76,6 +76,9 @@ public class CashApplet extends Applet {
         case KeycardApplet.INS_SIGN:
           sign(apdu);
           break;
+        case IdentApplet.INS_IDENTIFY_CARD:
+          IdentApplet.identifyCard(apdu, null, signature);
+          break;
         default:
           ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
           break;

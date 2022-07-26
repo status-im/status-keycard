@@ -7,6 +7,11 @@ import javacard.security.*;
  * The applet's main class. All incoming commands a processed by this class.
  */
 public class IdentApplet extends Applet {
+  static final byte TLV_CERT = (byte) 0x8A;
+  static final byte CERT_VALID = (byte) 0xAA;
+
+  static final byte INS_IDENTIFY_CARD = (byte) 0x14;
+
   /**
    * Invoked during applet installation. Creates an instance of this class. The installation parameters are passed in
    * the given buffer.
@@ -65,7 +70,7 @@ public class IdentApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     apdu.setIncomingAndReceive();
 
-    if (SharedMemory.idCert[0] == SharedMemory.CERT_VALID) {
+    if (SharedMemory.idCert[0] == CERT_VALID) {
       Util.arrayCopyNonAtomic(SharedMemory.idCert, (short) 1, apduBuffer, (short) 0, SharedMemory.CERT_LEN);
       apdu.setOutgoingAndSend((short) 0, SharedMemory.CERT_LEN);
     }
@@ -73,7 +78,7 @@ public class IdentApplet extends Applet {
   }
 
   private void processStoreData(APDU apdu) {
-    if (SharedMemory.idCert[0] == SharedMemory.CERT_VALID) {
+    if (SharedMemory.idCert[0] == CERT_VALID) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
@@ -86,6 +91,52 @@ public class IdentApplet extends Applet {
 
     Util.arrayCopyNonAtomic(apduBuffer, ISO7816.OFFSET_CDATA, SharedMemory.idCert, (short) 1, SharedMemory.CERT_LEN);
     SharedMemory.idPrivate.setS(apduBuffer, (short) (ISO7816.OFFSET_CDATA + SharedMemory.CERT_LEN), Crypto.KEY_SECRET_SIZE);
-    SharedMemory.idCert[0] = SharedMemory.CERT_VALID;
+    SharedMemory.idCert[0] = CERT_VALID;
   }
+
+  /**
+   * Processes the IDENTIFY CARD command according to the application's specifications. 
+   * 
+   * @param apdu the JCRE-owned APDU object.
+   */
+  static void identifyCard(APDU apdu, SecureChannel secureChannel, Signature signature) {
+    byte[] apduBuffer = apdu.getBuffer();
+
+    short len;
+
+    if (secureChannel != null && secureChannel.isOpen()) {
+      len = secureChannel.preprocessAPDU(apduBuffer);
+    } else {
+      len = (short) (apduBuffer[ISO7816.OFFSET_LC] & (short) 0xff);
+    }
+
+    if (SharedMemory.idCert[0] != CERT_VALID) {
+      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+    }
+
+    if (len != MessageDigest.LENGTH_SHA_256) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    short off = SecureChannel.SC_OUT_OFFSET;
+    apduBuffer[off++] = KeycardApplet.TLV_SIGNATURE_TEMPLATE;
+    apduBuffer[off++] = (byte) 0x81;
+    off++;
+    apduBuffer[off++] = TLV_CERT;
+    apduBuffer[off++] = (byte) SharedMemory.CERT_LEN;
+    Util.arrayCopyNonAtomic(SharedMemory.idCert, (short) 1, apduBuffer, off, SharedMemory.CERT_LEN);
+    off += SharedMemory.CERT_LEN;
+    
+    short outLen = (short)(SharedMemory.CERT_LEN + 5);
+    signature.init(SharedMemory.idPrivate, Signature.MODE_SIGN);
+    outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, off);
+
+    apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 2)] = (byte)(outLen - 3);
+
+    if (secureChannel != null && secureChannel.isOpen()) {
+      secureChannel.respond(apdu, outLen, ISO7816.SW_NO_ERROR);
+    } else {
+      apdu.setOutgoingAndSend(SecureChannel.SC_OUT_OFFSET, outLen);
+    }
+  }  
 }
