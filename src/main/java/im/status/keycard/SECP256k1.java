@@ -70,7 +70,7 @@ public class SECP256k1 {
    *
    * @param key the key where the curve parameters must be set
    */
-  void setCurveParameters(ECKey key) {
+  static void setCurveParameters(ECKey key) {
     key.setA(SECP256K1_A, (short) 0x00, (short) SECP256K1_A.length);
     key.setB(SECP256K1_B, (short) 0x00, (short) SECP256K1_B.length);
     key.setFieldFP(SECP256K1_FP, (short) 0x00, (short) SECP256K1_FP.length);

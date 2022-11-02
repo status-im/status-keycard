@@ -1,9 +1,11 @@
 package im.status.keycard.build;
 
+import im.status.keycard.applet.Identifiers;
 import im.status.keycard.desktop.PCSCCardChannel;
 import im.status.keycard.globalplatform.GlobalPlatformCommandSet;
 import im.status.keycard.globalplatform.LoadCallback;
 import im.status.keycard.io.APDUException;
+import org.bouncycastle.util.encoders.Hex;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
 import org.gradle.api.logging.Logger;
@@ -69,6 +71,8 @@ public class InstallTask extends DefaultTask {
       cmdSet.installNDEFApplet(new byte[0]).checkOK();
       logger.info("Installing the Cash Applet");
       cmdSet.installCashApplet().checkOK();
+      logger.info("Installing the Identifier Applet");
+      cmdSet.installIdentApplet().checkOK();
     } catch (IOException e) {
       throw new GradleException("I/O error", e);
     } catch (APDUException e) {

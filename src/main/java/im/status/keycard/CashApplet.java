@@ -12,7 +12,6 @@ public class CashApplet extends Applet {
   private ECPrivateKey privateKey;
 
   private Crypto crypto;
-  private SECP256k1 secp256k1;
 
   private Signature signature;
 
@@ -40,17 +39,15 @@ public class CashApplet extends Applet {
    */
   public CashApplet(byte[] bArray, short bOffset, byte bLength) {
     crypto = new Crypto();
-    secp256k1 = new SECP256k1();
 
     keypair = new KeyPair(KeyPair.ALG_EC_FP, SECP256k1.SECP256K1_KEY_SIZE);
     publicKey = (ECPublicKey) keypair.getPublic();
     privateKey = (ECPrivateKey) keypair.getPrivate();
-    secp256k1.setCurveParameters(publicKey);
-    secp256k1.setCurveParameters(privateKey);
+    SECP256k1.setCurveParameters(publicKey);
+    SECP256k1.setCurveParameters(privateKey);
     keypair.genKeyPair();
 
     signature = Signature.getInstance(Signature.ALG_ECDSA_SHA_256, false);
-    signature.init(privateKey, Signature.MODE_SIGN);
 
     short c9Off = (short)(bOffset + bArray[bOffset] + 1); // Skip AID
     c9Off += (short)(bArray[c9Off] + 1); // Skip Privileges and parameter length
@@ -78,6 +75,9 @@ public class CashApplet extends Applet {
       switch (apduBuffer[ISO7816.OFFSET_INS]) {
         case KeycardApplet.INS_SIGN:
           sign(apdu);
+          break;
+        case IdentApplet.INS_IDENTIFY_CARD:
+          IdentApplet.identifyCard(apdu, null, signature);
           break;
         default:
           ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
@@ -129,6 +129,7 @@ public class CashApplet extends Applet {
     outLen += 5;
     short sigOff = (short) (SIGN_OUT_OFF + outLen);
 
+    signature.init(privateKey, Signature.MODE_SIGN);
     outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
     outLen += crypto.fixS(apduBuffer, sigOff);
 

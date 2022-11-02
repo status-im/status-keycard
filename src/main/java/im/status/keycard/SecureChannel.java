@@ -60,8 +60,8 @@ public class SecureChannel {
     pairingKeys = new byte[(short)(PAIRING_KEY_LENGTH * pairingLimit)];
 
     scKeypair = new KeyPair(KeyPair.ALG_EC_FP, SC_KEY_LENGTH);
-    secp256k1.setCurveParameters((ECKey) scKeypair.getPrivate());
-    secp256k1.setCurveParameters((ECKey) scKeypair.getPublic());
+    SECP256k1.setCurveParameters((ECKey) scKeypair.getPrivate());
+    SECP256k1.setCurveParameters((ECKey) scKeypair.getPublic());
     scKeypair.genKeyPair();
 
     remainingSlots = pairingLimit;
