@@ -61,6 +61,7 @@ public class KeycardApplet extends Applet {
   static final byte DERIVE_P1_SOURCE_MASTER = (byte) 0x00;
   static final byte DERIVE_P1_SOURCE_PARENT = (byte) 0x40;
   static final byte DERIVE_P1_SOURCE_CURRENT = (byte) 0x80;
+  static final byte DERIVE_P1_SOURCE_PINLESS = (byte) 0xC0;
   static final byte DERIVE_P1_SOURCE_MASK = (byte) 0xC0;
 
   static final byte GENERATE_MNEMONIC_P1_CS_MIN = 4;
@@ -118,16 +119,8 @@ public class KeycardApplet extends Applet {
   private byte[] masterChainCode;
   private boolean isExtended;
 
-  private ECPublicKey parentPublicKey;
-  private ECPrivateKey parentPrivateKey;
-  private byte[] parentChainCode;
-
-  private ECPublicKey publicKey;
-  private ECPrivateKey privateKey;
-  private byte[] chainCode;
-
-  private ECPublicKey pinlessPublicKey;
-  private ECPrivateKey pinlessPrivateKey;
+  private byte[] tmpPath;
+  private short tmpPathLen;
 
   private byte[] keyPath;
   private short keyPathLen;
@@ -178,21 +171,11 @@ public class KeycardApplet extends Applet {
 
     masterPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
     masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
-
-    parentPublicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
-    parentPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
-
-    publicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
-    privateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
-
-    pinlessPublicKey = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
-    pinlessPrivateKey = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
-
     masterChainCode = new byte[CHAIN_CODE_SIZE];
-    parentChainCode = new byte[CHAIN_CODE_SIZE];
-    chainCode = new byte[CHAIN_CODE_SIZE];
+
     keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
     pinlessPath = new byte[KEY_PATH_MAX_DEPTH * 4];
+    tmpPath = JCSystem.makeTransientByteArray((short)(KEY_PATH_MAX_DEPTH * 4), JCSystem.CLEAR_ON_RESET);
 
     keyUID = new byte[KEY_UID_LENGTH];
 
@@ -411,7 +394,7 @@ public class KeycardApplet extends Applet {
 
     apduBuffer[off++] = TLV_APPLICATION_INFO_TEMPLATE;
 
-    if (privateKey.isInitialized()) {
+    if (masterPrivate.isInitialized()) {
       apduBuffer[off++] = (byte) 0x81;
     }
 
@@ -437,7 +420,7 @@ public class KeycardApplet extends Applet {
     apduBuffer[off++] = secureChannel.getRemainingPairingSlots();
     apduBuffer[off++] = TLV_KEY_UID;
 
-    if (privateKey.isInitialized()) {
+    if (masterPrivate.isInitialized()) {
       apduBuffer[off++] = KEY_UID_LENGTH;
       Util.arrayCopyNonAtomic(keyUID, (short) 0, apduBuffer, off, KEY_UID_LENGTH);
       off += KEY_UID_LENGTH;
@@ -497,7 +480,7 @@ public class KeycardApplet extends Applet {
     apduBuffer[off++] = puk.getTriesRemaining();
     apduBuffer[off++] = TLV_BOOL;
     apduBuffer[off++] = 1;
-    apduBuffer[off++] = privateKey.isInitialized() ? (byte) 0xFF : (byte) 0x00;
+    apduBuffer[off++] = masterPrivate.isInitialized() ? (byte) 0xFF : (byte) 0x00;
 
     return (short) (off - SecureChannel.SC_OUT_OFFSET);
   }
@@ -689,8 +672,6 @@ public class KeycardApplet extends Applet {
    * manipulation has happened to be sure that the state is always consistent.
    */
   private void resetKeyStatus() {
-    parentPrivateKey.clearKey();
-    SECP256k1.setCurveParameters(parentPrivateKey);
     keyPathLen = 0;
   }
 
@@ -721,12 +702,10 @@ public class KeycardApplet extends Applet {
       isExtended = (apduBuffer[chainOffset] == TLV_CHAIN_CODE);
 
       masterPrivate.setS(apduBuffer, (short) (privOffset + 2), apduBuffer[(short) (privOffset + 1)]);
-      privateKey.setS(apduBuffer, (short) (privOffset + 2), apduBuffer[(short) (privOffset + 1)]);
 
       if (isExtended) {
         if (apduBuffer[(short) (chainOffset + 1)] == CHAIN_CODE_SIZE) {
           Util.arrayCopy(apduBuffer, (short) (chainOffset + 2), masterChainCode, (short) 0, apduBuffer[(short) (chainOffset + 1)]);
-          Util.arrayCopy(apduBuffer, (short) (chainOffset + 2), chainCode, (short) 0, apduBuffer[(short) (chainOffset + 1)]);
         } else {
           ISOException.throwIt(ISO7816.SW_WRONG_DATA);
         }
@@ -743,7 +722,6 @@ public class KeycardApplet extends Applet {
       }
 
       masterPublic.setW(apduBuffer, pubOffset, pubLen);
-      publicKey.setW(apduBuffer, pubOffset, pubLen);
     } catch (CryptoException e) {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
@@ -771,39 +749,20 @@ public class KeycardApplet extends Applet {
     isExtended = true;
 
     masterPrivate.setS(apduBuffer, (short) ISO7816.OFFSET_CDATA, CHAIN_CODE_SIZE);
-    privateKey.setS(apduBuffer, (short) ISO7816.OFFSET_CDATA, CHAIN_CODE_SIZE);
 
     Util.arrayCopy(apduBuffer, (short) (ISO7816.OFFSET_CDATA + CHAIN_CODE_SIZE), masterChainCode, (short) 0, CHAIN_CODE_SIZE);
-    Util.arrayCopy(apduBuffer, (short) (ISO7816.OFFSET_CDATA + CHAIN_CODE_SIZE), chainCode, (short) 0, CHAIN_CODE_SIZE);
     short pubLen = secp256k1.derivePublicKey(masterPrivate, apduBuffer, (short) 0);
 
     masterPublic.setW(apduBuffer, (short) 0, pubLen);
-    publicKey.setW(apduBuffer, (short) 0, pubLen);
 
     resetKeyStatus();
     JCSystem.commitTransaction();
   }
 
   /**
-   * Processes the DERIVE KEY command. Requires a secure channel to be already open. Unless a PIN-less path exists, t
-   * the PIN must be verified as well. The master key must be already loaded and have a chain code. In the happy case
-   * this method is quite straightforward, since it takes a sequence of 32-bit big-endian integers and perform key
-   * derivations, updating the current key path accordingly.
-   *
-   * However, since public key derivation might not be supported on card this method also supports the so called
-   * assisted derivation scheme. In this scheme the client first sends a single 32-bit big-endian integer. The cards
-   * derives the new private key and by taking advantage the EC-DH algorithm returns the X of the public key along with
-   * a signature of the SHA-256 hash of a fixed message ("STATUS KEY DERIVATION" in ASCII). The client must then
-   * calculate the two possible Y and try to verify the signature with each of the 2 candidate public keys. The public
-   * key which correctly verifies the signature is the real one and must be uploaded (as an uncompressed point) through
-   * this command again. At this point the current key path is updated and the derived key can be used for signing.
-   *
-   * In all cases transactions are used to make sure that the current key is always complete (private, chain and public
-   * components are coherent) and the key path matches the actual status of the card. This makes recovery from a sudden
-   * power loss easy.
-   *
-   * When the reset flag is set and the data is empty, the assisted key derivation flag is ignored, since in this case
-   * no derivation is done and the master key becomes the current key.
+   * Processes the DERIVE KEY command. Requires a secure channel to be already open and the PIN must be verified as well. 
+   * The master key must be already loaded and have a chain code. This function only updates the current path but does
+   * not actually perform derivation, which is delayed to exporting/signing.
    *
    * @param apdu the JCRE-owned APDU object.
    */
@@ -815,66 +774,51 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    doDerive(apduBuffer, (short) 0, len, apduBuffer[OFFSET_P1], true);
+    updateDerivationPath(apduBuffer, (short) 0, len, apduBuffer[OFFSET_P1]);
+    commitTmpPath();
   }
 
   /**
-   * Internal derivation function, called by DERIVE KEY and EXPORT KEY
+   * Updates the derivation path for a subsequent EXPORT KEY/SIGN APDU. Optionally stores the result in the current path.
+   * 
    * @param apduBuffer the APDU buffer
    * @param off the offset in the APDU buffer relative to the data field
    * @param len the len of the path
    * @param source derivation source
-   * @param makeCurrent whether the results should be saved or not
    */
-  private void doDerive(byte[] apduBuffer, short off, short len, byte source, boolean makeCurrent) {
+  private void updateDerivationPath(byte[] apduBuffer, short off, short len, byte source) {
     if (!isExtended) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
     short newPathLen;
     short pathLenOff;
-    ECPublicKey sourcePub;
-    ECPrivateKey sourcePriv;
-    byte[] sourceChain;
 
+    byte[] srcKeyPath = keyPath;
+  
     switch (source) {
       case DERIVE_P1_SOURCE_MASTER:
-        if (len == 0) {
-          resetToMaster(apduBuffer);
-          return;
-        }
-
         newPathLen = len;
-        sourcePriv = masterPrivate;
-        sourcePub = masterPublic;
-        sourceChain = masterChainCode;
         pathLenOff = 0;
         break;
       case DERIVE_P1_SOURCE_PARENT:
-        if (!parentPrivateKey.isInitialized()) {
+        if (keyPathLen < 4) {
           ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
         }
-
-        if (len == 0) {
-          ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-        }
-
         newPathLen = (short) (keyPathLen + len - 4);
-        sourcePriv = parentPrivateKey;
-        sourcePub = parentPublicKey;
-        sourceChain = parentChainCode;
         pathLenOff = (short) (keyPathLen - 4);
         break;
       case DERIVE_P1_SOURCE_CURRENT:
-        if (len == 0) {
-          ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-        }
-
         newPathLen = (short) (keyPathLen + len);
-        sourcePriv = privateKey;
-        sourcePub = publicKey;
-        sourceChain = chainCode;
         pathLenOff = keyPathLen;
+        break;
+      case DERIVE_P1_SOURCE_PINLESS:
+        if (len != 0) {
+          ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+        } 
+        srcKeyPath = pinlessPath;
+        newPathLen = pinlessPathLen;     
+        pathLenOff = pinlessPathLen;
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
@@ -886,70 +830,60 @@ public class KeycardApplet extends Applet {
     }
 
     short pathOff = (short) (ISO7816.OFFSET_CDATA + off);
-    short scratchOff = (short) (pathOff + len);
+
+    Util.arrayCopyNonAtomic(srcKeyPath, (short) 0, tmpPath, (short) 0, pathLenOff);
+    Util.arrayCopyNonAtomic(apduBuffer, pathOff, tmpPath, pathLenOff, len);
+    tmpPathLen = newPathLen; 
+  }
+
+  /**
+   * Makes the tmp path the current path.
+   */
+  void commitTmpPath() {
+    JCSystem.beginTransaction();
+    Util.arrayCopy(tmpPath, (short) 0, keyPath, (short) 0, tmpPathLen);
+    keyPathLen = tmpPathLen;
+    JCSystem.commitTransaction();
+  }
+
+  /**
+   * Internal derivation function, called by DERIVE KEY and EXPORT KEY
+   * @param apduBuffer the APDU buffer
+   * @param off the offset in the APDU buffer relative to the data field
+   */
+  private void doDerive(byte[] apduBuffer, short off) {
+    if (tmpPathLen == 0) {
+      masterPrivate.getS(derivationOutput, (short) 0);
+      return;
+    }
+
+    short scratchOff = (short) (ISO7816.OFFSET_CDATA + off);
     short dataOff = (short) (scratchOff + Crypto.KEY_DERIVATION_SCRATCH_SIZE);
 
-    short pubKeyOff = (short) (dataOff + sourcePriv.getS(apduBuffer, dataOff));
-    pubKeyOff = Util.arrayCopyNonAtomic(sourceChain, (short) 0, apduBuffer, pubKeyOff, CHAIN_CODE_SIZE);
+    short pubKeyOff = (short) (dataOff + masterPrivate.getS(apduBuffer, dataOff));
+    pubKeyOff = Util.arrayCopyNonAtomic(masterChainCode, (short) 0, apduBuffer, pubKeyOff, CHAIN_CODE_SIZE);
 
-    if (!crypto.bip32IsHardened(apduBuffer, ISO7816.OFFSET_CDATA)) {
-      sourcePub.getW(apduBuffer, pubKeyOff);
+    if (!crypto.bip32IsHardened(tmpPath, (short) 0)) {
+      masterPublic.getW(apduBuffer, pubKeyOff);
     } else {
       apduBuffer[pubKeyOff] = 0;
     }
 
-    for (short i = pathOff; i < scratchOff; i += 4) {
-      if (i > pathOff) {
+    for (short i = 0; i < tmpPathLen; i += 4) {
+      if (i > 0) {
         Util.arrayCopyNonAtomic(derivationOutput, (short) 0, apduBuffer, dataOff, (short) (Crypto.KEY_SECRET_SIZE + CHAIN_CODE_SIZE));
 
-        if (!crypto.bip32IsHardened(apduBuffer, i)) {
+        if (!crypto.bip32IsHardened(tmpPath, i)) {
           secp256k1.derivePublicKey(apduBuffer, dataOff, apduBuffer, pubKeyOff);
         } else {
           apduBuffer[pubKeyOff] = 0;
         }
       }
 
-      if (!crypto.bip32CKDPriv(apduBuffer, i, apduBuffer, scratchOff, apduBuffer, dataOff, derivationOutput, (short) 0)) {
+      if (!crypto.bip32CKDPriv(tmpPath, i, apduBuffer, scratchOff, apduBuffer, dataOff, derivationOutput, (short) 0)) {
         ISOException.throwIt(ISO7816.SW_DATA_INVALID);
       }
     }
-
-    if (makeCurrent) {
-      JCSystem.beginTransaction();
-
-      parentPrivateKey.setS(apduBuffer, dataOff, Crypto.KEY_SECRET_SIZE);
-      Util.arrayCopy(apduBuffer, (short)(dataOff + Crypto.KEY_SECRET_SIZE), parentChainCode, (short) 0, CHAIN_CODE_SIZE);
-
-      if (apduBuffer[pubKeyOff] == 0x04) {
-        parentPublicKey.setW(apduBuffer, pubKeyOff, Crypto.KEY_PUB_SIZE);
-      } else {
-        secp256k1.derivePublicKey(parentPrivateKey, apduBuffer, scratchOff);
-        parentPublicKey.setW(apduBuffer, scratchOff, Crypto.KEY_PUB_SIZE);
-      }
-
-      privateKey.setS(derivationOutput, (short) 0, Crypto.KEY_SECRET_SIZE);
-      Util.arrayCopy(derivationOutput, Crypto.KEY_SECRET_SIZE, chainCode, (short) 0, CHAIN_CODE_SIZE);
-      secp256k1.derivePublicKey(privateKey, apduBuffer, scratchOff);
-      publicKey.setW(apduBuffer, scratchOff, Crypto.KEY_PUB_SIZE);
-
-      Util.arrayCopy(apduBuffer, pathOff, keyPath, pathLenOff, len);
-      keyPathLen = newPathLen;
-      JCSystem.commitTransaction();
-    }
-  }
-
-  /**
-   * Resets to master key
-   *
-   * @param apduBuffer the APDU buffer
-   */
-  private void resetToMaster(byte[] apduBuffer) {
-    resetKeyStatus();
-    masterPrivate.getS(apduBuffer, ISO7816.OFFSET_CDATA);
-    privateKey.setS(apduBuffer, ISO7816.OFFSET_CDATA, Crypto.KEY_SECRET_SIZE);
-    masterPublic.getW(apduBuffer, ISO7816.OFFSET_CDATA);
-    publicKey.setW(apduBuffer, ISO7816.OFFSET_CDATA, Crypto.KEY_PUB_SIZE);
-    Util.arrayCopyNonAtomic(masterChainCode, (short) 0, chainCode, (short) 0, CHAIN_CODE_SIZE);
   }
 
   /**
@@ -1048,17 +982,9 @@ public class KeycardApplet extends Applet {
     keyPathLen = 0;
     pinlessPathLen = 0;
     isExtended = false;
-    privateKey.clearKey();
-    publicKey.clearKey();
     masterPrivate.clearKey();
     masterPublic.clearKey();
-    parentPrivateKey.clearKey();
-    parentPublicKey.clearKey();
-    pinlessPrivateKey.clearKey();
-    pinlessPublicKey.clearKey();
     resetCurveParameters();
-    Util.arrayFillNonAtomic(chainCode, (short) 0, (short) chainCode.length, (byte) 0);
-    Util.arrayFillNonAtomic(parentChainCode, (short) 0, (short) parentChainCode.length, (byte) 0);
     Util.arrayFillNonAtomic(masterChainCode, (short) 0, (short) masterChainCode.length, (byte) 0);
     Util.arrayFillNonAtomic(keyPath, (short) 0, (short) keyPath.length, (byte) 0);
     Util.arrayFillNonAtomic(pinlessPath, (short) 0, (short) pinlessPath.length, (byte) 0);
@@ -1100,32 +1026,21 @@ public class KeycardApplet extends Applet {
   private void sign(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
     boolean usePinless = false;
-    boolean derive = false;
     boolean makeCurrent = false;
-
-    ECPrivateKey signingKey;
-    ECPublicKey outputKey;
+    byte derivationSource = (byte) (apduBuffer[OFFSET_P1] & DERIVE_P1_SOURCE_MASK);
 
     switch((byte) (apduBuffer[OFFSET_P1] & ~DERIVE_P1_SOURCE_MASK)) {
       case SIGN_P1_CURRENT_KEY:
-        signingKey = privateKey;
-        outputKey = publicKey;
+        derivationSource = DERIVE_P1_SOURCE_CURRENT;
         break;
       case SIGN_P1_DERIVE:
-        signingKey = secp256k1.tmpECPrivateKey;
-        outputKey = null;
-        derive = true;
         break;
       case SIGN_P1_DERIVE_AND_MAKE_CURRENT:
-        signingKey = privateKey;
-        outputKey = publicKey;
-        derive = true;
         makeCurrent = true;
         break;
       case SIGN_P1_PINLESS:
         usePinless = true;
-        signingKey = pinlessPrivateKey;
-        outputKey = pinlessPublicKey;
+        derivationSource = DERIVE_P1_SOURCE_PINLESS;
         break;
       default:
         ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
@@ -1144,45 +1059,39 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(SW_REFERENCED_DATA_NOT_FOUND);
     }
 
-    if (!((pin.isValidated() || usePinless || isPinless()) && privateKey.isInitialized())) {
+    if (len < MessageDigest.LENGTH_SHA_256) {
+      ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+    }
+
+    short pathLen = (short) (len - MessageDigest.LENGTH_SHA_256);
+    updateDerivationPath(apduBuffer, MessageDigest.LENGTH_SHA_256, pathLen, derivationSource);
+
+    if (!((pin.isValidated() || usePinless || isPinless()) && masterPrivate.isInitialized())) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    if (derive) {
-      short pathLen = (short) (len - MessageDigest.LENGTH_SHA_256);
-
-      if (pathLen <= 0) {
-        ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-      }
-
-      byte derivationSource = (byte) (apduBuffer[OFFSET_P1] & DERIVE_P1_SOURCE_MASK);
-      doDerive(apduBuffer, MessageDigest.LENGTH_SHA_256, pathLen, derivationSource, makeCurrent);
-    } else {
-      if (len != MessageDigest.LENGTH_SHA_256) {
-        ISOException.throwIt(ISO7816.SW_WRONG_DATA);
-      }
-    }
+    doDerive(apduBuffer, MessageDigest.LENGTH_SHA_256);
 
     apduBuffer[SecureChannel.SC_OUT_OFFSET] = TLV_SIGNATURE_TEMPLATE;
     apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 3)] = TLV_PUB_KEY;
     short outLen = apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 4)] = Crypto.KEY_PUB_SIZE;
 
-    if (outputKey != null) {
-      outputKey.getW(apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
-    } else {
-      secp256k1.derivePublicKey(derivationOutput, (short) 0, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
-    }
+    secp256k1.derivePublicKey(derivationOutput, (short) 0, apduBuffer, (short) (SecureChannel.SC_OUT_OFFSET + 5));
 
     outLen += 5;
     short sigOff = (short) (SecureChannel.SC_OUT_OFFSET + outLen);
 
-    signature.init(signingKey, Signature.MODE_SIGN);
+    signature.init(secp256k1.tmpECPrivateKey, Signature.MODE_SIGN);
 
     outLen += signature.signPreComputedHash(apduBuffer, ISO7816.OFFSET_CDATA, MessageDigest.LENGTH_SHA_256, apduBuffer, sigOff);
     outLen += crypto.fixS(apduBuffer, sigOff);
 
     apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) 0x81;
     apduBuffer[(short)(SecureChannel.SC_OUT_OFFSET + 2)] = (byte) (outLen - 3);
+
+    if (makeCurrent) {
+      commitTmpPath();
+    }
 
     if (secureChannel.isOpen()) {
       secureChannel.respond(apdu, outLen, ISO7816.SW_NO_ERROR);
@@ -1214,14 +1123,6 @@ public class KeycardApplet extends Applet {
     JCSystem.beginTransaction();
     pinlessPathLen = len;
     Util.arrayCopy(apduBuffer, ISO7816.OFFSET_CDATA, pinlessPath, (short) 0, len);
-
-    if (pinlessPathLen > 0) {
-      doDerive(apduBuffer, (short) 0, len, DERIVE_P1_SOURCE_MASTER, false);
-      pinlessPrivateKey.setS(derivationOutput, (short) 0, Crypto.KEY_SECRET_SIZE);
-      secp256k1.derivePublicKey(pinlessPrivateKey, apduBuffer, (short) 0);
-      pinlessPublicKey.setW(apduBuffer, (short) 0, Crypto.KEY_PUB_SIZE);
-    }
-
     JCSystem.commitTransaction();
   }
 
@@ -1234,7 +1135,7 @@ public class KeycardApplet extends Applet {
     byte[] apduBuffer = apdu.getBuffer();
     short dataLen = secureChannel.preprocessAPDU(apduBuffer);
 
-    if (!pin.isValidated() || !privateKey.isInitialized()) {
+    if (!pin.isValidated() || !masterPrivate.isInitialized()) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
@@ -1252,39 +1153,30 @@ public class KeycardApplet extends Applet {
         return;
     }
 
-    byte[] exportPath = keyPath;
-    short exportPathOff = (short) 0;
-    short exportPathLen = keyPathLen;
-
-    boolean derive = false;
     boolean makeCurrent = false;
     byte derivationSource = (byte) (apduBuffer[OFFSET_P1] & DERIVE_P1_SOURCE_MASK);
 
     switch ((byte) (apduBuffer[OFFSET_P1] & ~DERIVE_P1_SOURCE_MASK)) {
       case EXPORT_KEY_P1_CURRENT:
+        derivationSource = DERIVE_P1_SOURCE_CURRENT;
+        break;
+      case EXPORT_KEY_P1_DERIVE:
         break;
       case EXPORT_KEY_P1_DERIVE_AND_MAKE_CURRENT:
         makeCurrent = true;
-      case EXPORT_KEY_P1_DERIVE:
-        derive = true;
-        if (derivationSource == DERIVE_P1_SOURCE_MASTER) {
-          exportPath = apduBuffer;
-          exportPathOff = ISO7816.OFFSET_CDATA;
-          exportPathLen = dataLen;
-        }
         break;
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
         return;
     }
 
-    if (!publicOnly && ((exportPathLen < (short)(((short) EIP_1581_PREFIX.length) + 8)) || (Util.arrayCompare(EIP_1581_PREFIX, (short) 0, exportPath, exportPathOff, (short) EIP_1581_PREFIX.length) != 0))) {
+    updateDerivationPath(apduBuffer, (short) 0, dataLen, derivationSource);
+
+    if (!publicOnly && ((tmpPathLen < (short)(((short) EIP_1581_PREFIX.length) + 8)) || (Util.arrayCompare(EIP_1581_PREFIX, (short) 0, tmpPath, (short) 0, (short) EIP_1581_PREFIX.length) != 0))) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    if (derive) {
-      doDerive(apduBuffer, (short) 0, dataLen, derivationSource, makeCurrent);
-    }
+    doDerive(apduBuffer, (short) 0);
 
     short off = SecureChannel.SC_OUT_OFFSET;
 
@@ -1293,30 +1185,18 @@ public class KeycardApplet extends Applet {
 
     short len;
 
-    if (!derive || makeCurrent) {
-      apduBuffer[off++] = TLV_PUB_KEY;
-      off++;
-      len = publicKey.getW(apduBuffer, off);
-      apduBuffer[(short) (off - 1)] = (byte) len;
-      off += len;
-    } else if (publicOnly) {
+    if (publicOnly) {
       apduBuffer[off++] = TLV_PUB_KEY;
       off++;
       len = secp256k1.derivePublicKey(derivationOutput, (short) 0, apduBuffer, off);
       apduBuffer[(short) (off - 1)] = (byte) len;
       off += len;
-    }
-
-    if (!publicOnly) {
+    } else {
       apduBuffer[off++] = TLV_PRIV_KEY;
       off++;
 
-      if (!derive || makeCurrent) {
-        len = privateKey.getS(apduBuffer, off);
-      } else {
-        Util.arrayCopyNonAtomic(derivationOutput, (short) 0, apduBuffer, off, Crypto.KEY_SECRET_SIZE);
-        len = Crypto.KEY_SECRET_SIZE;
-      }
+      Util.arrayCopyNonAtomic(derivationOutput, (short) 0, apduBuffer, off, Crypto.KEY_SECRET_SIZE);
+      len = Crypto.KEY_SECRET_SIZE;
 
       apduBuffer[(short) (off - 1)] = (byte) len;
       off += len;
@@ -1325,6 +1205,10 @@ public class KeycardApplet extends Applet {
     len = (short) (off - SecureChannel.SC_OUT_OFFSET);
     apduBuffer[(SecureChannel.SC_OUT_OFFSET + 1)] = (byte) (len - 2);
 
+    if (makeCurrent) {
+      commitTmpPath();
+    }
+ 
     secureChannel.respond(apdu, len, ISO7816.SW_NO_ERROR);
   }
 
@@ -1435,7 +1319,7 @@ public class KeycardApplet extends Applet {
    * @return whether the current key path is the same as the one defined as PIN-less or not
    */
   private boolean isPinless() {
-    return (pinlessPathLen > 0) && (pinlessPathLen == keyPathLen) && (Util.arrayCompare(keyPath, (short) 0, pinlessPath, (short) 0, keyPathLen) == 0);
+    return (pinlessPathLen > 0) && (pinlessPathLen == tmpPathLen) && (Util.arrayCompare(tmpPath, (short) 0, pinlessPath, (short) 0, tmpPathLen) == 0);
   }
 
   /**
@@ -1444,14 +1328,5 @@ public class KeycardApplet extends Applet {
   private void resetCurveParameters() {
     SECP256k1.setCurveParameters(masterPublic);
     SECP256k1.setCurveParameters(masterPrivate);
-
-    SECP256k1.setCurveParameters(parentPublicKey);
-    SECP256k1.setCurveParameters(parentPrivateKey);
-
-    SECP256k1.setCurveParameters(publicKey);
-    SECP256k1.setCurveParameters(privateKey);
-
-    SECP256k1.setCurveParameters(pinlessPublicKey);
-    SECP256k1.setCurveParameters(pinlessPrivateKey);
   }
 }

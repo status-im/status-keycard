@@ -1281,19 +1281,19 @@ public class KeycardTest {
     response = cmdSet.exportCurrentKey(true);
     assertEquals(0x9000, response.getSw());
     byte[] keyTemplate = response.getData();
-    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000 }, true, false);
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000 }, true);
 
     // Derive & Make current
     response = cmdSet.exportKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER,true,false);
     assertEquals(0x9000, response.getSw());
     keyTemplate = response.getData();
-    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000000 }, false, false);
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000000 }, false);
 
     // Derive without making current
     response = cmdSet.exportKey(new byte[] {(byte) 0x00, 0x00, 0x00, 0x01}, KeycardApplet.DERIVE_P1_SOURCE_PARENT, false,false);
     assertEquals(0x9000, response.getSw());
     keyTemplate = response.getData();
-    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000001 }, false, true);
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000001 }, false);
     response = cmdSet.getStatus(KeycardApplet.GET_STATUS_P1_KEY_PATH);
     assertEquals(0x9000, response.getSw());
     assertArrayEquals(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, response.getData());
@@ -1302,7 +1302,7 @@ public class KeycardTest {
     response = cmdSet.exportCurrentKey(false);
     assertEquals(0x9000, response.getSw());
     keyTemplate = response.getData();
-    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000000 }, false, false);
+    verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000000 }, false);
 
     // Reset
     response = cmdSet.deriveKey(new byte[0], KeycardApplet.DERIVE_P1_SOURCE_MASTER);
@@ -1673,7 +1673,7 @@ public class KeycardTest {
     }
   }
 
-  private void verifyExportedKey(byte[] keyTemplate, KeyPair keyPair, byte[] chainCode, int[] path, boolean publicOnly, boolean noPubKey) {
+  private void verifyExportedKey(byte[] keyTemplate, KeyPair keyPair, byte[] chainCode, int[] path, boolean publicOnly) {
     if (!cmdSet.getApplicationInfo().hasKeyManagementCapability()) {
       return;
     }
@@ -1682,14 +1682,11 @@ public class KeycardTest {
     assertEquals(KeycardApplet.TLV_KEY_TEMPLATE, keyTemplate[0]);
     int pubKeyLen = 0;
 
-    if (!noPubKey) {
+    if (publicOnly) {
       assertEquals(KeycardApplet.TLV_PUB_KEY, keyTemplate[2]);
       byte[] pubKey = Arrays.copyOfRange(keyTemplate, 4, 4 + keyTemplate[3]);
       assertArrayEquals(key.getPubKey(), pubKey);
       pubKeyLen = 2 + pubKey.length;
-    }
-
-    if (publicOnly) {
       assertEquals(pubKeyLen, keyTemplate[1]);
       assertEquals(pubKeyLen + 2, keyTemplate.length);
     } else {
