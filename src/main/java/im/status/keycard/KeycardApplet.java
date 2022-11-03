@@ -79,6 +79,7 @@ public class KeycardApplet extends Applet {
 
   static final byte EXPORT_KEY_P2_PRIVATE_AND_PUBLIC = 0x00;
   static final byte EXPORT_KEY_P2_PUBLIC_ONLY = 0x01;
+  static final byte EXPORT_KEY_P2_EXTENDED_PUBLIC = 0x02;
 
   static final byte STORE_DATA_P1_PUBLIC = 0x00;
   static final byte STORE_DATA_P1_NDEF = 0x01;
@@ -1140,14 +1141,21 @@ public class KeycardApplet extends Applet {
     }
 
     boolean publicOnly;
+    boolean extendedPublic;
 
     switch (apduBuffer[ISO7816.OFFSET_P2]) {
       case EXPORT_KEY_P2_PRIVATE_AND_PUBLIC:
         publicOnly = false;
+        extendedPublic = false;
         break;
       case EXPORT_KEY_P2_PUBLIC_ONLY:
         publicOnly = true;
+        extendedPublic = false;
         break;
+      case EXPORT_KEY_P2_EXTENDED_PUBLIC:
+        publicOnly = true;
+        extendedPublic = true;
+        break;        
       default:
         ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
         return;
@@ -1172,7 +1180,9 @@ public class KeycardApplet extends Applet {
 
     updateDerivationPath(apduBuffer, (short) 0, dataLen, derivationSource);
 
-    if (!publicOnly && ((tmpPathLen < (short)(((short) EIP_1581_PREFIX.length) + 8)) || (Util.arrayCompare(EIP_1581_PREFIX, (short) 0, tmpPath, (short) 0, (short) EIP_1581_PREFIX.length) != 0))) {
+    boolean eip1581 = isEIP1581();
+
+    if (!(publicOnly || eip1581) || (extendedPublic && eip1581)) {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
@@ -1189,6 +1199,12 @@ public class KeycardApplet extends Applet {
       apduBuffer[off++] = TLV_PUB_KEY;
       off++;
       len = secp256k1.derivePublicKey(derivationOutput, (short) 0, apduBuffer, off);
+      
+      if (extendedPublic) {
+        Util.arrayCopyNonAtomic(derivationOutput, Crypto.KEY_SECRET_SIZE, apduBuffer, (short) (off + len), CHAIN_CODE_SIZE);
+        len += CHAIN_CODE_SIZE;
+      }
+
       apduBuffer[(short) (off - 1)] = (byte) len;
       off += len;
     } else {
@@ -1320,6 +1336,10 @@ public class KeycardApplet extends Applet {
    */
   private boolean isPinless() {
     return (pinlessPathLen > 0) && (pinlessPathLen == tmpPathLen) && (Util.arrayCompare(tmpPath, (short) 0, pinlessPath, (short) 0, tmpPathLen) == 0);
+  }
+
+  private boolean isEIP1581() {
+    return (tmpPathLen >= (short)(((short) EIP_1581_PREFIX.length) + 8)) && (Util.arrayCompare(EIP_1581_PREFIX, (short) 0, tmpPath, (short) 0, (short) EIP_1581_PREFIX.length) == 0);   
   }
 
   /**
