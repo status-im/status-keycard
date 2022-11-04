@@ -1687,30 +1687,30 @@ public class KeycardTest {
       return;
     }
 
+    System.out.println(Hex.toHexString(keyTemplate));
     DeterministicKey dk = deriveKey(keyPair, chainCode, path);
     ECKey key = dk.decompress();
     assertEquals(KeycardApplet.TLV_KEY_TEMPLATE, keyTemplate[0]);
-    int pubKeyLen = 0;
-
+    
     if (publicOnly) {
       assertEquals(KeycardApplet.TLV_PUB_KEY, keyTemplate[2]);
       byte[] pubKey = Arrays.copyOfRange(keyTemplate, 4, 4 + keyTemplate[3]);
-      byte[] correctPub = key.getPubKey();
       
-      if (extendedPublic) {
-        byte[] chain = dk.getChainCode();
-        int len = correctPub.length;
-        correctPub = Arrays.copyOf(correctPub, len + chain.length);
-        System.arraycopy(chain, 0, correctPub, len, chain.length);
-      }
+      assertArrayEquals(key.getPubKey(), pubKey);
+      int templateLen = 2 + pubKey.length;
 
-      assertArrayEquals(correctPub, pubKey);
-      pubKeyLen = 2 + pubKey.length;
-      assertEquals(pubKeyLen, keyTemplate[1]);
-      assertEquals(pubKeyLen + 2, keyTemplate.length);
+      if (extendedPublic) {
+        byte[] chain = Arrays.copyOfRange(keyTemplate, templateLen + 4, templateLen + 4 + keyTemplate[3 + templateLen]);
+        assertEquals(KeycardApplet.TLV_CHAIN_CODE, keyTemplate[2 + templateLen]);        
+        assertArrayEquals(dk.getChainCode(), chain);
+        templateLen += 2 + chain.length;
+      }      
+
+      assertEquals(templateLen, keyTemplate[1]);
+      assertEquals(templateLen + 2, keyTemplate.length);
     } else {
-      assertEquals(KeycardApplet.TLV_PRIV_KEY, keyTemplate[2 + pubKeyLen]);
-      byte[] privateKey = Arrays.copyOfRange(keyTemplate, 4 + pubKeyLen, 4 + pubKeyLen + keyTemplate[3 + pubKeyLen]);
+      assertEquals(KeycardApplet.TLV_PRIV_KEY, keyTemplate[2]);
+      byte[] privateKey = Arrays.copyOfRange(keyTemplate, 4, 4 + keyTemplate[3]);
 
       byte[] tPrivKey = key.getPrivKey().toByteArray();
 

@@ -1199,14 +1199,17 @@ public class KeycardApplet extends Applet {
       apduBuffer[off++] = TLV_PUB_KEY;
       off++;
       len = secp256k1.derivePublicKey(derivationOutput, (short) 0, apduBuffer, off);
-      
-      if (extendedPublic) {
-        Util.arrayCopyNonAtomic(derivationOutput, Crypto.KEY_SECRET_SIZE, apduBuffer, (short) (off + len), CHAIN_CODE_SIZE);
-        len += CHAIN_CODE_SIZE;
-      }
-
       apduBuffer[(short) (off - 1)] = (byte) len;
       off += len;
+
+      if (extendedPublic) {
+        apduBuffer[off++] = TLV_CHAIN_CODE;  
+        off++;      
+        Util.arrayCopyNonAtomic(derivationOutput, Crypto.KEY_SECRET_SIZE, apduBuffer, off, CHAIN_CODE_SIZE);
+        len = CHAIN_CODE_SIZE;
+        apduBuffer[(short) (off - 1)] = (byte) len;
+        off += len;        
+      }
     } else {
       apduBuffer[off++] = TLV_PRIV_KEY;
       off++;
