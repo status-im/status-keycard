@@ -1687,7 +1687,6 @@ public class KeycardTest {
       return;
     }
 
-    System.out.println(Hex.toHexString(keyTemplate));
     DeterministicKey dk = deriveKey(keyPair, chainCode, path);
     ECKey key = dk.decompress();
     assertEquals(KeycardApplet.TLV_KEY_TEMPLATE, keyTemplate[0]);
