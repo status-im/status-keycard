@@ -46,7 +46,7 @@ if (!testTarget) {
 
 def pairingPass = project.properties['im.status.keycard.test.pairing']
 if (!pairingPass) {
-  pairingPass = 'KeycardTest'
+  pairingPass = 'KeycardDefaultPairing'
 }
 
 

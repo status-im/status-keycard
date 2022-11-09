@@ -222,10 +222,10 @@ public class KeycardTest {
 
     initCapabilities(cmdSet.getApplicationInfo());
 
-    sharedSecret = cmdSet.pairingPasswordToSecret(System.getProperty("im.status.keycard.test.pairing", "KeycardTest"));
+    sharedSecret = cmdSet.pairingPasswordToSecret(System.getProperty("im.status.keycard.test.pairing", "KeycardDefaultPairing"));
 
     if (!cmdSet.getApplicationInfo().isInitializedCard()) {
-      assertEquals(0x9000, cmdSet.init("000000", "123456789012", sharedSecret).getSw());
+      assertEquals(0x9000, cmdSet.init("000000", "012345678901", sharedSecret).getSw());
       cmdSet.select().checkOK();
       initCapabilities(cmdSet.getApplicationInfo());
     }
@@ -581,7 +581,7 @@ public class KeycardTest {
     assertEquals(0x63C0, response.getSw());
 
     // Unblock PIN to make further tests possible
-    response = cmdSet.unblockPIN("123456789012", "000000");
+    response = cmdSet.unblockPIN("012345678901", "000000");
     assertEquals(0x9000, response.getSw());
   }
 
@@ -667,7 +667,7 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
 
     // Reset PUK
-    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PUK, "123456789012");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PUK, "012345678901");
     assertEquals(0x9000, response.getSw());
 
     // Change the pairing secret
@@ -694,13 +694,13 @@ public class KeycardTest {
   @Capabilities("credentialsManagement")
   void unblockPinTest() throws Exception {
     // Security condition violation: SecureChannel not open
-    APDUResponse response = cmdSet.unblockPIN("123456789012", "000000");
+    APDUResponse response = cmdSet.unblockPIN("012345678901", "000000");
     assertEquals(0x6985, response.getSw());
 
     cmdSet.autoOpenSecureChannel();
 
     // Condition violation: PIN is not blocked
-    response = cmdSet.unblockPIN("123456789012", "000000");
+    response = cmdSet.unblockPIN("012345678901", "000000");
     assertEquals(0x6985, response.getSw());
 
     // Block the PIN
@@ -725,7 +725,7 @@ public class KeycardTest {
     assertEquals(0x63C4, response.getSw());
 
     // Correct PUK
-    response = cmdSet.unblockPIN("123456789012", "654321");
+    response = cmdSet.unblockPIN("012345678901", "654321");
     assertEquals(0x9000, response.getSw());
 
     // Check that PIN has been changed and unblocked

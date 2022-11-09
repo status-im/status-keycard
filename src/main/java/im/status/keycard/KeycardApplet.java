@@ -111,6 +111,8 @@ public class KeycardApplet extends Applet {
   static final byte[] EIP_1581_PREFIX = { (byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D};
 
   private OwnerPIN pin;
+  private OwnerPIN realPin;
+  private OwnerPIN fakePin;
   private OwnerPIN puk;
   private byte[] uid;
   private SecureChannel secureChannel;
@@ -118,6 +120,8 @@ public class KeycardApplet extends Applet {
   private ECPublicKey masterPublic;
   private ECPrivateKey masterPrivate;
   private byte[] masterChainCode;
+  private byte[] fakeChainCode;
+  private byte[] chainCode;
   private boolean isExtended;
 
   private byte[] tmpPath;
@@ -173,6 +177,8 @@ public class KeycardApplet extends Applet {
     masterPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
     masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
     masterChainCode = new byte[CHAIN_CODE_SIZE];
+    fakeChainCode = new byte[CHAIN_CODE_SIZE];
+    chainCode = masterChainCode;
 
     keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
     pinlessPath = new byte[KEY_PATH_MAX_DEPTH * 4];
@@ -341,15 +347,16 @@ public class KeycardApplet extends Applet {
 
       secureChannel.initSecureChannel(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH + PUK_LENGTH));
 
-      JCSystem.beginTransaction();
+      realPin = new OwnerPIN(pinLimit, PIN_LENGTH);
+      realPin.update(apduBuffer, ISO7816.OFFSET_CDATA, PIN_LENGTH);
 
-      pin = new OwnerPIN(pinLimit, PIN_LENGTH);
-      pin.update(apduBuffer, ISO7816.OFFSET_CDATA, PIN_LENGTH);
+      fakePin = new OwnerPIN(pinLimit, PIN_LENGTH);
+      fakePin.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PIN_LENGTH);
 
       puk = new OwnerPIN(pukLimit, PUK_LENGTH);
       puk.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PUK_LENGTH);
 
-      JCSystem.commitTransaction();
+      pin = realPin;
     } else if (apduBuffer[ISO7816.OFFSET_INS] == IdentApplet.INS_IDENTIFY_CARD) {
       IdentApplet.identifyCard(apdu, null, signature);
     } else {
@@ -385,7 +392,8 @@ public class KeycardApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void selectApplet(APDU apdu) {
-    pin.reset();
+    fakePin.reset();
+    realPin.reset();
     puk.reset();
     secureChannel.reset();
 
@@ -516,8 +524,24 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
-    if (!pin.check(apduBuffer, ISO7816.OFFSET_CDATA, len)) {
-      ISOException.throwIt((short)((short) 0x63c0 | (short) pin.getTriesRemaining()));
+    short resp = realPin.check(apduBuffer, ISO7816.OFFSET_CDATA, len) ? (short) 1 : (short) 0;
+    resp += fakePin.check(apduBuffer, ISO7816.OFFSET_CDATA, len) ? (short) 2 : (short) 0;
+
+    switch(resp) {
+      case 0:
+        ISOException.throwIt((short)((short) 0x63c0 | (short) pin.getTriesRemaining()));
+        break;
+      case 1:
+        chainCode = masterChainCode;
+        fakePin.resetAndUnblock();
+        pin = realPin;
+        break;
+      case 2:
+      case 3: // if pins are equal fake pin takes precedence
+        chainCode = fakeChainCode;
+        realPin.resetAndUnblock();
+        pin = fakePin;
+        break;
     }
   }
 
@@ -615,7 +639,8 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt((short)((short) 0x63c0 | (short) puk.getTriesRemaining()));
     }
 
-    pin.resetAndUnblock();
+    fakePin.resetAndUnblock();
+    realPin.resetAndUnblock();
     pin.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PUK_LENGTH), PIN_LENGTH);
     pin.check(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PUK_LENGTH), PIN_LENGTH);
     puk.reset();
@@ -662,6 +687,10 @@ public class KeycardApplet extends Applet {
    * @param apduBuffer the APDU buffer
    */
   private void generateKeyUIDAndRespond(APDU apdu, byte[] apduBuffer) {
+    if (isExtended) {
+      crypto.sha256.doFinal(masterChainCode, (short) 0, CHAIN_CODE_SIZE, fakeChainCode, (short) 0);
+    }
+
     short pubLen = masterPublic.getW(apduBuffer, (short) 0);
     crypto.sha256.doFinal(apduBuffer, (short) 0, pubLen, keyUID, (short) 0);
     Util.arrayCopyNonAtomic(keyUID, (short) 0, apduBuffer, SecureChannel.SC_OUT_OFFSET, KEY_UID_LENGTH);
@@ -782,14 +811,20 @@ public class KeycardApplet extends Applet {
   /**
    * Updates the derivation path for a subsequent EXPORT KEY/SIGN APDU. Optionally stores the result in the current path.
    * 
-   * @param apduBuffer the APDU buffer
-   * @param off the offset in the APDU buffer relative to the data field
+   * @param path the path
+   * @param off the offset in the path
    * @param len the len of the path
    * @param source derivation source
    */
-  private void updateDerivationPath(byte[] apduBuffer, short off, short len, byte source) {
+  private void updateDerivationPath(byte[] path, short off, short len, byte source) {
     if (!isExtended) {
-      ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+      if (len == 0) {
+        tmpPathLen = 0;
+      } else {
+        ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+      }
+      
+      return;
     }
 
     short newPathLen;
@@ -833,7 +868,7 @@ public class KeycardApplet extends Applet {
     short pathOff = (short) (ISO7816.OFFSET_CDATA + off);
 
     Util.arrayCopyNonAtomic(srcKeyPath, (short) 0, tmpPath, (short) 0, pathLenOff);
-    Util.arrayCopyNonAtomic(apduBuffer, pathOff, tmpPath, pathLenOff, len);
+    Util.arrayCopyNonAtomic(path, pathOff, tmpPath, pathLenOff, len);
     tmpPathLen = newPathLen; 
   }
 
@@ -862,7 +897,7 @@ public class KeycardApplet extends Applet {
     short dataOff = (short) (scratchOff + Crypto.KEY_DERIVATION_SCRATCH_SIZE);
 
     short pubKeyOff = (short) (dataOff + masterPrivate.getS(apduBuffer, dataOff));
-    pubKeyOff = Util.arrayCopyNonAtomic(masterChainCode, (short) 0, apduBuffer, pubKeyOff, CHAIN_CODE_SIZE);
+    pubKeyOff = Util.arrayCopyNonAtomic(chainCode, (short) 0, apduBuffer, pubKeyOff, CHAIN_CODE_SIZE);
 
     if (!crypto.bip32IsHardened(tmpPath, (short) 0)) {
       masterPublic.getW(apduBuffer, pubKeyOff);
@@ -987,6 +1022,7 @@ public class KeycardApplet extends Applet {
     masterPublic.clearKey();
     resetCurveParameters();
     Util.arrayFillNonAtomic(masterChainCode, (short) 0, (short) masterChainCode.length, (byte) 0);
+    Util.arrayFillNonAtomic(fakeChainCode, (short) 0, (short) fakeChainCode.length, (byte) 0);
     Util.arrayFillNonAtomic(keyPath, (short) 0, (short) keyPath.length, (byte) 0);
     Util.arrayFillNonAtomic(pinlessPath, (short) 0, (short) pinlessPath.length, (byte) 0);
   }
