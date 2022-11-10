@@ -325,20 +325,26 @@ public class KeycardApplet extends Applet {
 
       byte defaultLimitsLen = (byte)(PIN_LENGTH + PUK_LENGTH + SecureChannel.SC_SECRET_LENGTH);
       byte withLimitsLen = (byte) (defaultLimitsLen + 2);
+      byte withAltPIN = (byte) (withLimitsLen + 6);
 
-      if (((apduBuffer[ISO7816.OFFSET_LC] != defaultLimitsLen) && (apduBuffer[ISO7816.OFFSET_LC] != withLimitsLen)) || !allDigits(apduBuffer, ISO7816.OFFSET_CDATA, (short)(PIN_LENGTH + PUK_LENGTH))) {
+      if (((apduBuffer[ISO7816.OFFSET_LC] != defaultLimitsLen) && (apduBuffer[ISO7816.OFFSET_LC] != withLimitsLen) && (apduBuffer[ISO7816.OFFSET_LC] != withAltPIN)) || !allDigits(apduBuffer, ISO7816.OFFSET_CDATA, (short)(PIN_LENGTH + PUK_LENGTH))) {
         ISOException.throwIt(ISO7816.SW_WRONG_DATA);
       }
 
       byte pinLimit;
       byte pukLimit;
+      short altPinOff = (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH);
 
-      if (apduBuffer[ISO7816.OFFSET_LC] == withLimitsLen) {
+      if (apduBuffer[ISO7816.OFFSET_LC] >= withLimitsLen) {
         pinLimit = apduBuffer[(short) (ISO7816.OFFSET_CDATA + defaultLimitsLen)];
         pukLimit = apduBuffer[(short) (ISO7816.OFFSET_CDATA + defaultLimitsLen + 1)];
 
         if (pinLimit < PIN_MIN_RETRIES || pinLimit > PIN_MAX_RETRIES || pukLimit < PUK_MIN_RETRIES || pukLimit > PUK_MAX_RETRIES) {
           ISOException.throwIt(ISO7816.SW_WRONG_DATA);
+        }
+
+        if (apduBuffer[ISO7816.OFFSET_LC] == withAltPIN) {
+          altPinOff = (short)(ISO7816.OFFSET_CDATA + withLimitsLen);
         }
       } else {
         pinLimit = DEFAULT_PIN_MAX_RETRIES;
@@ -351,7 +357,7 @@ public class KeycardApplet extends Applet {
       mainPIN.update(apduBuffer, ISO7816.OFFSET_CDATA, PIN_LENGTH);
 
       altPIN = new OwnerPIN(pinLimit, PIN_LENGTH);
-      altPIN.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PIN_LENGTH);
+      altPIN.update(apduBuffer, altPinOff, PIN_LENGTH);
 
       puk = new OwnerPIN(pukLimit, PUK_LENGTH);
       puk.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PUK_LENGTH);

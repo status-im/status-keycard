@@ -225,7 +225,7 @@ public class KeycardTest {
     sharedSecret = cmdSet.pairingPasswordToSecret(System.getProperty("im.status.keycard.test.pairing", "KeycardDefaultPairing"));
 
     if (!cmdSet.getApplicationInfo().isInitializedCard()) {
-      assertEquals(0x9000, cmdSet.init("000000", "012345678901", sharedSecret).getSw());
+      assertEquals(0x9000, cmdSet.init("000000", "024680", "012345678901", sharedSecret, (byte) 3, (byte) 5).getSw());
       cmdSet.select().checkOK();
       initCapabilities(cmdSet.getApplicationInfo());
     }
@@ -568,7 +568,7 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
 
     // Alt PIN
-    response = cmdSet.verifyPIN("012345");
+    response = cmdSet.verifyPIN("024680");
     assertEquals(0x9000, response.getSw());    
 
     // Check max retry counter
@@ -584,11 +584,11 @@ public class KeycardTest {
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x63C0, response.getSw());
 
-    response = cmdSet.verifyPIN("012345");
+    response = cmdSet.verifyPIN("024680");
     assertEquals(0x63C0, response.getSw());    
 
     // Unblock PIN to make further tests possible
-    response = cmdSet.unblockPIN("012345678901", "012345");
+    response = cmdSet.unblockPIN("012345678901", "024680");
     assertEquals(0x9000, response.getSw());
   }
 
@@ -696,7 +696,7 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
 
     // Alt PIN
-    response = cmdSet.verifyPIN("012345");
+    response = cmdSet.verifyPIN("024680");
     assertEquals(0x9000, response.getSw());
 
     response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "123456");
@@ -707,7 +707,7 @@ public class KeycardTest {
     response = cmdSet.verifyPIN("123456");
     assertEquals(0x9000, response.getSw());
 
-    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "012345");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "024680");
     assertEquals(0x9000, response.getSw());
 
     resetAndSelectAndOpenSC();
@@ -1129,7 +1129,7 @@ public class KeycardTest {
     assertEquals(0x6A88, response.getSw());
 
     // Alt PIN
-    response = cmdSet.verifyPIN("012345");
+    response = cmdSet.verifyPIN("024680");
     assertEquals(0x9000, response.getSw());
     
     response = cmdSet.signWithPath(hash, updatedPath, false);
@@ -1352,7 +1352,7 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
 
     // Alt PIN
-    response = cmdSet.verifyPIN("012345");
+    response = cmdSet.verifyPIN("024680");
     assertEquals(0x9000, response.getSw());
 
     response = cmdSet.exportKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2c, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER, false, KeycardCommandSet.EXPORT_KEY_P2_EXTENDED_PUBLIC);
