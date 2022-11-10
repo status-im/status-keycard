@@ -13,17 +13,12 @@ import java.security.interfaces.ECPrivateKey;
 
 
 public class TestKeycardCommandSet extends KeycardCommandSet {
-  private CardChannel ac;
-  private TestSecureChannelSession sc;
-
   public TestKeycardCommandSet(CardChannel apduChannel) {
     super(apduChannel);
-    ac = apduChannel;
   }
 
   public void setSecureChannel(TestSecureChannelSession secureChannel) {
     super.setSecureChannel(secureChannel);
-    sc = secureChannel;
   }
 
   /**
@@ -82,11 +77,6 @@ public class TestKeycardCommandSet extends KeycardCommandSet {
 
     return loadKey(data, LOAD_KEY_P1_SEED);
   }
-
-  public APDUResponse exportExtendedPublicKey(byte[] keyPath, byte source) throws IOException {
-    APDUCommand exportKey = sc.protectedCommand(0x80, 0xc2, (source | 0x01), 2, keyPath);
-    return sc.transmit(ac, exportKey);
-  }  
 
   /**
    * Sends a GET STATUS APDU to retrieve the APPLICATION STATUS template and reads the byte indicating key initialization

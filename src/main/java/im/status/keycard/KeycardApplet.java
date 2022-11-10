@@ -111,8 +111,8 @@ public class KeycardApplet extends Applet {
   static final byte[] EIP_1581_PREFIX = { (byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D};
 
   private OwnerPIN pin;
-  private OwnerPIN realPin;
-  private OwnerPIN fakePin;
+  private OwnerPIN mainPIN;
+  private OwnerPIN altPIN;
   private OwnerPIN puk;
   private byte[] uid;
   private SecureChannel secureChannel;
@@ -347,16 +347,16 @@ public class KeycardApplet extends Applet {
 
       secureChannel.initSecureChannel(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH + PUK_LENGTH));
 
-      realPin = new OwnerPIN(pinLimit, PIN_LENGTH);
-      realPin.update(apduBuffer, ISO7816.OFFSET_CDATA, PIN_LENGTH);
+      mainPIN = new OwnerPIN(pinLimit, PIN_LENGTH);
+      mainPIN.update(apduBuffer, ISO7816.OFFSET_CDATA, PIN_LENGTH);
 
-      fakePin = new OwnerPIN(pinLimit, PIN_LENGTH);
-      fakePin.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PIN_LENGTH);
+      altPIN = new OwnerPIN(pinLimit, PIN_LENGTH);
+      altPIN.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PIN_LENGTH);
 
       puk = new OwnerPIN(pukLimit, PUK_LENGTH);
       puk.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PIN_LENGTH), PUK_LENGTH);
 
-      pin = realPin;
+      pin = mainPIN;
     } else if (apduBuffer[ISO7816.OFFSET_INS] == IdentApplet.INS_IDENTIFY_CARD) {
       IdentApplet.identifyCard(apdu, null, signature);
     } else {
@@ -392,10 +392,11 @@ public class KeycardApplet extends Applet {
    * @param apdu the JCRE-owned APDU object.
    */
   private void selectApplet(APDU apdu) {
-    fakePin.reset();
-    realPin.reset();
+    altPIN.reset();
+    mainPIN.reset();
     puk.reset();
     secureChannel.reset();
+    pin = mainPIN;
 
     byte[] apduBuffer = apdu.getBuffer();
 
@@ -524,8 +525,8 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_WRONG_DATA);
     }
 
-    short resp = realPin.check(apduBuffer, ISO7816.OFFSET_CDATA, len) ? (short) 1 : (short) 0;
-    resp += fakePin.check(apduBuffer, ISO7816.OFFSET_CDATA, len) ? (short) 2 : (short) 0;
+    short resp = mainPIN.check(apduBuffer, ISO7816.OFFSET_CDATA, len) ? (short) 1 : (short) 0;
+    resp += altPIN.check(apduBuffer, ISO7816.OFFSET_CDATA, len) ? (short) 2 : (short) 0;
 
     switch(resp) {
       case 0:
@@ -533,14 +534,14 @@ public class KeycardApplet extends Applet {
         break;
       case 1:
         chainCode = masterChainCode;
-        fakePin.resetAndUnblock();
-        pin = realPin;
+        altPIN.resetAndUnblock();
+        pin = mainPIN;
         break;
       case 2:
       case 3: // if pins are equal fake pin takes precedence
         chainCode = fakeChainCode;
-        realPin.resetAndUnblock();
-        pin = fakePin;
+        mainPIN.resetAndUnblock();
+        pin = altPIN;
         break;
     }
   }
@@ -639,8 +640,8 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt((short)((short) 0x63c0 | (short) puk.getTriesRemaining()));
     }
 
-    fakePin.resetAndUnblock();
-    realPin.resetAndUnblock();
+    altPIN.resetAndUnblock();
+    mainPIN.resetAndUnblock();
     pin.update(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PUK_LENGTH), PIN_LENGTH);
     pin.check(apduBuffer, (short)(ISO7816.OFFSET_CDATA + PUK_LENGTH), PIN_LENGTH);
     puk.reset();
