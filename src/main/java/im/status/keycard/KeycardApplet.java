@@ -120,7 +120,7 @@ public class KeycardApplet extends Applet {
   private ECPublicKey masterPublic;
   private ECPrivateKey masterPrivate;
   private byte[] masterChainCode;
-  private byte[] fakeChainCode;
+  private byte[] altChainCode;
   private byte[] chainCode;
   private boolean isExtended;
 
@@ -177,7 +177,7 @@ public class KeycardApplet extends Applet {
     masterPublic = (ECPublicKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PUBLIC, SECP256k1.SECP256K1_KEY_SIZE, false);
     masterPrivate = (ECPrivateKey) KeyBuilder.buildKey(KeyBuilder.TYPE_EC_FP_PRIVATE, SECP256k1.SECP256K1_KEY_SIZE, false);
     masterChainCode = new byte[CHAIN_CODE_SIZE];
-    fakeChainCode = new byte[CHAIN_CODE_SIZE];
+    altChainCode = new byte[CHAIN_CODE_SIZE];
     chainCode = masterChainCode;
 
     keyPath = new byte[KEY_PATH_MAX_DEPTH * 4];
@@ -545,7 +545,7 @@ public class KeycardApplet extends Applet {
         break;
       case 2:
       case 3: // if pins are equal fake pin takes precedence
-        chainCode = fakeChainCode;
+        chainCode = altChainCode;
         mainPIN.resetAndUnblock();
         pin = altPIN;
         break;
@@ -695,7 +695,7 @@ public class KeycardApplet extends Applet {
    */
   private void generateKeyUIDAndRespond(APDU apdu, byte[] apduBuffer) {
     if (isExtended) {
-      crypto.sha256.doFinal(masterChainCode, (short) 0, CHAIN_CODE_SIZE, fakeChainCode, (short) 0);
+      crypto.sha256.doFinal(masterChainCode, (short) 0, CHAIN_CODE_SIZE, altChainCode, (short) 0);
     }
 
     short pubLen = masterPublic.getW(apduBuffer, (short) 0);
@@ -1029,7 +1029,7 @@ public class KeycardApplet extends Applet {
     masterPublic.clearKey();
     resetCurveParameters();
     Util.arrayFillNonAtomic(masterChainCode, (short) 0, (short) masterChainCode.length, (byte) 0);
-    Util.arrayFillNonAtomic(fakeChainCode, (short) 0, (short) fakeChainCode.length, (byte) 0);
+    Util.arrayFillNonAtomic(altChainCode, (short) 0, (short) altChainCode.length, (byte) 0);
     Util.arrayFillNonAtomic(keyPath, (short) 0, (short) keyPath.length, (byte) 0);
     Util.arrayFillNonAtomic(pinlessPath, (short) 0, (short) pinlessPath.length, (byte) 0);
   }
