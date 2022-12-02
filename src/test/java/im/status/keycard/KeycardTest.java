@@ -222,10 +222,10 @@ public class KeycardTest {
 
     initCapabilities(cmdSet.getApplicationInfo());
 
-    sharedSecret = cmdSet.pairingPasswordToSecret(System.getProperty("im.status.keycard.test.pairing", "KeycardTest"));
+    sharedSecret = cmdSet.pairingPasswordToSecret(System.getProperty("im.status.keycard.test.pairing", "KeycardDefaultPairing"));
 
     if (!cmdSet.getApplicationInfo().isInitializedCard()) {
-      assertEquals(0x9000, cmdSet.init("000000", "123456789012", sharedSecret).getSw());
+      assertEquals(0x9000, cmdSet.init("000000", "024680", "012345678901", sharedSecret, (byte) 3, (byte) 5).getSw());
       cmdSet.select().checkOK();
       initCapabilities(cmdSet.getApplicationInfo());
     }
@@ -567,6 +567,10 @@ public class KeycardTest {
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x9000, response.getSw());
 
+    // Alt PIN
+    response = cmdSet.verifyPIN("024680");
+    assertEquals(0x9000, response.getSw());    
+
     // Check max retry counter
     response = cmdSet.verifyPIN("123456");
     assertEquals(0x63C2, response.getSw());
@@ -580,8 +584,11 @@ public class KeycardTest {
     response = cmdSet.verifyPIN("000000");
     assertEquals(0x63C0, response.getSw());
 
+    response = cmdSet.verifyPIN("024680");
+    assertEquals(0x63C0, response.getSw());    
+
     // Unblock PIN to make further tests possible
-    response = cmdSet.unblockPIN("123456789012", "000000");
+    response = cmdSet.unblockPIN("012345678901", "024680");
     assertEquals(0x9000, response.getSw());
   }
 
@@ -595,7 +602,7 @@ public class KeycardTest {
 
     cmdSet.autoOpenSecureChannel();
 
-    // Security condition violation: PIN n ot verified
+    // Security condition violation: PIN not verified
     response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "123456");
     assertEquals(0x6985, response.getSw());
 
@@ -667,7 +674,7 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
 
     // Reset PUK
-    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PUK, "123456789012");
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PUK, "012345678901");
     assertEquals(0x9000, response.getSw());
 
     // Change the pairing secret
@@ -687,6 +694,26 @@ public class KeycardTest {
 
     response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_PAIRING_SECRET, sharedSecret);
     assertEquals(0x9000, response.getSw());
+
+    // Alt PIN
+    response = cmdSet.verifyPIN("024680");
+    assertEquals(0x9000, response.getSw());
+
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "123456");
+    assertEquals(0x9000, response.getSw());
+    
+    resetAndSelectAndOpenSC();
+
+    response = cmdSet.verifyPIN("123456");
+    assertEquals(0x9000, response.getSw());
+
+    response = cmdSet.changePIN(KeycardApplet.CHANGE_PIN_P1_USER_PIN, "024680");
+    assertEquals(0x9000, response.getSw());
+
+    resetAndSelectAndOpenSC();
+
+    response = cmdSet.verifyPIN("000000");
+    assertEquals(0x9000, response.getSw());
   }
 
   @Test
@@ -694,13 +721,13 @@ public class KeycardTest {
   @Capabilities("credentialsManagement")
   void unblockPinTest() throws Exception {
     // Security condition violation: SecureChannel not open
-    APDUResponse response = cmdSet.unblockPIN("123456789012", "000000");
+    APDUResponse response = cmdSet.unblockPIN("012345678901", "000000");
     assertEquals(0x6985, response.getSw());
 
     cmdSet.autoOpenSecureChannel();
 
     // Condition violation: PIN is not blocked
-    response = cmdSet.unblockPIN("123456789012", "000000");
+    response = cmdSet.unblockPIN("012345678901", "000000");
     assertEquals(0x6985, response.getSw());
 
     // Block the PIN
@@ -725,7 +752,7 @@ public class KeycardTest {
     assertEquals(0x63C4, response.getSw());
 
     // Correct PUK
-    response = cmdSet.unblockPIN("123456789012", "654321");
+    response = cmdSet.unblockPIN("012345678901", "654321");
     assertEquals(0x9000, response.getSw());
 
     // Check that PIN has been changed and unblocked
@@ -1100,6 +1127,13 @@ public class KeycardTest {
 
     response = cmdSet.signPinless(hash);
     assertEquals(0x6A88, response.getSw());
+
+    // Alt PIN
+    response = cmdSet.verifyPIN("024680");
+    assertEquals(0x9000, response.getSw());
+    
+    response = cmdSet.signWithPath(hash, updatedPath, false);
+    verifySignResp(data, response);
   }
 
   private void verifySignResp(byte[] data, APDUResponse response) throws Exception {
@@ -1305,10 +1339,10 @@ public class KeycardTest {
     verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062d, 0x00000000, 0x00000000 }, false, false);
 
     // Export extended public
-    response = cmdSet.exportExtendedPublicKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
+    response = cmdSet.exportKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D, (byte) 0x00, 0x00, 0x00, 0x00, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER, false, KeycardCommandSet.EXPORT_KEY_P2_EXTENDED_PUBLIC);
     assertEquals(0x6985, response.getSw());
 
-    response = cmdSet.exportExtendedPublicKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2c, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER);
+    response = cmdSet.exportKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2c, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER, false, KeycardCommandSet.EXPORT_KEY_P2_EXTENDED_PUBLIC);
     assertEquals(0x9000, response.getSw());
     keyTemplate = response.getData();
     verifyExportedKey(keyTemplate, keyPair, chainCode, new int[] { 0x8000002b, 0x8000003c, 0x8000062c, 0x00000000 }, true, true);
@@ -1316,6 +1350,16 @@ public class KeycardTest {
     // Reset
     response = cmdSet.deriveKey(new byte[0], KeycardApplet.DERIVE_P1_SOURCE_MASTER);
     assertEquals(0x9000, response.getSw());
+
+    // Alt PIN
+    response = cmdSet.verifyPIN("024680");
+    assertEquals(0x9000, response.getSw());
+
+    response = cmdSet.exportKey(new byte[] {(byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2c, (byte) 0x00, 0x00, 0x00, 0x00}, KeycardApplet.DERIVE_P1_SOURCE_MASTER, false, KeycardCommandSet.EXPORT_KEY_P2_EXTENDED_PUBLIC);
+    assertEquals(0x9000, response.getSw());
+    keyTemplate = response.getData();
+    verifyExportedKey(keyTemplate, keyPair, sha256(chainCode), new int[] { 0x8000002b, 0x8000003c, 0x8000062c, 0x00000000 }, true, true);
+
   }
 
   @Test
