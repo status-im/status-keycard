@@ -17,10 +17,11 @@ A good place to start is our documentation site https://keycard.tech/docs/
 
 You can also join the dicussion about this project on Status channel: https://get.status.im/chat/public/status-keycard
 
-If you just want to use the Keycard as your hardware wallet there are currently two apps supporting it
+If you just want to use the Keycard as your hardware wallet there are currently three apps supporting it
 
-1. WallETH [[Android](https://play.google.com/store/apps/details?id=org.walleth)]
-2. Status [[Android](https://play.google.com/store/apps/details?id=im.status.ethereum)][[iOS](https://apps.apple.com/us/app/status-private-communication/id1178893006)]
+1. Status [[Android](https://play.google.com/store/apps/details?id=im.status.ethereum)][[iOS](https://apps.apple.com/us/app/status-private-communication/id1178893006)]
+2. WallETH [[Android](https://play.google.com/store/apps/details?id=org.walleth)]
+3. Enno Walet https://ennowallet.com/
 
 # How to contribute? 
 
