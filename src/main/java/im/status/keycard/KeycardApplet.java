@@ -1022,6 +1022,7 @@ public class KeycardApplet extends Applet {
   private void clearKeys() {
     keyPathLen = 0;
     pinlessPathLen = 0;
+    tmpPathLen = 0;
     isExtended = false;
     masterPrivate.clearKey();
     masterPublic.clearKey();
@@ -1030,6 +1031,8 @@ public class KeycardApplet extends Applet {
     Util.arrayFillNonAtomic(altChainCode, (short) 0, (short) altChainCode.length, (byte) 0);
     Util.arrayFillNonAtomic(keyPath, (short) 0, (short) keyPath.length, (byte) 0);
     Util.arrayFillNonAtomic(pinlessPath, (short) 0, (short) pinlessPath.length, (byte) 0);
+    Util.arrayFillNonAtomic(tmpPath, (short) 0, (short) tmpPath.length, (byte) 0);
+    Util.arrayFillNonAtomic(derivationOutput, (short) 0, (short) derivationOutput.length, (byte) 0);
     Util.arrayFillNonAtomic(keyUID, (short) 0, (short) keyUID.length, (byte) 0);
   }
 
@@ -1059,6 +1062,7 @@ public class KeycardApplet extends Applet {
 
     clearKeys();
     pin = null;
+    mainPIN = null;
     altPIN = null;
     puk = null;
     secureChannel = null;
