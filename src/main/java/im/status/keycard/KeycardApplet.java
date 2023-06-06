@@ -13,6 +13,7 @@ public class KeycardApplet extends Applet {
 
   static final byte INS_GET_STATUS = (byte) 0xF2;
   static final byte INS_INIT = (byte) 0xFE;
+  static final byte INS_FACTORY_RESET = (byte) 0xFD;
   static final byte INS_VERIFY_PIN = (byte) 0x20;
   static final byte INS_CHANGE_PIN = (byte) 0x21;
   static final byte INS_UNBLOCK_PIN = (byte) 0x22;
@@ -85,6 +86,9 @@ public class KeycardApplet extends Applet {
   static final byte STORE_DATA_P1_NDEF = 0x01;
   static final byte STORE_DATA_P1_CASH = 0x02;
 
+  static final byte FACTORY_RESET_P1_MAGIC = (byte) 0xAA;
+  static final byte FACTORY_RESET_P2_MAGIC = 0x55;
+
   static final byte TLV_SIGNATURE_TEMPLATE = (byte) 0xA0;
 
   static final byte TLV_KEY_TEMPLATE = (byte) 0xA1;
@@ -105,8 +109,9 @@ public class KeycardApplet extends Applet {
   static final byte CAPABILITY_KEY_MANAGEMENT = (byte) 0x02;
   static final byte CAPABILITY_CREDENTIALS_MANAGEMENT = (byte) 0x04;
   static final byte CAPABILITY_NDEF = (byte) 0x08;
+  static final byte CAPABILITY_FACTORY_RESET = (byte) 0x10;
 
-  static final byte APPLICATION_CAPABILITIES = (byte)(CAPABILITY_SECURE_CHANNEL | CAPABILITY_KEY_MANAGEMENT | CAPABILITY_CREDENTIALS_MANAGEMENT | CAPABILITY_NDEF);
+  static final byte APPLICATION_CAPABILITIES = (byte)(CAPABILITY_SECURE_CHANNEL | CAPABILITY_KEY_MANAGEMENT | CAPABILITY_CREDENTIALS_MANAGEMENT | CAPABILITY_NDEF | CAPABILITY_FACTORY_RESET);
 
   static final byte[] EIP_1581_PREFIX = { (byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D};
 
@@ -282,6 +287,9 @@ public class KeycardApplet extends Applet {
         case INS_STORE_DATA:
           storeData(apdu);
           break;
+        case INS_FACTORY_RESET:
+          factoryReset(apdu);
+          return;          
         default:
           ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
           break;
@@ -1009,6 +1017,26 @@ public class KeycardApplet extends Applet {
   }
 
   /**
+   * Clear all keys and erases the key UID.
+   */
+  private void clearKeys() {
+    keyPathLen = 0;
+    pinlessPathLen = 0;
+    tmpPathLen = 0;
+    isExtended = false;
+    masterPrivate.clearKey();
+    masterPublic.clearKey();
+    resetCurveParameters();
+    Util.arrayFillNonAtomic(masterChainCode, (short) 0, (short) masterChainCode.length, (byte) 0);
+    Util.arrayFillNonAtomic(altChainCode, (short) 0, (short) altChainCode.length, (byte) 0);
+    Util.arrayFillNonAtomic(keyPath, (short) 0, (short) keyPath.length, (byte) 0);
+    Util.arrayFillNonAtomic(pinlessPath, (short) 0, (short) pinlessPath.length, (byte) 0);
+    Util.arrayFillNonAtomic(tmpPath, (short) 0, (short) tmpPath.length, (byte) 0);
+    Util.arrayFillNonAtomic(derivationOutput, (short) 0, (short) derivationOutput.length, (byte) 0);
+    Util.arrayFillNonAtomic(keyUID, (short) 0, (short) keyUID.length, (byte) 0);
+  }
+
+  /**
    * Processes the REMOVE KEY command. Removes the master key and all derived keys. Secure Channel and PIN
    * authentication are required.
    *
@@ -1022,16 +1050,28 @@ public class KeycardApplet extends Applet {
       ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
     }
 
-    keyPathLen = 0;
-    pinlessPathLen = 0;
-    isExtended = false;
-    masterPrivate.clearKey();
-    masterPublic.clearKey();
-    resetCurveParameters();
-    Util.arrayFillNonAtomic(masterChainCode, (short) 0, (short) masterChainCode.length, (byte) 0);
-    Util.arrayFillNonAtomic(altChainCode, (short) 0, (short) altChainCode.length, (byte) 0);
-    Util.arrayFillNonAtomic(keyPath, (short) 0, (short) keyPath.length, (byte) 0);
-    Util.arrayFillNonAtomic(pinlessPath, (short) 0, (short) pinlessPath.length, (byte) 0);
+    clearKeys();
+  }
+
+  private void factoryReset(APDU apdu) {
+    byte[] apduBuffer = apdu.getBuffer();
+
+    if ((apduBuffer[OFFSET_P1] != FACTORY_RESET_P1_MAGIC) || (apduBuffer[ISO7816.OFFSET_P2] != FACTORY_RESET_P2_MAGIC)) {
+      ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
+    }
+
+    clearKeys();
+    pin = null;
+    mainPIN = null;
+    altPIN = null;
+    puk = null;
+    secureChannel = null;
+    crypto.random.generateData(uid, (short) 0, UID_LENGTH);
+    Util.arrayFillNonAtomic(data, (short) 0, (short) data.length, (byte) 0);
+
+    if (JCSystem.isObjectDeletionSupported()) {
+      JCSystem.requestObjectDeletion();
+    }
   }
 
   /**

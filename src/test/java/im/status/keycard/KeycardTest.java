@@ -128,6 +128,10 @@ public class KeycardTest {
       capabilities.add("ndef");
     }
 
+    if (info.hasFactoryResetCapability()) {
+      capabilities.add("factoryReset");
+    }
+
     CapabilityCondition.availableCapabilities = capabilities;
   }
 
@@ -210,6 +214,11 @@ public class KeycardTest {
     usbManager.start();
   }
 
+  private static void initCard(KeycardCommandSet cmdSet) throws Exception {
+    assertEquals(0x9000, cmdSet.init("000000", "024680", "012345678901", sharedSecret, (byte) 3, (byte) 5).getSw());
+    cmdSet.select().checkOK();
+  }
+
   private static void initIfNeeded() throws Exception {
     KeyPair identKeyPair = Certificate.generateIdentKeyPair();
     Certificate cert = Certificate.createCertificate(caKeyPair, identKeyPair);
@@ -225,8 +234,7 @@ public class KeycardTest {
     sharedSecret = cmdSet.pairingPasswordToSecret(System.getProperty("im.status.keycard.test.pairing", "KeycardDefaultPairing"));
 
     if (!cmdSet.getApplicationInfo().isInitializedCard()) {
-      assertEquals(0x9000, cmdSet.init("000000", "024680", "012345678901", sharedSecret, (byte) 3, (byte) 5).getSw());
-      cmdSet.select().checkOK();
+      initCard(cmdSet);
       initCapabilities(cmdSet.getApplicationInfo());
     }
   }
@@ -930,6 +938,46 @@ public class KeycardTest {
     assertEquals(0x9000, response.getSw());
     info = new ApplicationInfo(response.getData());
     assertEquals(0, info.getKeyUID().length);
+  }
+
+  @Test
+  @DisplayName("FACTORY RESET command")
+  @Capabilities("factoryReset")
+  void factoryResetTest() throws Exception {
+    KeyPairGenerator g = keypairGenerator();
+    KeyPair keyPair = g.generateKeyPair();
+    
+    // Invalid P1 P2
+    APDUResponse response = sdkChannel.send(new APDUCommand(0x80, KeycardApplet.INS_FACTORY_RESET, 0, 0, new byte[0]));
+    assertEquals(0x6a86, response.getSw());
+
+    // Good case
+    response = cmdSet.factoryReset();
+    assertEquals(0x9000, response.getSw());
+    
+    response = cmdSet.getStatus(KeycardCommandSet.GET_STATUS_P1_KEY_PATH);
+    assertEquals(0x6d00, response.getSw());
+
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSw());
+    assertFalse(cmdSet.getApplicationInfo().isInitializedCard());
+
+    initCard(cmdSet);
+
+    response = cmdSet.select();
+    assertEquals(0x9000, response.getSw());
+
+    if (cmdSet.getApplicationInfo().hasSecureChannelCapability()) {
+      cmdSet.autoPair(sharedSecret);
+      cmdSet.autoOpenSecureChannel();
+    }
+
+    if (cmdSet.getApplicationInfo().hasCredentialsManagementCapability()) {
+      response = cmdSet.verifyPIN("000000");
+      assertEquals(0x9000, response.getSw());
+    }
+
+    assertFalse(cmdSet.getKeyInitializationStatus());
   }
 
   @Test
