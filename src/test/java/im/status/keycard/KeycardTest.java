@@ -128,9 +128,9 @@ public class KeycardTest {
       capabilities.add("ndef");
     }
 
-    //if (info.hasFactoryResetCapability()) {
+    if (info.hasFactoryResetCapability()) {
       capabilities.add("factoryReset");
-    //}
+    }
 
     CapabilityCondition.availableCapabilities = capabilities;
   }
@@ -951,7 +951,8 @@ public class KeycardTest {
     APDUResponse response = sdkChannel.send(new APDUCommand(0x80, KeycardApplet.INS_FACTORY_RESET, 0, 0, new byte[0]));
     assertEquals(0x6a86, response.getSw());
 
-    response = sdkChannel.send(new APDUCommand(0x80, KeycardApplet.INS_FACTORY_RESET, 0xAA, 0x55, new byte[0]));
+    // Good case
+    response = cmdSet.factoryReset();
     assertEquals(0x9000, response.getSw());
     
     response = cmdSet.getStatus(KeycardCommandSet.GET_STATUS_P1_KEY_PATH);
