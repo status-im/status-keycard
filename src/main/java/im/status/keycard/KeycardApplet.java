@@ -109,8 +109,9 @@ public class KeycardApplet extends Applet {
   static final byte CAPABILITY_KEY_MANAGEMENT = (byte) 0x02;
   static final byte CAPABILITY_CREDENTIALS_MANAGEMENT = (byte) 0x04;
   static final byte CAPABILITY_NDEF = (byte) 0x08;
+  static final byte CAPABILITY_FACTORY_RESET = (byte) 0x10;
 
-  static final byte APPLICATION_CAPABILITIES = (byte)(CAPABILITY_SECURE_CHANNEL | CAPABILITY_KEY_MANAGEMENT | CAPABILITY_CREDENTIALS_MANAGEMENT | CAPABILITY_NDEF);
+  static final byte APPLICATION_CAPABILITIES = (byte)(CAPABILITY_SECURE_CHANNEL | CAPABILITY_KEY_MANAGEMENT | CAPABILITY_CREDENTIALS_MANAGEMENT | CAPABILITY_NDEF | CAPABILITY_FACTORY_RESET);
 
   static final byte[] EIP_1581_PREFIX = { (byte) 0x80, 0x00, 0x00, 0x2B, (byte) 0x80, 0x00, 0x00, 0x3C, (byte) 0x80, 0x00, 0x06, 0x2D};
 
@@ -288,7 +289,7 @@ public class KeycardApplet extends Applet {
           break;
         case INS_FACTORY_RESET:
           factoryReset(apdu);
-          break;          
+          return;          
         default:
           ISOException.throwIt(ISO7816.SW_INS_NOT_SUPPORTED);
           break;
@@ -1052,7 +1053,7 @@ public class KeycardApplet extends Applet {
   private void factoryReset(APDU apdu) {
     byte[] apduBuffer = apdu.getBuffer();
 
-    if ((apduBuffer[OFFSET_P1] != FACTORY_RESET_P1_MAGIC) || (apduBuffer[OFFSET_P2] != FACTORY_RESET_P2_MAGIC)) {
+    if ((apduBuffer[OFFSET_P1] != FACTORY_RESET_P1_MAGIC) || (apduBuffer[ISO7816.OFFSET_P2] != FACTORY_RESET_P2_MAGIC)) {
       ISOException.throwIt(ISO7816.SW_INCORRECT_P1P2);
     }
 
@@ -1063,7 +1064,10 @@ public class KeycardApplet extends Applet {
     secureChannel = null;
     crypto.random.generateData(uid, (short) 0, UID_LENGTH);
     Util.arrayFillNonAtomic(data, (short) 0, (short) data.length, (byte) 0);
-    JCSystem.requestObjectDeletion();
+
+    if (JCSystem.isObjectDeletionSupported()) {
+      JCSystem.requestObjectDeletion();
+    }
   }
 
   /**
